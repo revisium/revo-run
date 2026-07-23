@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.architecture-probe-*/
+.cache/
+.sonar/
+*.tgz
+.DS_Store
+.env
+.env.*
+!.env*.example
+*.log

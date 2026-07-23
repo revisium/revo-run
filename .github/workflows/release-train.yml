@@ -1,0 +1,51 @@
+name: Release Train
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Release train transition
+        required: true
+        type: choice
+        options:
+          - start-minor-alpha
+          - start-major-alpha
+          - start-minor-rc
+          - start-major-rc
+          - start-minor-stable
+          - start-major-stable
+          - alpha-bump
+          - promote-rc
+          - rc-bump
+          - stable
+          - patch
+          - patch-alpha-start
+          - patch-rc-start
+      dry_run:
+        description: Validate and show the computed release without pushing.
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: ${{ github.repository }}-release-train
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  release-train:
+    name: Release train
+    uses: revisium/revisium-actions/.github/workflows/release-train.yml@6f243e6b395abc914c4427d204ffad7822a8e9e3 # v0.5.0
+    with:
+      action: ${{ inputs.action }}
+      dry_run: ${{ inputs.dry_run }}
+      base_branch: master
+      node_version: 24.11.1
+      package_manager: pnpm
+      install_command: pnpm install --frozen-lockfile
+      validate_command: pnpm verify
+    secrets:
+      RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
