@@ -1,0 +1,37 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["import"],
+  "rules": {
+    "import/no-cycle": ["error", { "ignoreTypes": false }]
+  },
+  "overrides": [
+    {
+      "files": ["**/src/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "(?:^|/)(?:test|scripts|dist|coverage|\\.architecture-probe-[^/]*)(?:/|$)",
+                "message": "Production source must not depend on tests, repository tooling, generated output, or architecture probes."
+              },
+              {
+                "regex": "^(?:@prisma/|prisma$|@nestjs/|dbos$|@dbos-inc/|graphql$|@apollo/|pg-boss$|graphile-worker$)",
+                "message": "Database frameworks, worker runtimes, queues, and API transports are outside revo-run."
+              },
+              {
+                "regex": "^@modelcontextprotocol/",
+                "message": "MCP transport and server dependencies belong to the host, not revo-run."
+              },
+              {
+                "regex": "^(?:orchestrator$|@revisium/(?:agent-|revo-)?orchestrator(?:/|$))",
+                "message": "Orchestrator packages are hosts of revo-run and must never be dependencies."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

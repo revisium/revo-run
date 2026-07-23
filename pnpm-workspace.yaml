@@ -1,0 +1,2 @@
+allowBuilds:
+  esbuild: false # tsx uses the platform package; no install script is required
