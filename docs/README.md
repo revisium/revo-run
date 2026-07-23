@@ -4,6 +4,7 @@
 
 - [Architecture](architecture.md)
 - [Boundary ADR](adr/0001-run-state-boundary.md)
+- [Expanded consumer example](examples/consumer.md)
 - [Testing](testing.md)
 - [Release train](release-train.md)
 
