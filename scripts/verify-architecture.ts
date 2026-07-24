@@ -12,6 +12,9 @@ import {
 
 const root = process.cwd();
 
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === 'object' && value !== null;
+
 const collectTypeScriptModules = async (
   directory: string,
   relativeRoot: string = root,
@@ -594,7 +597,7 @@ try {
   const lintProbes = [
     {
       name: 'tooling/generated',
-      path: 'src/domain/generated-tooling-probe.ts',
+      path: 'src/lifecycle/generated-tooling-probe.ts',
       source:
         "import { generatedHelper } from '../../scripts/generated-helper.js';\nexport const probe = generatedHelper;\n",
       expectedMessage:
@@ -661,21 +664,28 @@ try {
           '--config',
           '.oxlintrc.architecture.json',
           '--deny-warnings',
+          '--format',
+          'json',
           relative(root, fixture).replaceAll('\\', '/'),
         ],
         { cwd: root, encoding: 'utf8' },
       );
       assert.notEqual(lintProbe.status, 0, `${probe.name} Oxc negative probe must fail`);
-      const lintOutput = `${lintProbe.stdout}${lintProbe.stderr}`;
-      assert.match(
-        lintOutput,
-        /no-restricted-imports/,
-        `${probe.name} Oxc negative probe must fail through no-restricted-imports`,
-      );
+      const lintOutput: unknown = JSON.parse(lintProbe.stdout);
+      assert.ok(isRecord(lintOutput), `${probe.name} Oxc output must be an object`);
       assert.ok(
-        lintOutput.includes(probe.expectedMessage),
-        `${probe.name} Oxc negative probe must report its configured family message`,
+        Array.isArray(lintOutput.diagnostics),
+        `${probe.name} Oxc output must contain diagnostics`,
       );
+      assert.equal(
+        lintOutput.diagnostics.length,
+        1,
+        `${probe.name} fixture must match exactly one configured restriction`,
+      );
+      const diagnostic: unknown = lintOutput.diagnostics[0];
+      assert.ok(isRecord(diagnostic), `${probe.name} Oxc diagnostic must be an object`);
+      assert.equal(diagnostic.code, 'eslint(no-restricted-imports)');
+      assert.equal(diagnostic.help, probe.expectedMessage);
     }),
   );
 } finally {
