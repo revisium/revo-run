@@ -9,6 +9,10 @@
 - [Testing](testing.md)
 - [Release train](release-train.md)
 
+## Stable implemented specifications
+
+- [Canonical JSON v1](specs/canonical-json-v1.spec.md)
+
 ## Draft target specifications
 
 - [Execution plan input v1](specs/execution-plan-input-v1.spec.md)
@@ -19,9 +23,9 @@
 - [Run executor v1](specs/run-executor-v1.spec.md)
 - [Internal module structure](specs/internal-module-structure.spec.md)
 
-Every product specification above is **Draft** and describes no shipped export.
-The architecture rules are Accepted and already enforced by repository
-validation.
+Every target specification in the Draft section describes no shipped export.
+Canonical JSON v1 is the only Stable implemented contract. The architecture
+rules are Accepted and already enforced by repository validation.
 
 ## Specification conventions
 

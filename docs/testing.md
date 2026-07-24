@@ -2,9 +2,23 @@
 
 ## Current status
 
-The architecture validator is active. The package product still ships only an
-empty root entrypoint; all behavior proof below is required before Draft APIs
-become implemented or Stable.
+The architecture validator is active. The package root is still empty, while
+the canonical JSON semantic subpath is Stable and implemented. All RunManager
+behavior proof below is required before Draft APIs become implemented or
+Stable.
+
+### Canonical JSON foundation
+
+Tests prove RFC 8785 byte/digest fixtures, descriptor-safe snapshots, hostile
+prototype/getter/`toJSON` isolation, unsupported values, cycles versus shared
+acyclic references, recursive snapshot freezing/copy isolation, invalid
+surrogates, the official RFC sorting vector and every Appendix B number row,
+including non-finite rejection, and exact
+depth/member/UTF-8 boundaries. Package proof compiles and executes the semantic
+subpath from one exact tarball while proving the root remains empty, reachable
+declarations contain no runtime dependency reference, and private deep imports
+fail. Intentionally leaking declaration fixtures prove detection of both
+`canonicalize` and `node:crypto`.
 
 ## Proof layers
 

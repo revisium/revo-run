@@ -24,6 +24,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./canonical-json": {
+      "types": "./dist/policy/canonical-json/index.d.ts",
+      "import": "./dist/policy/canonical-json/index.js"
     }
   },
   "publishConfig": {
@@ -50,6 +54,9 @@
     "sonar:issues:local": "bash scripts/sonar-issues-local.sh",
     "ci:local:sonar": "bash scripts/ci-local-sonar.sh",
     "prepack": "pnpm run build"
+  },
+  "dependencies": {
+    "canonicalize": "3.0.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",

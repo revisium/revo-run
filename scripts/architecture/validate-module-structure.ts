@@ -39,6 +39,8 @@ export interface SourceModule {
 }
 
 export type ArchitectureRule =
+  | 'canonical-json-crypto-import'
+  | 'canonical-json-import'
   | 'explicit-barrel-exports'
   | 'external-import'
   | 'forbidden-executor-runtime-import'
@@ -257,6 +259,14 @@ const moduleReferences = (path: string, sourceFile: SourceFile): readonly Module
 
 const validateExternalReference = (path: string, specifier: string): void => {
   if (!path.startsWith('src/')) return;
+  if (specifier === 'canonicalize') {
+    if (path === 'src/policy/canonical-json/canonicalize-json.ts') return;
+    fail('canonical-json-import', path, specifier);
+  }
+  if (specifier === 'node:crypto') {
+    if (path === 'src/policy/canonical-json/digest-canonical-json.ts') return;
+    fail('canonical-json-crypto-import', path, specifier);
+  }
   if (specifier.startsWith('@modelcontextprotocol/')) {
     fail('forbidden-mcp-import', path, specifier);
   }

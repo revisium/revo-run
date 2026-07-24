@@ -3,8 +3,9 @@
 ## Status
 
 This architecture is **Accepted** and its module rules are actively enforced by
-repository validation. The repository still ships only an empty ESM entrypoint;
-all described product APIs are Draft and unimplemented.
+repository validation. The package root remains an empty ESM entrypoint. The
+semantic `@revisium/revo-run/canonical-json` subpath is implemented; all
+RunManager product APIs described below remain Draft and unimplemented.
 
 ## Purpose
 
@@ -43,6 +44,12 @@ recovery does not require replay. There is no authoritative `Gate` or
 `JoinArrival` entity.
 
 ## Public plan document
+
+The implemented canonical JSON foundation provides a bounded, descriptor-safe
+`JsonValue` snapshot, RFC 8785 text, and SHA-256 digest. It lives in `spec` and
+`policy`; it does not decode pipeline data or define a plan pin. The
+canonicalizer dependency and `node:crypto` are each isolated to one exact
+policy leaf and enforced by architecture and Oxc probes.
 
 `ExecutionPlanSource.loadExact(planPin)` returns a package-owned immutable
 `RunExecutionPlanDocument`. Its pipeline field is bounded `JsonValue`; it is not
