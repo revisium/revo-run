@@ -8,6 +8,15 @@ explain the risk, and propose the smallest sufficient correction.
 Block a change when:
 
 - shipped exports, declarations, implementation, tests, and README disagree;
+- canonical JSON accepts accessors, own `toJSON`, custom/non-enumerable
+  properties, sparse/custom arrays, cycles, unsupported values, non-finite
+  numbers, or unpaired surrogates;
+- canonical JSON bounds are not checked during the safe snapshot before the
+  dependency call, do not enforce depth 64/member 65,536/UTF-8 1 MiB exactly,
+  or include supplied data in errors;
+- `canonicalize` or `node:crypto` is imported outside its approved exact
+  canonical JSON leaf;
+- a canonical JSON digest is presented as an execution-plan or executor pin;
 - a Draft product contract is presented as implemented behavior;
 - the package requires a host `RunWorker` or exposes low-level attempt commands;
 - full plans are persisted or later commands can replace the plan pin;

@@ -12,9 +12,9 @@
 </div>
 
 > [!IMPORTANT]
-> This repository is in bootstrap. The npm package is not published, its root export is intentionally empty, and every API
-> below is a Draft target specification rather than available code. Architecture enforcement is active in repository
-> validation, but no product API is implemented.
+> This repository is in bootstrap and the npm package is not published. Its root export is intentionally empty.
+> `@revisium/revo-run/canonical-json` is implemented; the RunManager APIs below remain Draft target specifications.
+> Architecture enforcement is active in repository validation.
 
 ## About
 
@@ -27,7 +27,33 @@ subscriptions, and graceful drain.
 The host remains responsible for API transports, authorization, product projections, plan compilation and versioning,
 concrete storage wiring, and executor adapters. It does not need a separate `RunWorker`.
 
-## Quick start
+## Implemented canonical JSON API
+
+Import the shipped value utilities from their semantic subpath:
+
+```ts
+import {
+  canonicalizeJson,
+  digestCanonicalJson,
+  type CanonicalJsonSha256Digest,
+  type JsonValue,
+} from '@revisium/revo-run/canonical-json';
+
+const value: JsonValue = { input: ['stable', 1] };
+const canonical = canonicalizeJson(value);
+const digest: CanonicalJsonSha256Digest = digestCanonicalJson(value);
+```
+
+The implementation first creates a descriptor-safe snapshot without invoking
+getters, setters, or `toJSON`. It rejects unsupported or hostile shapes,
+cycles, non-finite numbers, and invalid Unicode. Fixed limits are depth 64,
+65,536 total members, and 1 MiB of canonical UTF-8 bytes. It follows RFC 8785
+and hashes exactly the returned UTF-8 text.
+
+The root remains runtime-empty. A canonical digest is a general value digest;
+it is not an execution-plan or executor-contract pin.
+
+## Draft RunManager quick start
 
 The target API is intentionally small. All names and exact shapes in this example are **Draft and unimplemented**.
 
@@ -235,6 +261,7 @@ wires store, ports, lifecycle, and manager into `createRunManager`.
 
 ## Documentation
 
+- [Canonical JSON v1](./docs/specs/canonical-json-v1.spec.md) — Stable implemented value and digest contract.
 - [RunManager v1](./docs/specs/run-manager-v1.spec.md) — public facade, recovery, subscriptions, and drain.
 - [Run executor v1](./docs/specs/run-executor-v1.spec.md) — dispatch, reconciliation, cancellation, and unknown outcomes.
 - [Execution plan input v1](./docs/specs/execution-plan-input-v1.spec.md) — exact immutable plan source and persisted pin.
@@ -247,8 +274,9 @@ wires store, ports, lifecycle, and manager into `createRunManager`.
 - [Testing](./docs/testing.md) — proof layers and required implementation coverage.
 - [Release train](./docs/release-train.md) — verified package release flow.
 
-The architecture and its enforcement are Accepted and active. Every product API and product specification is currently
-**Draft and unimplemented**.
+The architecture and its enforcement are Accepted and active. Canonical JSON v1
+is Stable and implemented. Every RunManager product API and specification is
+currently **Draft and unimplemented**.
 
 ## Requirements
 

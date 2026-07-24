@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -30,6 +31,41 @@ const commandFailureOutput = (error: unknown): string => {
   return `${commandOutputText(error['stdout'])}${commandOutputText(error['stderr'])}`;
 };
 
+const declarationModuleSpecifiers = (source: string): readonly string[] =>
+  [
+    ...source.matchAll(/(?:\bfrom\s+|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)['"]([^'"]+)['"]/g),
+  ].flatMap((match) => (match[1] ? [match[1]] : []));
+
+const declarationReferences = (source: string): readonly string[] =>
+  declarationModuleSpecifiers(source).filter((specifier) => specifier.startsWith('.'));
+
+const declarationTarget = (from: string, specifier: string): string => {
+  const target = join(dirname(from), specifier);
+  if (target.endsWith('.js')) return `${target.slice(0, -3)}.d.ts`;
+  if (target.endsWith('.d.ts')) return target;
+  return `${target}.d.ts`;
+};
+
+const readReachableDeclarations = (entry: string): string => {
+  const pending = [entry];
+  const visited = new Set<string>();
+  const declarations: string[] = [];
+
+  while (pending.length > 0) {
+    const path = pending.pop();
+    if (!path || visited.has(path)) continue;
+    visited.add(path);
+
+    const source = readFileSync(path, 'utf8');
+    declarations.push(source);
+    pending.push(
+      ...declarationReferences(source).map((specifier) => declarationTarget(path, specifier)),
+    );
+  }
+
+  return declarations.join('\n');
+};
+
 const isPackManifest = (value: unknown): value is PackManifest =>
   isRecord(value) &&
   typeof value.filename === 'string' &&
@@ -58,6 +94,10 @@ const validateContents = (manifest: PackManifest): void => {
     'dist/index.d.ts.map',
     'dist/index.js',
     'dist/index.js.map',
+    'dist/policy/canonical-json/index.d.ts',
+    'dist/policy/canonical-json/index.d.ts.map',
+    'dist/policy/canonical-json/index.js',
+    'dist/policy/canonical-json/index.js.map',
     'package.json',
   ];
 
@@ -78,8 +118,14 @@ const runtimeConsumer = `
 import assert from 'node:assert/strict';
 
 import * as packageEntry from '@revisium/revo-run';
+import { canonicalizeJson, digestCanonicalJson } from '@revisium/revo-run/canonical-json';
 
 assert.deepEqual(Object.keys(packageEntry), []);
+assert.equal(canonicalizeJson({ b: 1, a: 'value' }), '{"a":"value","b":1}');
+assert.equal(
+  digestCanonicalJson({ a: 1 }),
+  'sha256:015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862',
+);
 
 await assert.rejects(
   import('@revisium/revo-run/dist/index.js'),
@@ -89,9 +135,20 @@ await assert.rejects(
 
 const typeConsumer = `
 import * as packageEntry from '@revisium/revo-run';
+import {
+  canonicalizeJson,
+  digestCanonicalJson,
+  type CanonicalJsonSha256Digest,
+  type JsonValue,
+} from '@revisium/revo-run/canonical-json';
 
 const resolvedEntry: typeof packageEntry = packageEntry;
+const value: JsonValue = { nested: [true, null, 1, 'value'] };
+const digest: CanonicalJsonSha256Digest = digestCanonicalJson(value);
+const canonical: string = canonicalizeJson(value);
 void resolvedEntry;
+void digest;
+void canonical;
 `;
 
 const privateTypeConsumer = `
@@ -121,6 +178,17 @@ const privateConsumerTsconfig = {
   ...consumerTsconfig,
   include: ['private-consumer.ts'],
 };
+
+assert.deepEqual(
+  declarationModuleSpecifiers(`
+import 'side-effect-package';
+import type canonicalize from 'canonicalize';
+export type InlineCrypto = typeof import('node:crypto');
+import crypto = require('node:crypto');
+`),
+  ['side-effect-package', 'canonicalize', 'node:crypto', 'node:crypto'],
+  'Declaration module-specifier scan must cover imports, inline imports, and import-equals require',
+);
 
 const root = process.cwd();
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'revo-run-package-'));
@@ -162,7 +230,27 @@ try {
     'export {};\n//# sourceMappingURL=index.d.ts.map',
     'Packed declaration must contain only the empty-module marker and its source-map directive',
   );
+  const canonicalJsonDeclaration = await readFile(
+    join(installedPackage, 'dist/policy/canonical-json/index.d.ts'),
+    'utf8',
+  );
+  assert.match(canonicalJsonDeclaration, /canonicalizeJson/);
+  assert.match(canonicalJsonDeclaration, /digestCanonicalJson/);
+  assert.match(canonicalJsonDeclaration, /CanonicalJsonSha256Digest/);
+  assert.match(canonicalJsonDeclaration, /JsonValue/);
+  assert.doesNotMatch(canonicalJsonDeclaration, /ArtifactRef|ExecutionPlan|RunManager/);
+  const reachableCanonicalJsonDeclarations = readReachableDeclarations(
+    join(installedPackage, 'dist/policy/canonical-json/index.d.ts'),
+  );
+  assert.deepEqual(
+    declarationModuleSpecifiers(reachableCanonicalJsonDeclarations).filter(
+      (specifier) => specifier === 'canonicalize' || specifier === 'node:crypto',
+    ),
+    [],
+    'Packed canonical JSON declaration module specifiers must exclude runtime dependencies',
+  );
   await linkPackage(join(root, 'node_modules'), consumerNodeModules, '@types/node');
+  await linkPackage(join(root, 'node_modules'), consumerNodeModules, 'canonicalize');
 
   await writeFile(
     join(consumerDirectory, 'package.json'),
@@ -199,7 +287,7 @@ try {
   });
 
   console.log(
-    `Exact tarball validation passed (${manifest.files.length} files; ATTW, contents, ESM, types, runtime/type deep-import denial).`,
+    `Exact tarball validation passed (${manifest.files.length} files; ATTW, contents, ESM, types, reachable declaration isolation, runtime/type deep-import denial).`,
   );
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true });

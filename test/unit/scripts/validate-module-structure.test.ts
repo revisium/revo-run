@@ -301,6 +301,54 @@ test('allows only the pipeline package and only from private lifecycle pipeline 
   );
 });
 
+test('allows canonical JSON dependencies only in their exact policy leaves', () => {
+  expect(() =>
+    validateModuleStructure([
+      {
+        path: 'src/policy/canonical-json/canonicalize-json.ts',
+        source:
+          "import canonicalize from 'canonicalize';\nexport const canonicalizeJson = (value: unknown): string | undefined => canonicalize(value);\n",
+      },
+      {
+        path: 'src/policy/canonical-json/digest-canonical-json.ts',
+        source:
+          "import { createHash } from 'node:crypto';\nexport const digestCanonicalJson = (value: string): string => createHash('sha256').update(value).digest('hex');\n",
+      },
+    ]),
+  ).not.toThrow();
+
+  expectViolation(
+    [
+      {
+        path: 'src/policy/other-canonicalizer.ts',
+        source:
+          "import canonicalize from 'canonicalize';\nexport const otherCanonicalizer = canonicalize;\n",
+      },
+    ],
+    'canonical-json-import',
+  );
+  expectViolation(
+    [
+      {
+        path: 'src/policy/canonical-json/canonicalize-json.ts',
+        source:
+          "import { createHash } from 'node:crypto';\nexport const canonicalizeJson = createHash;\n",
+      },
+    ],
+    'canonical-json-crypto-import',
+  );
+  expectViolation(
+    [
+      {
+        path: 'src/policy/canonical-json/digest-canonical-json.ts',
+        source:
+          "import canonicalize from 'canonicalize';\nexport const digestCanonicalJson = canonicalize;\n",
+      },
+    ],
+    'canonical-json-import',
+  );
+});
+
 test('requires the root entrypoint to use curated layer barrels', () => {
   expect.hasAssertions();
   expectViolation(

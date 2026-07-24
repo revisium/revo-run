@@ -12,9 +12,10 @@ wins for concrete commands, package boundaries, and repository policy.
 - Language: strict TypeScript 7, ESM, NodeNext module resolution.
 - Protected base branch: `master`.
 - Primary local gate: `pnpm verify`.
-- The root export is intentionally empty. Product specs/APIs are Draft and
-  unimplemented; architecture enforcement is active.
-- There are no production dependencies in the foundation.
+- The root export is intentionally empty. The canonical JSON semantic subpath
+  is implemented; RunManager product specs/APIs remain Draft.
+- The exact `canonicalize@3.0.0` dependency is isolated to the canonical JSON
+  policy leaf. No product integration dependency is installed.
 
 ## Required reading
 
@@ -40,6 +41,9 @@ Before editing, inspect:
 ## Engineering rules
 
 - Start behavior changes with a failing test at the owning boundary.
+- Import `canonicalize` only in
+  `src/policy/canonical-json/canonicalize-json.ts` and `node:crypto` only in
+  `src/policy/canonical-json/digest-canonical-json.ts`.
 - Keep domain decisions separate from polling, process execution, database
   frameworks, transports, and provider mechanics.
 - Persist the exact immutable execution-plan pin (`id`, `revision`, `digest`) on

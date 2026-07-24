@@ -1,7 +1,8 @@
 # Internal module structure
 
 - Status: Draft
-- Implementation: Architecture rules enforced; product layers not implemented
+- Implementation: Architecture rules and canonical JSON `spec`/`policy` leaves
+  implemented; RunManager product layers not implemented
 
 ## Normative language and versioning
 
@@ -62,15 +63,20 @@ They MUST NOT contain runtime values.
 
 ## Pipeline dependency
 
-`@revisium/revo-pipeline` is the only allowed production external package and
-only private `src/lifecycle/pipeline/**` modules may import it. Public
+`canonicalize@3.0.0` is the only installed production external package and may
+be imported only by
+`src/policy/canonical-json/canonicalize-json.ts`. `node:crypto` may be imported
+only by `src/policy/canonical-json/digest-canonical-json.ts`.
+
+`@revisium/revo-pipeline` is the only planned product integration package and
+only private `src/lifecycle/pipeline/**` modules may eventually import it. Public
 `src/lifecycle/index.ts` and the facade it exports MUST be pipeline-free.
 Pipeline-owned types MUST NOT be re-exported or appear in other layer
 contracts/declarations. The public plan document exposes only bounded
 `JsonValue`; the private lifecycle seam uses the public decoder without casts.
 
-The dependency is not installed until real lifecycle implementation requires
-it.
+The pipeline dependency is not installed until real lifecycle implementation
+requires it.
 
 ## Import rules
 
@@ -136,7 +142,8 @@ At minimum probes MUST reject:
 
 Temporary on-disk probes MUST always be removed. Oxc MUST execute actual
 negative probes with the configured family message for tooling/generated,
-Prisma, MCP, orchestrator, agent-runtime, scripts, and manager pipeline imports.
+Prisma, MCP, orchestrator, agent-runtime, scripts, manager pipeline,
+canonicalizer-misplacement, and digest-crypto-misplacement imports.
 
 TypeScript declaration proof MUST compile a valid transitive facade graph and
 an intentionally leaking graph, scan declarations reachable from the root

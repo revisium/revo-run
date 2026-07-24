@@ -16,10 +16,15 @@ Use this order when sources disagree:
 5. `docs/architecture.md` explains the Accepted dependency direction.
 6. `README.md` summarizes consumer-visible status.
 
-The architecture validator is active. Product APIs and product layers remain
-Draft/unimplemented. The current root export is intentionally empty.
+The architecture validator is active. RunManager APIs and product layers remain
+Draft/unimplemented. The current root export is intentionally empty; the
+`@revisium/revo-run/canonical-json` semantic subpath is Stable and implemented.
 
 ## Package ownership
+
+The implemented foundation owns bounded descriptor-safe JSON snapshots, RFC
+8785 canonical text, and canonical SHA-256 digests. These utilities are not
+execution-plan or executor pin types.
 
 The target package owns:
 
@@ -152,4 +157,5 @@ Notification may optimize wakeup but is not authority.
 ## Public surface
 
 Public entrypoints exist only in the export map. The foundation exposes an
-empty root. No Draft path reserves a future deep import.
+empty root plus the implemented `./canonical-json` semantic subpath. No Draft
+path reserves a future deep import.

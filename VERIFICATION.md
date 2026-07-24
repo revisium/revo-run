@@ -27,6 +27,12 @@ corepack pnpm verify
 
 Generated `dist/` and `coverage/` are verification artifacts and remain untracked.
 
+For the canonical JSON subpath, the required unit/package evidence includes RFC
+8785 byte and digest fixtures, hostile descriptor/prototype/cycle/surrogate
+cases, exact depth/member/UTF-8 bounds, exact dependency placement, semantic
+subpath declarations, runtime use from the exact tarball, an empty root, and
+deep-import denial.
+
 ## Focused commands
 
 ```bash

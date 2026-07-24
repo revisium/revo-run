@@ -62,10 +62,13 @@ const writeFixtureFiles = async (
   );
 };
 
+const declarationModuleSpecifiers = (source: string): readonly string[] =>
+  [
+    ...source.matchAll(/(?:\bfrom\s+|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)['"]([^'"]+)['"]/g),
+  ].flatMap((match) => (match[1] ? [match[1]] : []));
+
 const declarationReferences = (source: string): readonly string[] =>
-  [...source.matchAll(/(?:\bfrom\s+|\bimport\s*\(\s*)['"](\.[^'"]+)['"]/g)].flatMap((match) =>
-    match[1] ? [match[1]] : [],
-  );
+  declarationModuleSpecifiers(source).filter((specifier) => specifier.startsWith('.'));
 
 const declarationTarget = (from: string, specifier: string): string => {
   const target = join(dirname(from), specifier);
@@ -118,6 +121,21 @@ const positiveGraph: readonly SourceModule[] = [
     path: 'src/policy/retry-limit.ts',
     source:
       "import type { RunInput } from '../spec/index.js';\nexport const retryLimit = (_input: RunInput): number => 3;\n",
+  },
+  {
+    path: 'src/policy/canonical-json/snapshot-json-value.ts',
+    source:
+      "import type { JsonValue } from '../../spec/index.js';\nexport const snapshotJsonValue = (value: JsonValue): JsonValue => value;\n",
+  },
+  {
+    path: 'src/policy/canonical-json/canonicalize-json.ts',
+    source:
+      "import canonicalize from 'canonicalize';\nimport { snapshotJsonValue } from './snapshot-json-value.js';\nexport const canonicalizeJson = (value: null): string | undefined => canonicalize(snapshotJsonValue(value));\n",
+  },
+  {
+    path: 'src/policy/canonical-json/digest-canonical-json.ts',
+    source:
+      "import { createHash } from 'node:crypto';\nimport { canonicalizeJson } from './canonicalize-json.js';\nexport const digestCanonicalJson = (value: null): string => createHash('sha256').update(canonicalizeJson(value) ?? '').digest('hex');\n",
   },
   {
     path: 'src/policy/index.ts',
@@ -222,6 +240,26 @@ execFileSync(
 );
 
 const probes: readonly (readonly [ArchitectureRule, readonly SourceModule[]])[] = [
+  [
+    'canonical-json-import',
+    [
+      {
+        path: 'src/policy/other-canonicalizer.ts',
+        source:
+          "import canonicalize from 'canonicalize';\nexport const otherCanonicalizer = canonicalize;\n",
+      },
+    ],
+  ],
+  [
+    'canonical-json-crypto-import',
+    [
+      {
+        path: 'src/policy/canonical-json/canonicalize-json.ts',
+        source:
+          "import { createHash } from 'node:crypto';\nexport const canonicalizeJson = createHash;\n",
+      },
+    ],
+  ],
   [
     'type-cycle',
     [
@@ -538,6 +576,7 @@ try {
         rootDir: 'src',
         outDir: 'dist',
         skipLibCheck: true,
+        types: ['node'],
       },
       include: ['src/**/*.ts'],
     }),
@@ -588,6 +627,117 @@ try {
     marker,
     'Reachable declaration scan must detect a transitive pipeline leak',
   );
+
+  const canonicalCommonFiles = {
+    'tsconfig.json': JSON.stringify({
+      compilerOptions: {
+        target: 'ES2024',
+        module: 'NodeNext',
+        moduleResolution: 'NodeNext',
+        strict: true,
+        declaration: true,
+        emitDeclarationOnly: true,
+        rootDir: 'src',
+        outDir: 'dist',
+        skipLibCheck: true,
+        types: ['node'],
+      },
+      include: ['src/**/*.ts'],
+    }),
+    'src/spec/index.ts':
+      'export type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };\nexport type CanonicalJsonSha256Digest = `sha256:${string}`;\n',
+    'src/policy/canonical-json/index.ts':
+      "export { canonicalizeJson } from './canonicalize-json.js';\nexport { digestCanonicalJson } from './digest-canonical-json.js';\nexport type { CanonicalJsonSha256Digest, JsonValue } from '../../spec/index.js';\n",
+  } as const;
+  const canonicalEntry = 'dist/policy/canonical-json/index.d.ts';
+
+  const canonicalPositiveRoot = join(declarationProbeRoot, 'canonical-positive');
+  await writeFixtureFiles(canonicalPositiveRoot, {
+    ...canonicalCommonFiles,
+    'src/policy/canonical-json/canonicalize-json.ts':
+      'export declare const canonicalizeJson: (value: unknown) => string;\n',
+    'src/policy/canonical-json/digest-canonical-json.ts':
+      "import type { CanonicalJsonSha256Digest } from '../../spec/index.js';\nexport declare const digestCanonicalJson: (value: unknown) => CanonicalJsonSha256Digest;\n",
+  });
+
+  const canonicalizeNegativeRoot = join(declarationProbeRoot, 'canonicalize-negative');
+  await writeFixtureFiles(canonicalizeNegativeRoot, {
+    ...canonicalCommonFiles,
+    'src/policy/canonical-json/canonicalize-json.ts':
+      "import type canonicalize from 'canonicalize';\nexport declare const canonicalizeJson: typeof canonicalize;\n",
+    'src/policy/canonical-json/digest-canonical-json.ts':
+      "import type { CanonicalJsonSha256Digest } from '../../spec/index.js';\nexport declare const digestCanonicalJson: (value: unknown) => CanonicalJsonSha256Digest;\n",
+  });
+
+  const canonicalizeInlineNegativeRoot = join(declarationProbeRoot, 'canonicalize-inline-negative');
+  await writeFixtureFiles(canonicalizeInlineNegativeRoot, {
+    ...canonicalCommonFiles,
+    'src/policy/canonical-json/canonicalize-json.ts':
+      "export declare const canonicalizeJson: typeof import('canonicalize').default;\n",
+    'src/policy/canonical-json/digest-canonical-json.ts':
+      "import type { CanonicalJsonSha256Digest } from '../../spec/index.js';\nexport declare const digestCanonicalJson: (value: unknown) => CanonicalJsonSha256Digest;\n",
+  });
+
+  const cryptoNegativeRoot = join(declarationProbeRoot, 'crypto-negative');
+  await writeFixtureFiles(cryptoNegativeRoot, {
+    ...canonicalCommonFiles,
+    'src/policy/canonical-json/canonicalize-json.ts':
+      'export declare const canonicalizeJson: (value: unknown) => string;\n',
+    'src/policy/canonical-json/digest-canonical-json.ts':
+      "import type { createHash } from 'node:crypto';\nexport declare const digestCanonicalJson: typeof createHash;\n",
+  });
+
+  const cryptoRequireNegativeRoot = join(declarationProbeRoot, 'crypto-require-negative');
+  await writeFixtureFiles(cryptoRequireNegativeRoot, {
+    ...canonicalCommonFiles,
+    'src/policy/canonical-json/canonicalize-json.ts':
+      'export declare const canonicalizeJson: (value: unknown) => string;\n',
+    'src/policy/canonical-json/digest-canonical-json.ts':
+      "import crypto = require('node:crypto');\nexport declare const digestCanonicalJson: typeof crypto.createHash;\n",
+  });
+
+  for (const fixtureRoot of [
+    canonicalPositiveRoot,
+    canonicalizeNegativeRoot,
+    canonicalizeInlineNegativeRoot,
+    cryptoNegativeRoot,
+    cryptoRequireNegativeRoot,
+  ]) {
+    execFileSync(join(root, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.json'], {
+      cwd: fixtureRoot,
+      stdio: 'pipe',
+    });
+  }
+
+  const runtimeDependencySpecifiers = (fixtureRoot: string): readonly string[] =>
+    declarationModuleSpecifiers(
+      readReachableDeclarations(join(fixtureRoot, canonicalEntry)),
+    ).filter((specifier) => specifier === 'canonicalize' || specifier === 'node:crypto');
+  assert.deepEqual(
+    runtimeDependencySpecifiers(canonicalPositiveRoot),
+    [],
+    'Canonical JSON positive declarations must not expose runtime dependencies',
+  );
+  assert.deepEqual(
+    runtimeDependencySpecifiers(canonicalizeNegativeRoot),
+    ['canonicalize'],
+    'Canonical JSON declaration scan must detect a transitive canonicalize import leak',
+  );
+  assert.deepEqual(
+    runtimeDependencySpecifiers(canonicalizeInlineNegativeRoot),
+    ['canonicalize'],
+    'Canonical JSON declaration scan must detect a transitive inline import leak',
+  );
+  assert.deepEqual(
+    runtimeDependencySpecifiers(cryptoNegativeRoot),
+    ['node:crypto'],
+    'Canonical JSON declaration scan must detect a transitive node:crypto import leak',
+  );
+  assert.deepEqual(
+    runtimeDependencySpecifiers(cryptoRequireNegativeRoot),
+    ['node:crypto'],
+    'Canonical JSON declaration scan must detect a transitive import-equals require leak',
+  );
 } finally {
   await rm(declarationProbeRoot, { recursive: true, force: true });
 }
@@ -595,6 +745,18 @@ try {
 const temporaryRoot = await mkdtemp(join(root, '.architecture-probe-'));
 try {
   const lintProbes = [
+    {
+      name: 'canonicalize misplacement',
+      path: 'src/policy/canonicalize-probe.ts',
+      source: "import canonicalize from 'canonicalize';\nexport const probe = canonicalize;\n",
+      expectedMessage: 'canonicalize is restricted to the canonical JSON policy implementation.',
+    },
+    {
+      name: 'canonical JSON crypto misplacement',
+      path: 'src/policy/crypto-probe.ts',
+      source: "import { createHash } from 'node:crypto';\nexport const probe = createHash;\n",
+      expectedMessage: 'node:crypto is restricted to canonical JSON digest implementation.',
+    },
     {
       name: 'tooling/generated',
       path: 'src/lifecycle/generated-tooling-probe.ts',
