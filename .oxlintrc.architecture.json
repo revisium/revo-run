@@ -27,6 +27,55 @@
               {
                 "regex": "^(?:orchestrator$|@revisium/(?:agent-|revo-)?orchestrator(?:/|$))",
                 "message": "Orchestrator packages are hosts of revo-run and must never be dependencies."
+              },
+              {
+                "regex": "^@revisium/(?:revo-agent-runtime|revo-scripts)(?:/|$)",
+                "message": "Agent and script runtimes belong behind injected executor adapters, not in revo-run core."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "**/src/spec/**/*.ts",
+        "**/src/policy/**/*.ts",
+        "**/src/errors/**/*.ts",
+        "**/src/domain/**/*.ts",
+        "**/src/storage/**/*.ts",
+        "**/src/ports/**/*.ts",
+        "**/src/manager/**/*.ts",
+        "**/src/composition/**/*.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "(?:^|/)(?:test|scripts|dist|coverage|\\.architecture-probe-[^/]*)(?:/|$)",
+                "message": "Production source must not depend on tests, repository tooling, generated output, or architecture probes."
+              },
+              {
+                "regex": "^(?:@prisma/|prisma$|@nestjs/|dbos$|@dbos-inc/|graphql$|@apollo/|pg-boss$|graphile-worker$)",
+                "message": "Database frameworks, worker runtimes, queues, and API transports are outside revo-run."
+              },
+              {
+                "regex": "^@modelcontextprotocol/",
+                "message": "MCP transport and server dependencies belong to the host, not revo-run."
+              },
+              {
+                "regex": "^(?:orchestrator$|@revisium/(?:agent-|revo-)?orchestrator(?:/|$))",
+                "message": "Orchestrator packages are hosts of revo-run and must never be dependencies."
+              },
+              {
+                "regex": "^@revisium/(?:revo-agent-runtime|revo-scripts)(?:/|$)",
+                "message": "Agent and script runtimes belong behind injected executor adapters, not in revo-run core."
+              },
+              {
+                "regex": "^@revisium/revo-pipeline(?:/|$)",
+                "message": "Only private revo-run lifecycle/pipeline modules may import the public pipeline package."
               }
             ]
           }

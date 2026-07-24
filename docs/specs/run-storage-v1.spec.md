@@ -1,133 +1,198 @@
-# Run Storage v1
+# Run storage v1
 
 - Status: Draft
-- Implementation: none
-- Public export: none
-- Schema/migrations: none
+- Implementation: Not implemented
 
-## Purpose
+## Normative language and versioning
 
-Define framework-neutral transactional semantics and a high-level PostgreSQL
-shape. This is not a Prisma schema and does not authorize migrations.
+BCP 14 keywords are interpreted per RFC 2119/RFC 8174 only when uppercase.
+`v1` identifies this contract family; incompatible post-Stable changes require a
+new `vN`, while this Draft may still change.
 
-## High-level state tables
+## Scope
 
-### `runs`
+This specification defines the framework-neutral durable store contract
+injected into `RunManager`. It specifies observable transactional guarantees,
+not a database schema or ORM API.
 
-| Field group | Purpose                                         |
-| ----------- | ----------------------------------------------- |
-| identity    | run id, plan id/revision/digest                 |
-| lifecycle   | status, aggregate revision, cancellation intent |
-| timing      | created, updated, terminal timestamps           |
-| terminal    | bounded normalized summary/fault                |
+## Store authority
 
-### `run_node_instances`
+The store MUST persist authoritative current `Run`, `RunNodeInstance`, and
+`Attempt` state plus immutable `RunOutput`, `RunEvent`, idempotency, and
+activation records.
 
-| Field group | Purpose                                                    |
-| ----------- | ---------------------------------------------------------- |
-| identity    | node instance id, run id, logical node key, activation key |
-| topology    | kind, iteration, parent/fork/branch/join coordinates       |
-| lifecycle   | status, revision, retry availability                       |
-| claim link  | nullable activeAttemptId; optional monotonic claim epoch   |
-| data        | bounded node input and normalized result summary           |
+Current state MUST be queryable without event replay. Events MUST remain ordered
+audit and observation data.
 
-Required uniqueness includes `(run_id, activation_key)`.
-Node rows do not authorize live claims. Mirrored owner/lease/fence values, if
-later added for reads, are historical/projection fields only.
+## Transaction time
 
-### `run_attempts`
+Every mutation transaction MUST expose one authoritative current time obtained
+from the database or equivalent shared durable authority.
 
-| Field group | Purpose                                                       |
-| ----------- | ------------------------------------------------------------- |
-| identity    | attempt id, node instance id, monotonically increasing number |
-| claim       | authoritative worker/owner, fencing token, and lease interval |
-| lifecycle   | claimed, started, heartbeat, terminal timestamps/status       |
-| outcome     | bounded normalized failure/usage summary                      |
+That time MUST decide:
 
-Required uniqueness includes `(node_instance_id, attempt_number)` and the
-appropriate fence identity.
+- claim and retry eligibility;
+- Start CAS eligibility;
+- lease creation, renewal, and expiry;
+- durable lifecycle timestamps;
+- recovery scans whose behavior depends on time.
 
-Claim atomically inserts the Attempt and sets the node's `activeAttemptId`.
-Heartbeat, completion, expiry, retry, and recovery authorize against that active
-Attempt, never against a copied node field. Gate nodes have no Attempt.
+Caller timestamps and the manager's local clock MUST NOT authorize durable
+state changes. Multiple manager processes with skewed local clocks MUST still
+agree through store time.
 
-### `run_outputs`
+Every lease-sensitive operation MUST treat
+`transactionNow >= leaseExpiresAt` as expired.
 
-| Field group | Purpose                                              |
-| ----------- | ---------------------------------------------------- |
-| identity    | output id and idempotency key                        |
-| owner       | run, node instance, optional attempt                 |
-| contract    | name, type/schema identity                           |
-| value       | bounded JSON payload or immutable artifact reference |
-| audit       | created time and actor/correlation identity          |
+## Atomic mutation contract
 
-Outputs are insert-only and multiple per node/attempt.
+One accepted transition MUST atomically:
 
-### `run_events`
+- verify idempotency and exact plan pin assumptions;
+- CAS expected run, node, attempt, gate activation, and fence state;
+- increment monotonic `Run.revision` for an accepted node transition;
+- update current state and active-attempt relationships;
+- insert immutable outputs and ordered events;
+- create deterministic successor/join activations at most once;
+- record the command's idempotent logical result.
 
-| Field group | Purpose                                    |
-| ----------- | ------------------------------------------ |
-| order       | run id plus strictly increasing sequence   |
-| identity    | event id, type, occurrence time            |
-| context     | node/attempt, actor, correlation/causation |
-| payload     | bounded audit payload                      |
+Partial commit MUST be impossible.
 
-Events are insert-only. Unique `(run_id, sequence)` orders the timeline.
+The store MUST expose structured conflicts rather than silently overwriting
+newer state. Lifecycle owns reload and recomputation after conflict.
 
-## Deliberately absent tables
+## Claim and attempt authority
 
-- No authoritative `gates`: a gate is a waiting node instance.
-- No authoritative `join_arrivals`: readiness is derived from plan topology and
-  node instances.
-- No full execution-plan snapshot: `runs` stores only host plan
-  identity/revision/digest pins.
-- No queue table owned by core: eligible-work queries read authoritative state.
-- Product inbox/projection tables are host-owned and disposable.
+Claim MUST atomically create an Attempt in `claimed` and set
+`RunNodeInstance.activeAttemptId`. The Attempt MUST persist unique
+package-generated manager incarnation, diagnostic owner label, lease, fence,
+exact executor contract pin, configuration digest, phase, and revision.
 
-## Transactional ports
+Internal Start MUST be a separate CAS that verifies current incarnation/fence
+and pre-expiry transaction time obtained after exact executor resolution and
+configuration-digest verification, then records `start_committed` before
+external execution.
 
-The target command port must support atomic create, claim, start/heartbeat,
-complete, fail/retry, lease-expire, gate-answer, join-activate, and cancel
-operations with explicit preconditions.
+Fencing tokens MUST change monotonically for successive ownership. Start,
+heartbeat, completion, failure, reconciliation, cancellation result, and expiry
+MUST verify active Attempt, manager incarnation, fence, and lease boundary.
 
-Every operation that accepts a node transition must CAS and increment
-`runs.revision` in the same transaction. Its write input contains the
-domain-validated prospective state/output change plus package-owned
-successor/join/wait intents, never pipeline-owned types. Storage CASes expected
-Run/node/Attempt revisions (or Run/gate revisions for a gate) before committing
-prospective state, outputs, events, and activations together.
+Store adapters MUST NOT treat node-level mirror fields, process identity,
+in-memory locks, or a previously returned candidate as current authority.
 
-If any CAS conflicts, lifecycle discards the whole prospective/combined intent,
-reloads current nodes/attempts/siblings, reruns domain precondition validation,
-reconstructs `PipelineFacts` from authoritative siblings plus the newly
-prospective outcome/answer, recomputes the pipeline decision and package-owned
-intents, and reruns combined domain validation before retrying.
+## Eligibility and recovery
 
-The target query port may expose:
+The store MUST provide bounded, paginated discovery for manager-internal work,
+including:
 
-- claimable nodes at `now`, ordered and limited;
-- due retries at `now`;
-- expired active-Attempt leases at `now`;
-- run/node detail and ordered outputs/events.
+- claimable node activations;
+- due retries;
+- renewable or expired leases;
+- attempts requiring recovery or reconciliation;
+- runs with pending cancellation or pipeline progression;
+- durable observation events after a cursor.
 
-Query results are candidates, not claims. Every mutation rechecks plan pins,
-aggregate/node revision, active Attempt, lease, fence, uniqueness, and
-idempotency constraints.
+Discovery returns candidates only. Authoritative reservation happens in the
+subsequent claim/CAS transaction.
 
-## PostgreSQL E2E requirements
+Recovery acquisition MUST atomically assign a new manager incarnation/fence
+before heartbeat, reconcile, cancellation result, or result acceptance. Its CAS
+MUST succeed only when transaction time is at or beyond lease expiry, or when an
+explicit durable handoff exists that the incumbent wrote under its active
+incarnation/fence. Local time, process observation, and owner labels MUST NOT
+authorize takeover. The store MUST distinguish `claimed` without committed
+Start from `start_committed`.
 
-Before a concrete adapter is accepted, real PostgreSQL tests must prove:
+Handoff MUST invalidate the incumbent's ability to renew or commit results and
+MUST be consumed atomically by one successor ownership acquisition. A manager
+MUST NOT report a drained/stopped state until every abandoned local Attempt has
+such a committed handoff or has otherwise reached a durable terminal state.
 
-- two workers cannot both claim one node;
-- expired/reassigned fences reject stale completion;
-- due retry selection and claim are race-safe;
-- concurrent final branch completions conflict on `Run.revision`, reload fresh
-  sibling facts, and create one join activation;
-- unique `(run_id, activation_key)` independently rejects duplicate join inserts;
-- concurrent gate answers accept exactly one immutable answer;
-- state, outputs, events, and activations roll back together.
+Ordering and pagination MUST be deterministic and starvation-aware. Query
+limits MUST be bounded.
 
-An official Prisma adapter may use Prisma internally and in E2E tests. Core
-contracts and domain tests must not import Prisma. Exact columns, indexes,
-isolation level, locking clauses, retention, partitioning, and migration
-ownership remain open Draft decisions.
+## Exact plan pin
+
+The store persists only plan id, revision, and digest on `Run`. It MUST NOT
+persist the full execution plan or live plan-source objects.
+
+Store mutation contracts MAY verify a caller-supplied expected pin loaded
+internally by lifecycle, but pipeline-owned types MUST NOT enter storage
+contracts.
+
+## Activations
+
+The store MUST enforce scoped activation uniqueness using run id, causal fork
+scope, and activation key. Duplicate activation attempts within one scope MUST
+resolve idempotently; repeated/nested fork scopes MUST remain isolated.
+
+Join readiness MUST NOT be persisted as an authoritative arrival counter. There
+is no authoritative `JoinArrival` or `Gate` table requirement.
+
+## Events and durable observation
+
+Events MUST have a stable per-run order and cursor. The store MUST atomically or
+transactionally consistently read an immutable current snapshot plus event
+high-watermark cursor. It MUST support bounded reads after that cursor without a
+snapshot/event gap.
+
+A store adapter MAY provide notification or blocking wait as an optimization.
+Notification loss MUST NOT lose durable state; manager subscription logic MUST
+resume by reading state/events.
+
+Observation contracts MUST support pull backpressure, bounded page/read-ahead
+sizes, and bounded cursor validation. `waitForTerminal()` uses the same reads.
+
+Retention policy, if any, MUST preserve the documented cursor and snapshot
+recovery contract.
+
+## Idempotency
+
+Idempotency identity MUST be scoped so unrelated runs or operation kinds cannot
+collide accidentally. The store MUST bind an accepted key to a normalized
+semantic request and logical result.
+
+Same key plus same request returns the existing result. Same key plus different
+request returns a conflict.
+
+## Framework neutrality
+
+Core storage types MUST NOT expose:
+
+- Prisma or another ORM;
+- SQL driver connections;
+- DBOS, queue, or scheduler primitives;
+- NestJS or transport types;
+- provider-specific timestamps or transaction handles.
+
+A concrete adapter may use those tools privately after a separate accepted
+design. Concurrency guarantees require real database E2E proof; an in-memory fake
+is insufficient.
+
+## Required concurrency proof
+
+A conforming durable adapter MUST prove:
+
+- competing multi-process claims create one active Attempt;
+- every manager start uses a unique incarnation even when owner label repeats;
+- skewed local clocks cannot expire or extend leases incorrectly;
+- Start/heartbeat/all result sources reject at or after lease expiry;
+- claimed -> exact resolve/config verification -> fresh Start CAS -> dispatch
+  ordering is durable;
+- never-started claim recovery differs from conservative started recovery;
+- recovery takeover succeeds only at database-time expiry or through a durable
+  fenced handoff;
+- exact executor pin/config digest survives recovery;
+- stale incarnation/fence rejects heartbeat and results;
+- aggregate conflicts reload and recompute join progression;
+- causal-scope activation uniqueness prevents cross-fork joins;
+- gate answer races accept one immutable answer;
+- unknown non-idempotent outcomes are not redispatched;
+- cancellation/result races preserve lifecycle policy;
+- subscription exposes a consistent `initial` snapshot/high-watermark and
+  iteration resumes strictly after its cursor with bounded reads;
+- terminal `initial` performs no later read/wait and a terminal item performs no
+  read/wait after it;
+- drain timeout commits fenced handoff before stopped and the stopped manager
+  writes nothing;
+- all transition artifacts commit atomically.

@@ -2,24 +2,24 @@
 
 ## Status
 
-The repository currently ships only an empty ESM entrypoint and verification
-foundation. The run engine described here is the accepted target boundary, not
-implemented API.
+This architecture is **Accepted** and its module rules are actively enforced by
+repository validation. The repository still ships only an empty ESM entrypoint;
+all described product APIs are Draft and unimplemented.
 
 ## Purpose
 
-`revo-run` receives a host-owned, verified immutable `ExecutionPlan` and
-`CompiledPipeline` with each lifecycle command and produces one durable,
-concurrency-safe run-state transition. `Run` stores only plan
-identity/revision/digest pins; the package never snapshots the full plan. The
-central state machine keeps GraphQL, MCP, CLI, and workers from implementing
-different transition rules.
+`@revisium/revo-run` is a reusable library whose `RunManager` owns the complete
+durable lifecycle of many runs. A host injects storage, an exact immutable plan
+source, exact executor resolution, identifiers, and process-local policy. The
+manager owns recovery, polling, claims, leases, fences, heartbeats, dispatch,
+retries, pipeline and gate progression, cancellation, durable observation,
+terminal waits, and graceful drain.
 
-The package is durable because its contracts make the database transaction,
-CAS, lease, fence, retry, and idempotency requirements explicit. It does not
-become a daemon: the host decides when to poll and execute work.
+The host has no `RunWorker`. It owns application composition, API/auth,
+projections, concrete store wiring, immutable plan compilation and persistence,
+and executor adapters.
 
-## Core model
+## Durable model
 
 ```text
 Run
@@ -29,120 +29,303 @@ Run
 └── RunEvent*
 ```
 
-- `Run` owns overall lifecycle and immutable plan identity.
-- `RunNodeInstance` is one runtime activation of a logical plan node, including
-  fork branches, joins, and human gates. It stores status and an
-  `activeAttemptId`, not authoritative live lease/fence data.
-- `Attempt` records one executable-node claim/execution lifecycle and is the
-  authoritative live worker owner, lease, and fencing-token record.
-- `RunOutput` stores multiple immutable named/typed results or artifacts.
-- `RunEvent` stores the ordered append-only audit timeline.
+- `Run` owns lifecycle, monotonic aggregate revision, and the exact execution
+  plan pin.
+- `RunNodeInstance` represents one runtime activation and records its causal
+  fork scope.
+- `Attempt` is the authoritative execution owner, phase, lease, fence, manager
+  incarnation, and exact executor-contract record.
+- `RunOutput` is an immutable named and typed value or artifact reference.
+- `RunEvent` is an ordered append-only audit and durable observation feed.
 
-No separate Gate or JoinArrival entity is authoritative.
+Current rows are authoritative mutable state. Events do not replace them and
+recovery does not require replay. There is no authoritative `Gate` or
+`JoinArrival` entity.
 
-## Lifecycle seam and command path
+## Public plan document
+
+`ExecutionPlanSource.loadExact(planPin)` returns a package-owned immutable
+`RunExecutionPlanDocument`. Its pipeline field is bounded `JsonValue`; it is not
+a `CompiledPipeline` or any other pipeline-package type.
+
+Only private `lifecycle/pipeline/**` modules may pass that JSON value to the
+future public `@revisium/revo-pipeline` decoder. The public
+`lifecycle/index.ts` facade is pipeline-free. Decode failures are stable
+plan-integrity faults. Ports, manager, composition, root exports, and emitted
+declarations may contain neither pipeline types nor casts that pretend JSON is
+already decoded.
+
+Each executable binding in the document contains:
+
+- an exact `ExecutorContractPin`;
+- an immutable configuration value and configuration digest;
+- the explicit execution-idempotency declaration;
+- bounded retry/cancellation policy.
+
+The exact executor pin and configuration digest are persisted with the Attempt.
+Recovery calls `ExecutorResolver.resolveExact(pin)` and verifies the
+configuration digest. There is no latest, compatible, nearest, or default
+fallback.
+
+## Composition
 
 ```text
-host supplies verified immutable ExecutionPlan + CompiledPipeline + command
+host
+  |
+  +-- RunStore ---------------- durable transactions and DB time
+  +-- ExecutionPlanSource ----- exact JSON plan document by persisted pin
+  +-- ExecutorResolver -------- resolveExact plus execute/reconcile/cancel
+  +-- IdSource ---------------- durable ids and manager incarnation ids
+  +-- LocalClock -------------- local waits/testing only
+  `-- coordination policy ----- owner label, polling, heartbeat, concurrency
+          |
+          v
+      composition
+          |
+          +--> lifecycle (sole writable store/domain/pipeline path)
+          `--> manager   (loops and public facade)
+```
+
+The composition layer constructs lifecycle with storage and ports, then
+constructs manager against lifecycle and safe read/port contracts. Manager
+never imports domain or storage directly. It imports lifecycle only through
+`lifecycle/index.ts` and consumes explicit facade types; it cannot infer the
+boundary from lifecycle implementation functions with `Parameters<>` or
+`ReturnType<>`.
+
+`ownerLabel` is diagnostic only. Each successful `start()` allocates a unique,
+package-generated `managerIncarnationId`; every claimed Attempt records it.
+No configured process label can be durable ownership authority.
+
+## Public and internal surfaces
+
+The Draft public facade contains only:
+
+```text
+createRunManager
+  start
+  stop
+  startRun
+  answerGate
+  cancelRun
+  getRun
+  listRuns
+  subscribe
+  waitForTerminal
+```
+
+Claim, Start CAS, heartbeat, completion, failure, lease expiry, recovery,
+reconciliation, and pipeline progression are internal.
+
+## Claim, start, and execute
+
+```text
+lifecycle claim transaction (database time)
+  -> create Attempt phase=claimed
+  -> persist managerIncarnationId, fence, lease, executor pin/config digest
+  -> commit
+          |
+          v
+resolveExact(executor pin) + verify configuration digest
+          |
+          v
+internal Start CAS transaction (fresh database time)
+  -> verify active Attempt + incarnation + fence
+  -> require now < leaseExpiresAt
+  -> phase=start_committed + event
+  -> commit
+          |
+          v
+executor.execute()
+```
+
+Exact resolution and configuration verification occur before Start so an
+unavailable or mismatched adapter cannot create a started Attempt. The Start CAS
+then obtains fresh database time because resolution may take time. Resolution
+grants no authority; executor dispatch before `start_committed` is forbidden.
+
+Heartbeat, direct result, reconciled result, cancellation result, and Start
+MUST reject when transaction time is greater than or equal to lease expiry.
+Local time cannot authorize them.
+
+## Recovery
+
+A recovery owner may take over only when a transaction observes
+`transactionNow >= leaseExpiresAt`, or when the incumbent previously committed
+an explicit durable handoff under its active incarnation and fence. Local clock,
+process death detection, missing local heartbeats, and `ownerLabel` never
+authorize takeover.
+
+A `claimed` Attempt with no committed start is safe to recover without assuming
+an external side effect. After eligible takeover establishes a new incarnation
+and fence, recovery resolves the exact executor and verifies its configuration,
+then performs a fresh Start CAS using newly obtained transaction time.
+
+A `start_committed` Attempt whose process outcome is lost is conservatively
+unknown. After the same expiry-or-handoff takeover gate, recovery acquires a new
+incarnation/fence, resolves the persisted exact executor/configuration, and
+then calls `reconcile()`. It must not execute again unless reconciliation
+establishes a known result or the exact binding declares execution idempotent
+and retry policy allows a new Attempt.
+
+Old-incarnation heartbeats and results are stale even when their process still
+runs.
+
+The package does not promise physical exactly-once execution.
+
+## Lifecycle and pipeline seam
+
+```text
+manager asks lifecycle to advance
     |
     v
-lifecycle verifies plan digest against Run pins
+lifecycle facade loads the exact JSON plan document
+and delegates pipeline work to private lifecycle/pipeline modules
     |
     v
 domain validates expected state/fence/gate revision
-and computes package-owned prospective state/output change (no commit)
+and computes a prospective change without committing
     |
     v
-lifecycle maps authoritative siblings + prospective outcome/answer
--> pipeline-owned PipelineFacts
+lifecycle combines fresh scoped sibling state with prospective outcome/answer
+and calls the public pipeline decision API
     |
     v
-public revo-pipeline decision API
+lifecycle maps PipelineDecision to package-owned intents
     |
     v
-lifecycle maps PipelineDecision
--> package-owned successor/join/wait intents
+domain validates combined invariants
     |
     v
-domain validates combined intent + run/node/attempt invariants
+store transaction CASes expected revisions/fence and atomically commits
+state + attempts + outputs + events + scoped activations
     |
-    v
-store transaction CASes expected Run/node/Attempt revisions
-and commits prospective state + outputs + events + activations
-    |
-    +-- success
-    |
-    `-- revision conflict -> reload state/siblings and recompute from fresh facts
+    `-- conflict -> reload and recompute
 ```
 
-Only lifecycle imports pipeline contracts. `PipelineFacts`, `CompiledPipeline`,
-and `PipelineDecision` never enter spec, domain, errors, or storage. Domain owns
-both the prospective change and final combined invariant checks; neither phase
-commits.
+Lifecycle is the sole writable path to domain/storage. Only its private
+`pipeline/**` subtree imports the pipeline package; its public index exports
+only explicit package-owned facade contracts. Manager orchestrates calls
+through that index and cannot mutate the store directly.
 
-Read/query ports expose work candidates. The host RunWorker polls candidates,
-claims through a command/CAS port, invokes an executor, and reports completion.
-The package neither sleeps nor executes work.
+Every accepted node transition increments and CASes `Run.revision`. On conflict,
+lifecycle reloads scoped siblings and recomputes the prospective change and
+pipeline decision.
 
-Claim atomically creates the Attempt and sets
-`RunNodeInstance.activeAttemptId`. Any copied node-level owner/lease/fence
-fields are historical or projection data and cannot authorize heartbeat,
-completion, retry, or recovery. Gates have no Attempt or active pointer.
+## Causal fork scope
 
-## Fork, join, consensus, and gates
+Every activation created by a fork records a stable causal fork scope derived
+from node-instance activation identity, not only a logical node key.
 
-- Fork activation creates branch node instances with deterministic activation
-  keys in the same transition.
-- Join readiness is derived from the compiled graph and current predecessor
-  node instances. Every accepted node transition CASes and increments monotonic
-  `Run.revision`. When concurrent branch transitions conflict, the loser reloads
-  authoritative sibling state, recomputes its domain prospective outcome, then
-  pipeline facts/decision and combined intent; therefore one of two final
-  completions observes the other and activates the ready join.
-  Unique `(runId, activationKey)` separately prevents duplicate join activation.
-- Consensus is a pipeline-defined transition/execution pattern. The run engine
-  stores each branch attempt and output and applies the resulting transition;
-  it does not select models or implement agent consensus itself.
-- A human gate is a waiting node instance without an attempt or lease. Its
-  answer is an immutable output. CAS answer acceptance, gate completion, audit
-  event, and successor activation are one transaction.
+Join readiness considers predecessor node instances in the matching causal
+scope. Join activation identity and uniqueness include that scope. This prevents
+nodes from repeated/nested fork activations from satisfying one another's join.
 
-## State authority and projections
+There is no `JoinArrival`; readiness is derived from exact plan structure plus
+scoped authoritative node instances.
 
-Mutable run and node rows answer current-state queries. Events are durable audit
-and projection inputs, but run recovery does not require event replay. Product
-inboxes, timelines, counters, and dashboards are projections that can be
-rebuilt from authoritative state and events.
+## Gates and cancellation
 
-The Attempt referenced by `activeAttemptId` is the sole live claim authority.
-`Run.revision` is the aggregate serialization point for node transitions; node
-and Attempt revisions/fences remain narrower preconditions, not substitutes for
-the aggregate CAS.
+A human gate is a waiting node instance without an Attempt or lease.
+`answerGate()` targets its runtime activation id, stores one immutable answer,
+and progresses lifecycle atomically.
+
+Cancellation is durable intent. It stops new claims and permits optional
+adapter cancellation. Cancellation results are accepted only before lease
+expiry and through the current incarnation/fence.
+
+## Manager state machine
+
+```text
+stopped
+   |
+   v
+starting -- recovery and incarnation allocation
+   |
+   v
+running -- claim, Start, execute, heartbeat, progress, observe
+   |
+   v
+quiescing -- no new claims; heartbeats/results/writes continue
+   |
+   v
+draining -- wait for local executions and durable result commits
+   |
+   +-- drained --------------------------> stopped
+   `-- timeout -> abort local work,
+                  fenced durable handoff via lifecycle,
+                  finish required writes -> stopped
+```
+
+Repeated or concurrent lifecycle calls must follow one serialized state
+machine. During quiescing/draining, active Attempt heartbeats and fenced result
+commits continue. A drain timeout aborts local calls only after performing an
+explicit durable handoff under the current incarnation/fence; it does not
+silently abandon ownership or report stopped before the handoff commits.
+
+After state becomes `stopped`, manager loops, callbacks, timers, and executor
+promises may not initiate store writes. A later `start()` creates a new
+incarnation.
+
+## Durable observation
+
+`subscribe()` returns a pull-based `RunSubscription` `AsyncIterable`; it does
+not register a push callback. The subscription exposes:
+
+```ts
+readonly initial: {
+  readonly snapshot: RunSnapshot;
+  readonly cursor: RunEventCursor;
+};
+```
+
+Creation atomically or transactionally consistently obtains:
+
+- `initial.snapshot`, a current immutable run snapshot;
+- `initial.cursor`, the event high-watermark for that snapshot.
+
+Iteration then yields bounded pages/items strictly after `initial.cursor`; it
+does not replay the initial snapshot as an iterator item. Consumers control
+backpressure. Resume is bounded and cursor-based. Notification may wake a
+blocked pull but is never state authority.
+
+When `initial.snapshot` is terminal, the iterator is already complete and
+performs no poll or wait. When an iterated item is terminal, the iterator
+completes immediately after that item without another store read or wait.
+
+`waitForTerminal()` uses the same snapshot/high-watermark/cursor protocol and
+cannot maintain a second, weaker observation path.
 
 ## Package layers
 
-| Layer       | Responsibility                                             | May depend on                     |
-| ----------- | ---------------------------------------------------------- | --------------------------------- |
-| `spec`      | portable immutable input/value contracts                   | same layer                        |
-| `policy`    | pure limits and deterministic policy helpers               | `spec`                            |
-| `errors`    | type-only conflict/fault contracts                         | `spec`                            |
-| `domain`    | pure state and transition decisions                        | `spec`, `policy`, `errors`        |
-| `storage`   | type-only transactional command/query ports                | `spec`, `errors`, `domain`        |
-| `lifecycle` | use cases coordinating domain decisions and store commands | all prior layers, `revo-pipeline` |
+| Layer         | Responsibility                                              | May depend on                                                |
+| ------------- | ----------------------------------------------------------- | ------------------------------------------------------------ |
+| `spec`        | immutable public values and JSON contracts                  | none                                                         |
+| `policy`      | pure retry, limit, and lifecycle policy                     | `spec`                                                       |
+| `errors`      | stable typed faults                                         | `spec`                                                       |
+| `domain`      | pure aggregate state and prospective decisions              | `spec`, `policy`, `errors`                                   |
+| `storage`     | type-only transaction/state/event/eligibility contracts     | `spec`, `errors`, `domain`                                   |
+| `ports`       | type-only plan, executor, id, clock, and coordination seams | `spec`, `errors`                                             |
+| `lifecycle`   | only writable store/domain path and pipeline seam           | `spec`, `policy`, `errors`, `domain`, `storage`, `ports`     |
+| `manager`     | public facade, loops, execution, recovery, observation      | `spec`, `policy`, `errors`, `ports`, `lifecycle`             |
+| `composition` | constructs lifecycle and manager from injected contracts    | `spec`, `errors`, `storage`, `ports`, `lifecycle`, `manager` |
 
-Cross-layer imports use explicit layer barrels. `spec`, `errors`, and `storage`
-contain type syntax only. The architecture harness enforces the graph even
-before those source directories exist. Unknown production layers fail closed;
-production cannot import repository tooling, and tests can import production
-only through the root or curated layer barrels.
+Root exports only curated composition/public types. Cross-layer imports use
+explicit barrels. Manager imports lifecycle only through `lifecycle/index.ts`
+and uses explicit contracts rather than `Parameters<>` or `ReturnType<>`
+inference across that boundary. `spec`, `errors`, `storage`, and `ports` are
+type-only. Unknown production layers fail closed.
 
 ## External boundaries
 
-The only planned production dependency is `@revisium/revo-pipeline`, imported
-only by lifecycle. MCP and orchestrator packages are explicitly forbidden
-dependencies. Concrete PostgreSQL/Prisma adapters may later be package
-subpaths, but cannot make Prisma a core contract. Their design and export
-surface require a separate accepted ADR.
+Only private `lifecycle/pipeline/**` modules may eventually depend on
+`@revisium/revo-pipeline`; the package is not installed until implementation
+needs its public JSON decoder and decision API. Core excludes Prisma, NestJS,
+GraphQL, MCP, DBOS, queues, orchestrator, agent-runtime, and scripts
+dependencies.
 
-Excluded responsibilities include DBOS, queues, worker loops, agent/script
-execution, profiles, host plan compilation, Nest, GraphQL, MCP, and CLI.
+Packed-package and declaration tests must compile positive and intentionally
+leaking transitive declaration graphs, then scan declarations reachable from
+the root entry. They must prove the detector sees the negative marker and that
+pipeline types/package references and unsafe casts do not leak through plan
+source, lifecycle facade, manager, composition, or root declarations.

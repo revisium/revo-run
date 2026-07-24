@@ -1,362 +1,255 @@
 # Consumer example
 
-> [!IMPORTANT]
-> Every name and type shape in this document is **Draft and unimplemented**. The shipped package root is intentionally
-> empty. This example illustrates the target host integration; it is not runnable code.
+> Draft only. `@revisium/revo-run` currently exports no product API.
+> Architecture validation is active.
 
-The host owns execution-plan compilation, durable plan storage, worker polling, and physical execution. `revo-run` owns one
-concurrency-safe state transition at a time.
+The host injects infrastructure. `RunManager` owns the durable execution and
+observation lifecycle; there is no host `RunWorker`.
 
-## Create the facade
+## Exact plan document
 
-The proposed facade receives only package-owned ports and deterministic utilities. It does not receive a Prisma client,
-queue, executor, or worker callback.
+The public plan source returns package-owned JSON-compatible data:
 
 ```ts
-import { createRunEngine } from '@revisium/revo-run';
+import type { ExecutionPlanSource, RunExecutionPlanDocument } from '@revisium/revo-run';
 
-const runs = createRunEngine({
-  store: runStore,
-  clock,
-  ids,
-});
-```
+const plans: ExecutionPlanSource = {
+  async loadExact(pin): Promise<RunExecutionPlanDocument> {
+    const document = await planRepository.findExact(pin);
+    if (!document) throw new PlanNotFoundFault(pin);
 
-`runStore` is a future implementation of the transactional command/query contracts. The core API and domain remain
-independent of Prisma and DBOS.
-
-## Supply immutable execution input
-
-The host compiles, stores, loads, and verifies an immutable `ExecutionPlan`. It supplies the matching plan and public
-`CompiledPipeline` with every lifecycle mutation.
-
-```ts
-const hostPlan = await executionPlanRepository.getExact({
-  id: request.executionPlan.id,
-  revision: request.executionPlan.revision,
-});
-
-await verifyExecutionPlan(hostPlan);
-
-const execution = {
-  plan: {
-    id: hostPlan.id,
-    revision: hostPlan.revision,
-    digest: hostPlan.digest,
-    transitionPolicy: hostPlan.transitionPolicy,
+    return structuredClone({
+      pin: document.pin,
+      compiledPipeline: document.compiledPipelineJson,
+      nodes: document.nodes.map((node) => ({
+        key: node.key,
+        executor: {
+          contract: {
+            id: node.executor.id,
+            revision: node.executor.revision,
+            digest: node.executor.contractDigest,
+          },
+          configuration: node.executor.configuration,
+          configurationDigest: node.executor.configurationDigest,
+          idempotentExecution: node.executor.idempotentExecution,
+        },
+      })),
+    });
   },
-  pipeline: hostPlan.compiledPipeline,
 };
 ```
 
-`hostPlan` remains in the host and may include executor bindings, prompts, profiles, models, permissions, credentials, and
-workspaces. `execution` is the narrower package input: immutable plan pins, bounded transition policy, and the public
-compiled pipeline needed for run decisions. The full host plan is never passed into `revo-run` or persisted inside `Run`.
+`compiledPipeline` is `JsonValue`. The source does not import pipeline types or
+cast JSON to a compiled pipeline. Only private package
+`lifecycle/pipeline/**` modules use the future public pipeline decoder; the
+public lifecycle facade stays pipeline-free.
 
-## Create a run
+## Exact executor resolution
 
 ```ts
-const created = await runs.createRun({
-  execution,
-  runId: crypto.randomUUID(),
-  idempotencyKey: request.id,
-  input: request.input,
+const executors = {
+  async resolveExact(pin) {
+    const executor = executorRegistry.find({
+      id: pin.id,
+      revision: pin.revision,
+      digest: pin.digest,
+    });
+
+    if (!executor) throw new ExecutorContractNotFoundFault(pin);
+    return executor;
+  },
+};
+```
+
+The resolver never falls back to latest or compatible behavior. Attempts
+persist the exact contract pin and configuration digest for restart recovery.
+
+## Compose one manager
+
+```ts
+import { createRunManager } from '@revisium/revo-run';
+
+const runs = createRunManager({
+  store: postgresRunStore,
+  plans,
+  executors,
+  ids: {
+    nextId: () => crypto.randomUUID(),
+  },
+  clock: localClock,
+  coordination: {
+    ownerLabel: process.env.INSTANCE_NAME ?? 'local',
+    maxConcurrentExecutions: 8,
+    pollIntervalMs: 250,
+    heartbeatIntervalMs: 10_000,
+    leaseDurationMs: 30_000,
+    drainTimeoutMs: 30_000,
+  },
 });
 ```
 
-The target transaction creates the `Run`, stores exact plan pins, inserts deterministic initial node instances, and appends
-the corresponding audit events. Replaying the same idempotency key returns the same logical result; conflicting input
-fails.
+`ownerLabel` is diagnostic. Each `start()` creates a unique package-owned
+manager incarnation, persisted on claimed Attempts. `clock` schedules local
+wakeups only; the store supplies authoritative transaction time.
 
-## Poll and claim work
-
-The host owns this loop. A candidate query is deliberately separate from the authoritative claim.
+## Start and stop
 
 ```ts
-while (!shutdownSignal.aborted) {
-  const candidates = await runs.listClaimable({
-    now: clock.now(),
-    limit: 20,
-  });
+await runs.start();
 
-  for (const candidate of candidates) {
-    const hostPlan = await loadHostPlan(candidate.executionPlanPin);
-    const execution = toRunExecutionInput(hostPlan);
+process.once('SIGTERM', () => {
+  void runs.stop({ drain: true });
+});
+```
 
-    try {
-      const claim = await runs.claimAttempt({
-        execution,
-        runId: candidate.runId,
-        nodeInstanceId: candidate.nodeInstanceId,
-        expected: candidate.expected,
-        workerId,
-        leaseUntil: clock.now().add({ minutes: 5 }),
-        idempotencyKey: `${workerId}:${candidate.nodeInstanceId}:${candidate.nextAttemptNumber}`,
-      });
+Start moves through `starting` recovery into `running`. Stop moves through
+`quiescing` and `draining`: no new claims, while heartbeats and fenced result
+commits continue. Timeout aborts local work only after lifecycle commits an
+explicit durable handoff under the active incarnation/fence. After stopped,
+late executor promises cannot write.
 
-      void executeClaim(hostPlan, execution, claim);
-    } catch (error) {
-      if (!isRunConflict(error)) {
-        throw error;
-      }
+## Start a run
 
-      // Another worker changed the aggregate. Poll fresh candidates.
+```ts
+const run = await runs.startRun({
+  plan: {
+    id: request.planId,
+    revision: request.planRevision,
+    digest: request.planDigest,
+  },
+  input: structuredClone(request.input),
+  idempotencyKey: request.id,
+  actor: {
+    type: 'user',
+    id: request.userId,
+  },
+});
+```
+
+The manager loads and verifies the exact document, decodes pipeline JSON inside
+lifecycle, and persists only the plan pin with durable run state.
+
+## Pull durable progress
+
+```ts
+const subscription = await runs.subscribe({
+  runId: run.id,
+  after: request.lastSeenCursor,
+  pageSize: 50,
+});
+
+try {
+  await projectionStore.apply(subscription.initial.snapshot, [], subscription.initial.cursor);
+
+  if (!subscription.initial.snapshot.terminal) {
+    for await (const item of subscription) {
+      await projectionStore.apply(item.snapshot, item.events, item.cursor);
     }
   }
-
-  await hostScheduler.waitForNextPoll(shutdownSignal);
+} finally {
+  await subscription.close();
 }
 ```
 
-`listClaimable()` never reserves work. `claimAttempt()` atomically:
+Subscription creation exposes a consistent snapshot plus event high watermark
+as `subscription.initial`. Each pulled item/page has a durable resume cursor,
+is strictly after `subscription.initial.cursor`, and has bounded size. Consumer
+pull supplies backpressure. A terminal initial snapshot means iteration is
+already complete. When a pulled item is terminal, the iterator completes
+immediately after yielding that item.
 
-1. verifies execution-plan pins;
-2. CASes expected `Run.revision` and node revision/status;
-3. creates the next authoritative `Attempt` with owner, lease, and fencing token;
-4. sets `RunNodeInstance.activeAttemptId`;
-5. appends the audit event.
-
-The active `Attempt` is the sole live claim authority. A copied worker, lease, or fence field on a node cannot authorize
-heartbeat, completion, retry, expiry, or recovery.
-
-## Complete an attempt
+Terminal waiting uses the same protocol:
 
 ```ts
-async function executeClaim(
-  hostPlan: HostExecutionPlan,
-  execution: RunExecutionInput,
-  claim: AttemptClaim,
-): Promise<void> {
-  const started = await runs.startAttempt({
-    execution,
-    runId: claim.runId,
-    nodeInstanceId: claim.nodeInstanceId,
-    attemptId: claim.attemptId,
-    expected: claim.expected,
-    workerId,
-    fencingToken: claim.fencingToken,
-    idempotencyKey: `${claim.attemptId}:start`,
-  });
-
-  let result: HostExecutionResult;
-
-  try {
-    result = await hostExecutors.execute({
-      binding: hostPlan.executorBindings[claim.nodeKey],
-      profile: hostPlan.profiles[claim.nodeKey],
-      prompt: hostPlan.prompts[claim.nodeKey],
-      workspace: hostPlan.workspaces[claim.nodeKey],
-      input: claim.input,
-      signal: shutdownSignal,
-    });
-  } catch (error) {
-    await reportFailure(execution, claim, started.expected, error);
-    return;
-  }
-
-  await runs.completeAttempt({
-    execution,
-    runId: claim.runId,
-    nodeInstanceId: claim.nodeInstanceId,
-    attemptId: claim.attemptId,
-    expected: started.expected,
-    workerId,
-    fencingToken: claim.fencingToken,
-    outputs: [
-      {
-        name: 'result',
-        type: 'application/json',
-        value: result.value,
-      },
-      ...result.artifacts.map((artifact) => ({
-        name: artifact.name,
-        type: 'artifact/reference',
-        value: artifact.reference,
-      })),
-    ],
-    idempotencyKey: `${claim.attemptId}:complete`,
-  });
-}
-```
-
-Only a physical executor failure is normalized and reported through `failAttempt()`. A completion CAS, stale fence,
-duplicate output, storage, or pipeline-decision conflict propagates to host lifecycle handling and is never converted into
-an execution failure or retry.
-
-Internally, completion follows one decision path:
-
-```text
-validate expected Run/node/Attempt revisions, active Attempt, lease, and fence
--> compute a package-owned prospective success plus immutable outputs
--> combine fresh authoritative siblings plus prospective success into PipelineFacts
--> call the public revo-pipeline decision API
--> map PipelineDecision to package-owned successor/join/wait intents
--> validate the combined domain intent
--> CAS and atomically commit state, outputs, RunEvents, and activations
-```
-
-If the aggregate CAS conflicts, the lifecycle discards the prospective change and pipeline decision, reloads fresh state,
-and recomputes. It never applies a stale join decision. Every accepted node transition increments `Run.revision`, so one of
-two concurrent final branch completions observes the other and activates a ready join. Unique `(runId, activationKey)`
-prevents duplicate activation; there is no `JoinArrival` record.
-
-## Fail and retry
-
-```ts
-async function reportFailure(
-  execution: RunExecutionInput,
-  claim: AttemptClaim,
-  expected: ExpectedAttemptState,
-  error: unknown,
-): Promise<void> {
-  const transition = await runs.failAttempt({
-    execution,
-    runId: claim.runId,
-    nodeInstanceId: claim.nodeInstanceId,
-    attemptId: claim.attemptId,
-    expected,
-    workerId,
-    fencingToken: claim.fencingToken,
-    failure: normalizeExecutionFailure(error),
-    idempotencyKey: `${claim.attemptId}:fail`,
-  });
-
-  if (transition.node.status === 'retry_scheduled') {
-    hostMetrics.recordRetryScheduled({
-      runId: claim.runId,
-      nodeInstanceId: claim.nodeInstanceId,
-      availableAt: transition.node.availableAt,
-    });
-  }
-}
-```
-
-The immutable execution plan owns retry limits and policy. `revo-run` computes eligibility and atomically writes either
-`retry_scheduled` with bounded `availableAt` or terminal failure. The host does not enqueue a separate authoritative retry
-record: once due, the node becomes discoverable through the claimable/due-retry query and is claimed as a new `Attempt`.
-
-Lease recovery uses the same authority:
-
-```ts
-const expired = await runs.listExpiredLeases({
-  now: clock.now(),
-  limit: 20,
+const terminal = await runs.waitForTerminal({
+  runId: run.id,
+  after: request.lastSeenCursor,
+  signal: request.signal,
+  timeoutMs: 15 * 60_000,
 });
-
-for (const candidate of expired) {
-  const hostPlan = await loadHostPlan(candidate.executionPlanPin);
-  const execution = toRunExecutionInput(hostPlan);
-
-  await runs.expireAttemptLease({
-    execution,
-    runId: candidate.runId,
-    nodeInstanceId: candidate.nodeInstanceId,
-    attemptId: candidate.attemptId,
-    expected: candidate.expected,
-    fencingToken: candidate.fencingToken,
-    idempotencyKey: `${candidate.attemptId}:expire`,
-  });
-}
 ```
-
-Once expiry commits, the old fence cannot complete or append successful outputs.
 
 ## Answer a human gate
 
-A human gate is a waiting `RunNodeInstance`. It has no `Attempt`, worker, lease, or fencing token. Its accepted answer is an
-immutable `RunOutput`.
-
 ```ts
-const waitingGate = await runs.getWaitingHumanGate({
-  runId,
-  nodeInstanceId,
-});
-
-if (!waitingGate) {
-  throw new Error('Human gate is not waiting');
-}
-
-const hostPlan = await loadHostPlan(waitingGate.executionPlanPin);
-const execution = toRunExecutionInput(hostPlan);
-
-await runs.answerHumanGate({
-  execution,
-  runId,
-  nodeInstanceId,
-  expected: {
-    runRevision: waitingGate.runRevision,
-    nodeRevision: waitingGate.nodeRevision,
-    status: 'waiting',
-  },
-  resolution: 'approved',
+await runs.answerGate({
+  runId: inboxItem.runId,
+  activationId: inboxItem.activationId,
+  resolution: request.resolution,
   answer: {
     name: 'human-answer',
     type: 'application/json',
-    value: {
-      comment: 'Proceed with publication.',
-    },
+    value: structuredClone(request.answer),
   },
   actor: {
     type: 'user',
-    id: currentUser.id,
+    id: request.userId,
   },
   idempotencyKey: request.id,
 });
 ```
 
-One transaction CASes the run and gate revisions, completes the gate, stores the answer output, appends audit events, and
-activates successors. `resolution` is the normalized control-flow fact passed to the pipeline decision; lifecycle never
-parses arbitrary `answer.value` JSON to decide a transition. A competing later answer conflicts and appends nothing. There
-is no separate authoritative `Gate` entity.
+The answer targets one runtime activation and commits with gate progression.
 
-## Read state and project events
+## Executor protocol
 
-Mutable `Run`, `RunNodeInstance`, and `Attempt` rows are current-state authority. A node may emit multiple immutable
-`RunOutput` values, including typed payloads and artifact references.
-
-`RunEvent` is an ordered append-only audit record. It supports timelines and rebuildable projections, but recovery does not
-replay events to reconstruct current state.
+An internal claim commits Attempt phase `claimed`, manager incarnation, fence,
+lease, exact executor pin, and configuration digest. The manager resolves that
+exact executor and verifies the immutable configuration digest. A separate
+internal Start CAS then obtains fresh database time and commits
+`start_committed`. Only then does the manager call:
 
 ```ts
-const snapshot = await runs.getRun({ runId });
+const paymentExecutor = {
+  async execute(input) {
+    const response = await payments.charge({
+      paymentId: input.executionId,
+      amount: input.payload.amount,
+      signal: input.signal,
+    });
 
-const outputs = await runs.listRunOutputs({
-  runId,
-  nodeInstanceId,
-});
+    return {
+      kind: 'succeeded',
+      outputs: [
+        {
+          name: 'receipt',
+          type: 'application/json',
+          value: response.receipt,
+        },
+      ],
+    };
+  },
 
-const timeline = await runs.listRunEvents({
-  runId,
-  afterSequence: cursor,
-  limit: 100,
-});
+  async reconcile(input) {
+    const payment = await payments.findById(input.executionId);
+    if (!payment) return { kind: 'unknown' };
+    return payment.succeeded
+      ? { kind: 'succeeded', outputs: [receiptOutput(payment.receipt)] }
+      : { kind: 'failed', fault: paymentRejectedFault() };
+  },
 
-await outputProjection.apply(outputs);
-await timelineProjection.apply(timeline.items);
+  async cancel(input) {
+    return payments.cancel(input.executionId);
+  },
+};
 ```
 
-Product inboxes, counters, dashboards, and public API views belong to the host and may be rebuilt from authoritative state
-and events.
+Start, heartbeat, direct result, reconciled result, and cancellation result are
+accepted only for current incarnation/fence while
+`transactionNow < leaseExpiresAt`. Recovery takeover is permitted only when
+database transaction time reaches expiry or the incumbent committed an explicit
+durable handoff under its active fence. A lost started execution is unknown;
+after eligible takeover, recovery acquires a new incarnation/fence, resolves
+the exact executor/configuration, and then reconciles.
 
-## Ownership summary
+## Fork and join
 
-```text
-host
-  compile/store/verify ExecutionPlan
-  poll candidates
-  select and run executors
-  call lifecycle commands
-  project product views
+Node snapshots carry causal fork scope. A join considers predecessor node
+instances only from its matching scope. Repeated or nested fork activations
+cannot satisfy one another's join.
 
-revo-run
-  verify exact plan pins
-  validate domain preconditions
-  derive PipelineFacts and request a pipeline decision
-  validate the combined intent
-  atomically CAS state + outputs + events + activations
+## Host boundary
 
-storage adapter
-  implement the package-owned transactional ports
-```
-
-The core contract has no Prisma, DBOS, queue, worker loop, GraphQL, MCP, CLI, agent-runtime, or script-runtime dependency.
+The host may expose GraphQL, MCP, CLI, or HTTP over the facade. It does not poll
+attempt commands, calculate leases/fences, decode pipeline JSON, retry unknown
+work, progress joins/gates, or implement a `RunWorker`.

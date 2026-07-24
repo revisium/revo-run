@@ -1,75 +1,144 @@
-# Internal Module Structure
+# Internal module structure
 
-- Status: Draft architecture contract
-- Enforcement: active in repository tooling
-- Runtime implementation: none
+- Status: Draft
+- Implementation: Architecture rules enforced; product layers not implemented
 
-## Target layers
+## Normative language and versioning
+
+BCP 14 keywords are interpreted per RFC 2119/RFC 8174 only when uppercase.
+This unversioned architecture spec follows Accepted ADRs; incompatible
+post-implementation product contracts still require a new `vN`.
+
+## Scope
+
+This specification defines the allowed production layers and dependency DAG for
+the target `RunManager`.
+
+## Layers
 
 ```text
-src/
-├── index.ts
-├── spec/
-├── policy/
-├── errors/
-├── domain/
-├── storage/
-└── lifecycle/
+spec      policy      errors
+  \          |          /
+            domain
+               |
+            storage     ports
+                 \       /
+                  lifecycle
+                      |
+                   manager
+                      |
+                  composition
 ```
 
-| Layer       | Syntax/role                        | Allowed dependencies                       |
-| ----------- | ---------------------------------- | ------------------------------------------ |
-| `spec`      | type-only portable contracts       | same layer                                 |
-| `policy`    | immutable/pure policy              | `spec`                                     |
-| `errors`    | type-only fault/conflict contracts | `spec`                                     |
-| `domain`    | pure state/transition behavior     | `spec`, `policy`, `errors`                 |
-| `storage`   | type-only command/query ports      | `spec`, `errors`, `domain`                 |
-| `lifecycle` | package use cases                  | all earlier layers, public `revo-pipeline` |
+| Layer         | Responsibility                                              |
+| ------------- | ----------------------------------------------------------- |
+| `spec`        | immutable public values and bounded JSON contracts          |
+| `policy`      | pure retry, limits, and lifecycle policy                    |
+| `errors`      | stable typed faults                                         |
+| `domain`      | pure aggregate state and prospective transition decisions   |
+| `storage`     | type-only transaction, state, event, and eligibility ports  |
+| `ports`       | type-only plan, executor, id, clock, and coordination seams |
+| `lifecycle`   | sole writable store/domain path; private pipeline seam      |
+| `manager`     | public facade, loops, dispatch, recovery, waits, and drain  |
+| `composition` | wires injected store/ports to lifecycle and manager         |
 
-Lifecycle alone coordinates the pipeline seam. Domain first validates expected
-state/fence/gate revision and computes a package-owned prospective state/output
-change without commit. Lifecycle combines authoritative sibling state with that
-prospective outcome/answer into `PipelineFacts`, invokes the public decision
-API, and maps `PipelineDecision` to package-owned successor/join/wait intents.
-Domain validates the combined intent/invariants, then storage CASes expected
-Run/node/Attempt revisions and atomically commits the prospective state,
-outputs, events, and activations. Pipeline types do not leak into spec or domain.
+## Allowed cross-layer dependencies
 
-## Structural rules
+- `spec` -> none;
+- `policy` -> `spec`;
+- `errors` -> `spec`;
+- `domain` -> `spec`, `policy`, `errors`;
+- `storage` -> `spec`, `errors`, `domain`;
+- `ports` -> `spec`, `errors`;
+- `lifecycle` -> `spec`, `policy`, `errors`, `domain`, `storage`, `ports`;
+- `manager` -> `spec`, `policy`, `errors`, `ports`, `lifecycle`;
+- `composition` -> `spec`, `errors`, `storage`, `ports`, `lifecycle`,
+  `manager`.
 
-- Only the six listed `src/*` layers exist; unknown layers fail closed.
-- Every relative module specifier ends in `.js`.
-- Every cross-layer import targets that layer's explicit `index.ts` barrel.
-- A leaf never imports its own layer barrel.
-- Barrels use explicit named exports; no `export *`.
-- Production leaves export exactly one entity.
-- `spec`, `errors`, and `storage` contain only type imports, interfaces, type
-  aliases, and type exports.
-- Type-only cycles are forbidden.
-- Production never imports tests, repository scripts, build/coverage output, or
-  architecture probes.
-- Tests import production only through `src/index.ts` or a curated layer
-  `index.ts`; private source leaves remain private. Tests may still import
-  Vitest, Node, and owned repository tooling for structural tests.
-- The only permitted external production import is
-  `@revisium/revo-pipeline`, and only from `lifecycle`.
-- MCP and orchestrator package imports have explicit forbidden diagnostics;
-  every other external package fails closed.
-- Root exports are curated explicitly; directory presence never creates API.
+Dependencies within one layer are allowed when acyclic.
 
-## Enforcement proof
+`spec`, `errors`, `storage`, and `ports` MUST use type-only imports and exports.
+They MUST NOT contain runtime values.
 
-`scripts/architecture/validate-module-structure.ts` parses TypeScript and
-enforces each rule, including type-only edges. `scripts/verify-architecture.ts`:
+## Pipeline dependency
 
-1. validates the real source and test graph;
-2. validates a representative synthetic target graph containing every layer;
-3. runs Oxc cycle/restricted-import checks and a negative Oxc configuration probe;
-4. proves every rule with an exact negative probe;
-5. proves forbidden external, host-package, repository-target, unknown-layer,
-   and private-test imports fail with their exact rule ids;
-6. removes its temporary probe directory and asserts no probe remains.
+`@revisium/revo-pipeline` is the only allowed production external package and
+only private `src/lifecycle/pipeline/**` modules may import it. Public
+`src/lifecycle/index.ts` and the facade it exports MUST be pipeline-free.
+Pipeline-owned types MUST NOT be re-exported or appear in other layer
+contracts/declarations. The public plan document exposes only bounded
+`JsonValue`; the private lifecycle seam uses the public decoder without casts.
 
-The synthetic graph is required while the shipped API and implementation are
-empty. Architecture rules cannot be weakened merely because no current file
-violates them.
+The dependency is not installed until real lifecycle implementation requires
+it.
+
+## Import rules
+
+- Cross-layer imports MUST target the imported layer's explicit `index.ts`
+  barrel.
+- Manager MUST import lifecycle only through `src/lifecycle/index.ts` and MUST
+  use explicit facade contracts rather than `Parameters<>` or `ReturnType<>`
+  inference across that boundary.
+- A layer leaf MUST NOT import its own barrel.
+- Relative ESM imports MUST include the `.js` suffix.
+- Barrels MUST use explicit named exports; wildcard exports are forbidden.
+- Production leaf files MUST expose one production entity.
+- Type-only cycles and runtime cycles are forbidden.
+- The package root MAY export only curated composition/public type barrels.
+- Tests MAY import production only through the root or curated layer barrels.
+
+## Fail-closed boundaries
+
+Unknown direct children of `src/` MUST fail architecture validation.
+Production source MUST NOT import tests, scripts, build output, coverage output,
+temporary architecture probes, or repository tooling.
+
+Core MUST reject imports from Prisma, NestJS, GraphQL, MCP, DBOS, queue,
+orchestrator, agent-runtime, scripts, and other external packages.
+
+## Positive architecture proof
+
+The architecture harness MUST contain a representative valid graph with all
+nine layers. It MUST show:
+
+- type-only store and injected ports;
+- plan source returning package-owned document with pipeline `JsonValue`;
+- private lifecycle/pipeline as sole pipeline importer and lifecycle as sole
+  writable store/domain path;
+- pipeline-free public lifecycle index and explicit manager facade contracts;
+- manager depending only on its exact allowed layers;
+- composition wiring store, lifecycle, and manager;
+- root export through curated composition/public types.
+
+## Negative architecture proof
+
+Every enforced rule MUST have an exact-rule negative probe and unit coverage.
+At minimum probes MUST reject:
+
+- unknown layers;
+- manager -> storage/domain/pipeline;
+- manager private-lifecycle imports and `Parameters<>`/`ReturnType<>` boundary
+  inference;
+- lifecycle public index -> private pipeline seam;
+- ports -> pipeline or runtime values;
+- composition -> policy/domain/pipeline;
+- executor-runtime and scripts imports;
+- forbidden and misplaced external imports;
+- reverse layer edges;
+- runtime values in type-only layers;
+- private cross-layer imports;
+- missing `.js` suffixes;
+- cycles;
+- wildcard barrels;
+- own-barrel imports;
+- production-to-tooling imports;
+- tests importing private production leaves.
+
+Temporary on-disk probes MUST always be removed. Oxc MUST execute actual
+negative probes with the configured family message for tooling/generated,
+Prisma, MCP, orchestrator, agent-runtime, scripts, and manager pipeline imports.
+
+TypeScript declaration proof MUST compile a valid transitive facade graph and
+an intentionally leaking graph, scan declarations reachable from the root
+entry, prove the negative marker is detected, and prove the positive graph
+contains no pipeline package or marker.
