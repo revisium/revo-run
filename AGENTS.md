@@ -12,7 +12,8 @@ wins for concrete commands, package boundaries, and repository policy.
 - Language: strict TypeScript 7, ESM, NodeNext module resolution.
 - Protected base branch: `master`.
 - Primary local gate: `pnpm verify`.
-- The root export is intentionally empty. Every spec is Draft and unimplemented.
+- The root export is intentionally empty. Product specs/APIs are Draft and
+  unimplemented; architecture enforcement is active.
 - There are no production dependencies in the foundation.
 
 ## Required reading
@@ -28,7 +29,7 @@ Before editing, inspect:
 
 ## Working rules
 
-- Keep changes within the approved run-state package boundary.
+- Keep changes within the approved durable multi-run manager boundary.
 - Do not commit directly to `master`.
 - Do not push, create/update a PR, merge, tag, release, or publish without the
   corresponding approval.
@@ -41,24 +42,33 @@ Before editing, inspect:
 - Start behavior changes with a failing test at the owning boundary.
 - Keep domain decisions separate from polling, process execution, database
   frameworks, transports, and provider mechanics.
-- Treat `ExecutionPlan` as host-owned immutable input supplied for every
-  lifecycle command. Verify its identity/digest against pins stored on `Run`;
-  never snapshot the full plan in run storage. This package never compiles host
-  profiles, prompts, models, permissions, or executors into a plan.
+- Persist the exact immutable execution-plan pin (`id`, `revision`, `digest`) on
+  `Run`. The injected plan source loads that exact plan automatically after
+  `startRun`; never accept a replacement plan on later commands or snapshot the
+  full plan in run storage.
+- `ExecutionPlanSource` returns package-owned `RunExecutionPlanDocument`.
+  `compiledPipeline` is bounded `JsonValue`; only private
+  `lifecycle/pipeline/**` decodes it through the future public pipeline decoder.
+  The public lifecycle index is pipeline-free. Pipeline types and casts never
+  enter ports, manager, composition, root exports, or declarations.
 - Keep the pipeline seam in lifecycle. Domain first validates the command's
   expected state/fence/gate revision and computes a package-owned prospective
-  state/output change without committing. Lifecycle combines authoritative
-  sibling state with that prospective outcome/answer into `PipelineFacts`,
-  calls the public pipeline decision API, and maps `PipelineDecision` to
-  package-owned successor/join/wait intents. Domain validates the combined
-  intent/invariants; storage then CASes expected Run/node/Attempt revisions and
-  atomically commits prospective state, outputs, events, and activations.
-  Pipeline imports and types never enter spec or domain.
+  state/output change without committing. After loading the exact pinned plan,
+  lifecycle combines authoritative sibling state with that prospective
+  outcome/answer into `PipelineFacts`, calls the public pipeline decision API,
+  and maps `PipelineDecision` to package-owned successor/join/wait intents.
+  Domain validates the combined intent/invariants; storage then CASes expected
+  Run/node/Attempt revisions and atomically commits prospective state, outputs,
+  events, and activations. Pipeline imports and types never enter spec, domain,
+  storage, ports, manager, composition, root, or declarations.
 - Treat current run rows as authoritative mutable state. `RunEvent` is an
-  append-only audit timeline, not an event-sourced replacement for current state.
+  append-only audit and subscription feed, not an event-sourced replacement for
+  current state.
 - Persist every state transition, emitted output, and audit event atomically.
-- Use CAS, leases, monotonically changing fencing tokens, and idempotency keys
-  at every concurrency boundary.
+- Use store-transaction time, CAS, manager incarnation, leases, monotonically
+  changing fencing tokens, scoped activation keys, and idempotency keys.
+  Start/heartbeat/direct/reconciled/cancel results require transaction time
+  strictly before lease expiry.
 - Every accepted node transition CASes monotonic `Run.revision`. On conflict,
   reload authoritative sibling state and recompute pipeline facts/decision;
   never reuse a stale join decision.
@@ -66,21 +76,48 @@ Before editing, inspect:
   `RunNodeInstance` stores status plus `activeAttemptId` and, only if required, a
   monotonic claim epoch. Create the attempt and active pointer atomically.
   Mirrored node claim fields are historical/projection data, never authority.
+- Each `start()` generates a unique package-owned `managerIncarnationId`;
+  attempts persist it. `ownerLabel` is diagnostic only.
+- Dispatch is `claimed -> exact resolve/config verification -> fresh internal
+Start CAS -> start_committed -> execute`. Recovery takeover requires
+  database-time lease expiry or an explicit durable handoff written under the
+  incumbent fence. It can then reclaim never-started `claimed`; lost
+  `start_committed` is conservatively unknown and requires a new
+  incarnation/fence plus exact resolution before reconcile.
 - A human gate is a waiting `RunNodeInstance` without an `Attempt` or lease.
-  Its answer is an immutable `RunOutput`; answering and resuming are one atomic
-  CAS transition.
-- Join readiness is derived from the immutable plan and node instances. Create
-  a join activation at most once with unique `(runId, activationKey)`.
+  Its stable runtime activation id identifies the answer target. Its answer is
+  an immutable `RunOutput`; answering and resuming are one atomic CAS
+  transition.
+- Fork activations persist causal node-instance scope. Join readiness and
+  activation uniqueness use only predecessor instances from that scope.
 - Do not add authoritative `Gate` or `JoinArrival` entities.
-- Store/query ports may expose claimable nodes, due retries, and expired leases.
-  They must not poll, sleep, schedule processes, or own a worker loop.
-- Do not execute agents, scripts, queues, HTTP, GraphQL, MCP, CLI, or host
-  orchestration in this package.
+- `RunManager` owns polling, recovery, reconciliation, dispatch, heartbeat,
+  retry, cancellation, subscriptions, waits, process-local concurrency, and
+  graceful drain. Do not expose claim/start/heartbeat/complete/fail/expire as
+  host-facing public API.
+- Manager lifecycle is `stopped -> starting -> running -> quiescing -> draining
+-> stopped`. Quiescing stops claims; heartbeats/results continue during
+  drain. Timeout must commit a fenced durable handoff before stopped. No manager
+  write occurs after stop.
+- `subscribe()` is a pull `AsyncIterable` whose `.initial` carries the
+  consistent snapshot/high-watermark cursor; iteration starts strictly after
+  it. Terminal `.initial` completes immediately; a terminal item is the final
+  item with no later read/wait. `waitForTerminal()` uses the same protocol.
+- Executor adapters provide `execute()` and may provide `reconcile()` and
+  `cancel()`. Exact `ExecutorContractPin` and configuration digest are persisted
+  on Attempt and verified through `resolveExact()` before each fresh Start and
+  during recovery. Unknown outcomes are not blindly retried unless the exact
+  binding declares execution idempotent. Never claim physical exactly-once
+  execution.
+- Do not implement agents, scripts, queues, HTTP, GraphQL, MCP, CLI, or host
+  orchestration in core.
 - Do not add Prisma, DBOS, pg-boss, Graphile Worker, Nest, GraphQL, or an
   orchestrator dependency.
 - The only planned runtime dependency is `@revisium/revo-pipeline`, reachable
-  only from `src/lifecycle` through public package contracts. It is not installed
-  until real lifecycle code needs it.
+  only from private `src/lifecycle/pipeline/**` through public package
+  contracts. `src/lifecycle/index.ts` stays pipeline-free, and manager imports
+  only that index with explicit contracts, never `Parameters<>`/`ReturnType<>`
+  inference. It is not installed until real lifecycle code needs it.
 - Preserve strict types. Do not use `any`, `@ts-ignore`, unchecked assertions,
   or weaker public types to bypass a gate.
 - Keep external payloads bounded and copied into package-owned immutable values.
@@ -90,6 +127,9 @@ Before editing, inspect:
 - Unknown `src/*` layers fail closed. Production never imports tests, scripts,
   build/coverage output, or architecture probes. Tests use only the root or
   curated layer barrels for production source.
+- Enforce the exact nine-layer DAG in `REPOSITORY.md`. Lifecycle is the sole
+  writable store/domain path, private lifecycle/pipeline is the sole pipeline
+  importer, and composition wires store, lifecycle, and manager.
 
 ## Public package contract
 
@@ -97,6 +137,9 @@ Before editing, inspect:
 - Draft snippets are explanatory and non-executable.
 - A public API ships only when source, behavior tests, type-surface tests,
   declarations, packed-consumer proof, exports, and README agree.
+- Declaration and packed-consumer proof must reject pipeline types or casts in
+  the lifecycle facade, ports, manager, composition, and root surfaces,
+  including transitive reachable declarations.
 - Runtime dependencies require an owned responsibility and dependency-DAG review.
 - Publishing occurs only through the approved release workflows.
 

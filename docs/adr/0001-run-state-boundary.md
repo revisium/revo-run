@@ -1,6 +1,7 @@
 # ADR 0001: Durable run-state package boundary
 
-- Status: Accepted
+- Status: Superseded
+- Superseded by: [ADR 0002](0002-run-manager-boundary.md)
 - Date: 2026-07-23
 
 ## Context

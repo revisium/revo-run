@@ -2,7 +2,7 @@
 
 # @revisium/revo-run
 
-**A portable, durable, concurrency-safe run-state engine for Revo.**
+**A portable, durable RunManager for Revo.**
 
 [![CI](https://github.com/revisium/revo-run/actions/workflows/ci.yml/badge.svg)](https://github.com/revisium/revo-run/actions/workflows/ci.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=revisium_revo-run&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=revisium_revo-run)
@@ -13,168 +13,173 @@
 
 > [!IMPORTANT]
 > This repository is in bootstrap. The npm package is not published, its root export is intentionally empty, and every API
-> below is a Draft target specification rather than available code.
+> below is a Draft target specification rather than available code. Architecture enforcement is active in repository
+> validation, but no product API is implemented.
 
 ## About
 
-`@revisium/revo-run` will own the authoritative mutable state and lifecycle decisions for one durable run. It coordinates
-run node instances, attempts, outputs, audit events, atomic transitions, retries, leases, fencing, human gates, forks, and
-joins while leaving polling and physical execution to the host.
+`@revisium/revo-run` will provide one reusable `RunManager` that owns the complete durable lifecycle of many concurrent
+runs. A consumer injects storage, an exact immutable plan source, executor adapters, identifiers, and optional
+process-coordination policy. The manager owns recovery, polling, claims, database-time leases and fences, heartbeats,
+execution dispatch, retries, pipeline and human-gate progression, cancellation, process-local concurrency, durable
+subscriptions, and graceful drain.
 
-For every lifecycle command, the host supplies the matching immutable `ExecutionPlan` and public `CompiledPipeline`. A
-`Run` stores only the execution plan identity, revision, and digest as immutable pins; the package never persists or
-compiles the full plan.
+The host remains responsible for API transports, authorization, product projections, plan compilation and versioning,
+concrete storage wiring, and executor adapters. It does not need a separate `RunWorker`.
 
 ## Quick start
 
-This target-only example assumes the consumer has already compiled and verified an immutable execution plan. See the
-[expanded consumer example](./docs/examples/consumer.md) for failure/retry, human-gate, and worker-loop flows.
+The target API is intentionally small. All names and exact shapes in this example are **Draft and unimplemented**.
 
 ```ts
-import { createRunEngine } from '@revisium/revo-run';
+import { createRunManager } from '@revisium/revo-run';
 
-const runs = createRunEngine({
+const runs = createRunManager({
   store: runStore,
-  clock,
-  ids,
+  plans: executionPlanSource,
+  executors: executorRegistry,
+  ids: {
+    nextId: () => crypto.randomUUID(),
+  },
+  coordination: {
+    ownerLabel: processLabel,
+    maxConcurrentExecutions: 8,
+  },
 });
 
-const hostPlan = await executionPlanRepository.getExact(request.executionPlan);
+await runs.start();
 
-const execution = {
+const run = await runs.startRun({
   plan: {
-    id: hostPlan.id,
-    revision: hostPlan.revision,
-    digest: hostPlan.digest,
-    transitionPolicy: hostPlan.transitionPolicy,
+    id: request.planId,
+    revision: request.planRevision,
+    digest: request.planDigest,
   },
-  pipeline: hostPlan.compiledPipeline,
-};
-
-const created = await runs.createRun({
-  execution,
-  runId: crypto.randomUUID(),
   idempotencyKey: request.id,
   input: request.input,
 });
 
-const [candidate] = await runs.listClaimable({
-  runId: created.runId,
-  now: clock.now(),
-  limit: 1,
+const subscription = await runs.subscribe({
+  runId: run.id,
+  after: request.lastSeenCursor,
 });
 
-if (candidate) {
-  const claim = await runs.claimAttempt({
-    execution,
-    runId: candidate.runId,
-    nodeInstanceId: candidate.nodeInstanceId,
-    expected: candidate.expected,
-    workerId,
-    leaseUntil: clock.now().add({ minutes: 5 }),
-    idempotencyKey: `${workerId}:${candidate.nodeInstanceId}`,
-  });
+await publishRunProjection(subscription.initial.snapshot, subscription.initial.cursor);
 
-  const result = await executeNode({
-    claim,
-    binding: hostPlan.executorBindings[claim.nodeKey],
-  });
+let cursor = subscription.initial.cursor;
+let latest = subscription.initial.snapshot;
 
-  await runs.completeAttempt({
-    execution,
-    runId: claim.runId,
-    nodeInstanceId: claim.nodeInstanceId,
-    attemptId: claim.attemptId,
-    expected: claim.expected,
-    workerId,
-    fencingToken: claim.fencingToken,
-    outputs: [{ name: 'result', type: 'application/json', value: result }],
-    idempotencyKey: `${claim.attemptId}:complete`,
-  });
+if (!latest.terminal) {
+  for await (const item of subscription) {
+    await publishRunProjection(item.snapshot, item.cursor);
+    cursor = item.cursor;
+    latest = item.snapshot;
+  }
 }
+
+const terminal = latest.terminal
+  ? latest
+  : await runs.waitForTerminal({
+      runId: run.id,
+      after: cursor,
+      signal: request.signal,
+    });
+
+await subscription.close();
+await runs.stop({ drain: true });
 ```
 
-- `createRun()` pins one plan identity/revision/digest and atomically creates initial node activations.
-- `listClaimable()` returns candidates, not claims; `claimAttempt()` performs the authoritative CAS.
-- An `Attempt` owns the live worker, lease, and fencing token. Node-level copies never authorize mutations.
-- `completeAttempt()` and `failAttempt()` combine a prospective domain change with fresh pipeline facts, then atomically
-  commit state, outputs, events, and successor activations.
-- A retry is plan-governed durable state. The host later discovers it through `listClaimable()` when it becomes due.
-- `answerHumanGate()` accepts an explicit normalized resolution plus an immutable answer output through one gate/run CAS;
-  lifecycle never parses the output payload for control flow.
-- Every accepted node transition CASes monotonic `Run.revision`, preserving join liveness under concurrent branch
-  completions.
+`startRun()` persists only the exact plan pin (`id`, `revision`, and `digest`). The manager uses its injected plan source to
+load that exact immutable plan for every later operation, so callers do not repeatedly supply plans and a run cannot
+silently move to a newer revision.
 
-The host owns the worker loop, executor selection, process lifecycle, credentials, and scheduling cadence. The engine
-neither polls nor executes work.
+`start()` recovers owned work and starts manager loops. `stop()` stops new claims and can drain in-flight executions.
+Neither method owns the host process or network server.
 
-## Complete target API
+## Draft public API
 
-This is the proposed consumer facade. Names and exact shapes remain **Draft and unimplemented**; the normative behavior is
-defined by the [Draft specifications](./docs/README.md).
+Names and exact shapes remain **Draft and unimplemented**; the normative behavior is defined by the
+[Draft specifications](./docs/README.md).
 
 ```ts
-export declare function createRunEngine(options: RunEngineOptions): RunEngine;
+export declare function createRunManager(options: RunManagerOptions): RunManager;
 
-export interface RunEngine {
-  createRun(command: CreateRunCommand): Promise<CreateRunResult>;
-  getRun(query: GetRunQuery): Promise<RunSnapshot | undefined>;
-  listClaimable(query: ListClaimableQuery): Promise<readonly ClaimableNode[]>;
-  listDueRetries(query: ListDueRetriesQuery): Promise<readonly RetryCandidate[]>;
-  listExpiredLeases(query: ListExpiredLeasesQuery): Promise<readonly ExpiredLeaseCandidate[]>;
-  getWaitingHumanGate(query: GetWaitingHumanGateQuery): Promise<WaitingHumanGate | undefined>;
-  listRunOutputs(query: ListRunOutputsQuery): Promise<readonly RunOutputSnapshot[]>;
-  listRunEvents(query: ListRunEventsQuery): Promise<RunEventPage>;
+export interface RunManager {
+  start(): Promise<void>;
+  stop(options?: StopRunManagerOptions): Promise<void>;
 
-  claimAttempt(command: ClaimAttemptCommand): Promise<AttemptClaim>;
-  startAttempt(command: StartAttemptCommand): Promise<AttemptTransition>;
-  heartbeatAttempt(command: HeartbeatAttemptCommand): Promise<AttemptTransition>;
-  completeAttempt(command: CompleteAttemptCommand): Promise<TransitionResult>;
-  failAttempt(command: FailAttemptCommand): Promise<TransitionResult>;
-  expireAttemptLease(command: ExpireAttemptLeaseCommand): Promise<TransitionResult>;
-  answerHumanGate(command: AnswerHumanGateCommand): Promise<TransitionResult>;
-  cancelRun(command: CancelRunCommand): Promise<TransitionResult>;
+  startRun(command: StartRunCommand): Promise<RunSnapshot>;
+  answerGate(command: AnswerGateCommand): Promise<RunSnapshot>;
+  cancelRun(command: CancelRunCommand): Promise<RunSnapshot>;
+
+  getRun(runId: string): Promise<RunSnapshot | undefined>;
+  listRuns(query?: ListRunsQuery): Promise<RunPage>;
+  subscribe(query: SubscribeRunQuery): Promise<RunSubscription>;
+  waitForTerminal(query: WaitForTerminalQuery): Promise<RunSnapshot>;
 }
 
-export interface RunExecutionInput {
-  readonly plan: ExecutionPlanInput;
-  readonly pipeline: CompiledPipeline;
+export interface RunSubscription extends AsyncIterable<RunSubscriptionItem> {
+  readonly initial: {
+    readonly snapshot: RunSnapshot;
+    readonly cursor: RunEventCursor;
+  };
+  close(): Promise<void>;
 }
 
-export interface RunLifecycleCommand {
-  readonly execution: RunExecutionInput;
-  readonly runId: string;
-  readonly expected: ExpectedRunState;
-  readonly idempotencyKey: string;
-}
-
-export interface AttemptAuthority {
-  readonly attemptId: string;
-  readonly workerId: string;
-  readonly fencingToken: string;
-  readonly expected: ExpectedAttemptState;
-}
-
-export interface AttemptTransition {
-  readonly attempt: AttemptSnapshot;
-  readonly expected: ExpectedAttemptState;
-}
-
-export interface AnswerHumanGateCommand extends RunLifecycleCommand {
-  readonly nodeInstanceId: string;
-  readonly resolution: string;
-  readonly answer: RunOutputInput;
-  readonly actor: RunActor;
+export interface RunManagerOptions {
+  readonly store: RunStore;
+  readonly plans: ExecutionPlanSource;
+  readonly executors: ExecutorResolver;
+  readonly ids: IdSource;
+  readonly clock?: LocalClock;
+  readonly coordination?: RunManagerCoordination;
 }
 ```
 
-Every mutating command includes the narrow `RunExecutionInput` and explicit expected revisions. It never receives host
-executor, profile, prompt, credential, or workspace bindings. Completion, failure, lease expiry, and gate answering may
-return a conflict; on aggregate conflict the lifecycle reloads authoritative state and recomputes the prospective change
-and pipeline decision before retrying.
+The plan source returns a package-owned `RunExecutionPlanDocument`.
+`compiledPipeline` is bounded `JsonValue`, not a pipeline-package type. Only
+private `lifecycle/pipeline/**` modules decode it with the future public
+`@revisium/revo-pipeline` decoder. The public lifecycle facade is pipeline-free.
+No cast or pipeline type may appear in ports, manager, composition, root
+exports, or emitted declarations.
 
-`AnswerHumanGateCommand.resolution` is a normalized control-flow fact validated against the supplied pipeline. `answer` is
-stored as an immutable output but never parsed to determine the transition.
+Each executor binding persists an exact `ExecutorContractPin` plus immutable
+configuration digest. Recovery calls `resolveExact()`; it never resolves
+latest, compatible, or default executor behavior.
+
+The optional `clock` governs process-local waits and testability only. Durable timestamps, lease eligibility, retry
+eligibility, and fencing decisions use authoritative time obtained inside the store transaction.
+
+Claim, attempt start, heartbeat, completion, failure, lease expiry, recovery, and reconciliation are internal manager
+operations. They are not host-facing lifecycle commands and are not proposed public exports.
+
+## Execution and recovery
+
+An executor adapter provides `execute()` and may provide `reconcile()` and `cancel()`. Claim persists an `Attempt` in
+`claimed`. The manager then resolves the exact executor and verifies its immutable configuration digest. Only after that
+does a separate internal Start CAS obtain fresh database time, verify the lease, and record `start_committed`; `execute()`
+is invoked only after that commit. The Attempt persists the exact executor contract pin and configuration digest used for
+dispatch.
+
+Every `start()` generates a unique package-owned `managerIncarnationId`; attempts store it as ownership authority.
+`ownerLabel` is diagnostic only. Direct, reconciled, cancellation, start, and heartbeat results are rejected when store
+transaction time is at or beyond lease expiry.
+
+There is no physical exactly-once execution guarantee. After a crash or lost response, an outcome may be unknown. The
+manager reconciles it when the adapter supports reconciliation. It does not blindly retry unknown work unless the exact
+executor binding explicitly declares execution idempotent. This prevents an apparently convenient retry from duplicating
+an irreversible external action.
+
+Retries are durable plan-governed state. Recovery may take ownership only when store transaction time is at or beyond
+lease expiry, or when the incumbent recorded an explicit durable handoff under its active incarnation and fence. Process
+observation and local time never authorize takeover. After takeover, `claimed` work that never committed start may be
+recovered by exact executor/configuration verification followed by a fresh Start CAS. A `start_committed` attempt with
+lost process ownership is conservatively unknown and requires the new incarnation/fence before reconciliation.
+Process-local concurrency and `ownerLabel` are never durable ownership.
+
+Manager lifecycle is `stopped -> starting -> running -> quiescing -> draining -> stopped`. Quiescing stops new claims while
+heartbeats and fenced result commits continue. Before a drain timeout may abandon local ownership, lifecycle must record an
+explicit durable handoff under the active incarnation and fence. After `stopped`, the manager performs no writes.
 
 Query ports may expose claimable nodes, due retries, and expired leases, but they never reserve work. Exact storage ports,
 bounded values, faults, snapshots, event pagination, and command results remain part of the Draft specification work.
@@ -185,41 +190,65 @@ The package owns:
 
 - `Run`, `RunNodeInstance`, authoritative `Attempt`, multiple immutable `RunOutput` records, and append-only audit
   `RunEvent` records;
-- deterministic lifecycle decisions and aggregate invariants;
-- atomic state/output/event/activation commits with CAS and idempotency;
-- claim, lease, fencing-token, expiry, and retry eligibility;
-- fresh-facts pipeline decisions and unique join activation;
-- a waiting node instance as the human gate and an immutable output as its answer;
-- transactional command and read/query ports for durable state.
+- atomic state, output, event, attempt, and activation changes;
+- claims, database-time leases, fences, heartbeats, retry eligibility, recovery, and reconciliation;
+- executor dispatch and fenced result acceptance;
+- human-gate activation and answering, pipeline progression, cancellation, and terminal selection;
+- process-local polling, concurrency, subscriptions, waits, and graceful drain.
 
 The consumer owns:
 
-- execution-plan compilation, storage, verification, and exact plan lookup for every command;
-- profiles, models, prompts, permissions, agents, scripts, executors, credentials, and workspaces;
-- worker polling cadence, process execution, queueing, deployment, and recovery policy;
-- concrete storage adapters, database lifecycle, migrations, and operational infrastructure;
+- concrete store implementation, schema migrations, database operations, and transaction wiring;
+- exact immutable plan compilation, persistence, and lookup by the persisted pin;
+- executor adapters plus their credentials, models, prompts, permissions, scripts, agents, and workspaces;
 - GraphQL, MCP, CLI, HTTP, product inboxes, timelines, counters, and other projections.
 
 There are no authoritative `Gate` or `JoinArrival` entities. Join readiness is derived from the immutable pipeline and
-authoritative node instances. `RunOutput` stores durable payloads or artifact references; `RunEvent` is an audit timeline,
+authoritative node instances in the same causal fork scope. A gate answer targets a stable runtime activation id.
+`RunOutput` stores durable payloads or artifact references; `RunEvent` is an audit timeline and durable subscription feed,
 not current-state authority.
 
-The core has no Prisma or DBOS dependency. A future PostgreSQL/Prisma adapter requires a separate accepted ADR and export
-decision.
+Core contracts contain no Prisma, NestJS, GraphQL, MCP, DBOS, queue, agent-runtime, or scripts dependency.
+`@revisium/revo-pipeline` is the only planned runtime dependency and is used only by private
+`lifecycle/pipeline/**` modules for pure graph progression. It is not installed until implementation needs its public API.
+
+## Architecture
+
+```text
+spec      policy      errors
+  \          |          /
+            domain
+               |
+            storage     ports
+                 \       /
+                  lifecycle
+                      |
+                   manager
+                      |
+                  composition
+```
+
+`lifecycle` is the sole writable path to domain/storage. Only private `lifecycle/pipeline/**` modules import the pipeline
+package; `lifecycle/index.ts` exposes explicit pipeline-free facade contracts. `manager` owns loops, imports only that
+lifecycle index, and does not infer cross-boundary contracts with `Parameters<>` or `ReturnType<>`. `composition` alone
+wires store, ports, lifecycle, and manager into `createRunManager`.
 
 ## Documentation
 
-- [Run domain v1](./docs/specs/run-domain-v1.spec.md) — aggregate entities, statuses, and invariants.
-- [Run transitions v1](./docs/specs/run-transitions-v1.spec.md) — command families and atomic transition semantics.
-- [Execution plan input v1](./docs/specs/execution-plan-input-v1.spec.md) — immutable host-owned command seam.
-- [Run storage v1](./docs/specs/run-storage-v1.spec.md) — transactional ports and concurrency proof.
-- [Architecture](./docs/architecture.md) — layers, dependency direction, pipeline seam, and ownership boundaries.
-- [Expanded consumer example](./docs/examples/consumer.md) — complete target host integration.
+- [RunManager v1](./docs/specs/run-manager-v1.spec.md) — public facade, recovery, subscriptions, and drain.
+- [Run executor v1](./docs/specs/run-executor-v1.spec.md) — dispatch, reconciliation, cancellation, and unknown outcomes.
+- [Execution plan input v1](./docs/specs/execution-plan-input-v1.spec.md) — exact immutable plan source and persisted pin.
+- [Run domain v1](./docs/specs/run-domain-v1.spec.md) — durable entities, statuses, and invariants.
+- [Run transitions v1](./docs/specs/run-transitions-v1.spec.md) — internal transitions and atomic semantics.
+- [Run storage v1](./docs/specs/run-storage-v1.spec.md) — transactional ports, database time, leases, and CAS.
+- [Architecture](./docs/architecture.md) — ownership and manager/lifecycle separation.
+- [Consumer example](./docs/examples/consumer.md) — target host composition.
 - [ADRs and documentation index](./docs/README.md) — accepted decisions and repository policies.
 - [Testing](./docs/testing.md) — proof layers and required implementation coverage.
 - [Release train](./docs/release-train.md) — verified package release flow.
 
-All specifications and API examples are currently **Draft and unimplemented**.
+The architecture and its enforcement are Accepted and active. Every product API and product specification is currently
+**Draft and unimplemented**.
 
 ## Requirements
 
@@ -259,8 +288,10 @@ Quality Gate and fail when open Sonar issues remain.
 ## Package contract
 
 The package is ESM-only, uses explicit exports, emits declarations, and ships only `dist`, `README.md`, `LICENSE`, and
-package metadata. The bootstrap entrypoint stays empty until the public run-engine slice is implemented, tested, and
-documented.
+package metadata. The bootstrap entrypoint stays empty until the public `RunManager` slice is implemented, tested, and
+documented. Before shipping, exact packed-consumer and declaration tests must prove that the plan source exposes only
+package-owned JSON, subscriptions expose `.initial`, skip iteration when it is terminal, and complete immediately after a
+terminal item, and no pipeline type/cast leaks through the lifecycle facade or any other reachable public declaration.
 
 ## License
 

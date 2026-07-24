@@ -23,6 +23,7 @@ import {
   isObjectBindingPattern,
   isStringLiteral,
   isTypeAliasDeclaration,
+  isTypeReferenceNode,
   isVariableStatement,
   type BindingName,
   type Node,
@@ -40,12 +41,15 @@ export interface SourceModule {
 export type ArchitectureRule =
   | 'explicit-barrel-exports'
   | 'external-import'
+  | 'forbidden-executor-runtime-import'
   | 'forbidden-layer-import'
   | 'forbidden-mcp-import'
   | 'forbidden-orchestrator-import'
   | 'forbidden-production-import'
+  | 'manager-boundary-inference'
   | 'one-export-per-leaf'
   | 'own-barrel-import'
+  | 'pipeline-facade-import'
   | 'private-import'
   | 'relative-js-suffix'
   | 'test-private-import'
@@ -58,9 +62,28 @@ interface ModuleReference {
   readonly target?: string;
 }
 
-type Layer = 'domain' | 'errors' | 'lifecycle' | 'policy' | 'spec' | 'storage';
+type Layer =
+  | 'composition'
+  | 'domain'
+  | 'errors'
+  | 'lifecycle'
+  | 'manager'
+  | 'policy'
+  | 'ports'
+  | 'spec'
+  | 'storage';
 
-const layers: readonly Layer[] = ['spec', 'policy', 'errors', 'domain', 'storage', 'lifecycle'];
+const layers: readonly Layer[] = [
+  'spec',
+  'policy',
+  'errors',
+  'domain',
+  'storage',
+  'ports',
+  'lifecycle',
+  'manager',
+  'composition',
+];
 
 const allowedDependencies: Readonly<Record<Layer, readonly Layer[]>> = {
   spec: [],
@@ -68,7 +91,10 @@ const allowedDependencies: Readonly<Record<Layer, readonly Layer[]>> = {
   errors: ['spec'],
   domain: ['spec', 'policy', 'errors'],
   storage: ['spec', 'errors', 'domain'],
-  lifecycle: ['spec', 'policy', 'errors', 'domain', 'storage'],
+  ports: ['spec', 'errors'],
+  lifecycle: ['spec', 'policy', 'errors', 'domain', 'storage', 'ports'],
+  manager: ['spec', 'policy', 'errors', 'ports', 'lifecycle'],
+  composition: ['spec', 'errors', 'storage', 'ports', 'lifecycle', 'manager'],
 };
 
 const fail = (rule: ArchitectureRule, path: string, detail?: string): never => {
@@ -93,7 +119,7 @@ const isProductionLeaf = (path: string): boolean =>
 
 const isTypeOnlyLayer = (path: string): boolean => {
   const layer = sourceLayer(path);
-  return layer === 'spec' || layer === 'errors' || layer === 'storage';
+  return layer === 'spec' || layer === 'errors' || layer === 'storage' || layer === 'ports';
 };
 
 const hasExportModifier = (modifierFlags: ModifierFlags): boolean =>
@@ -240,7 +266,12 @@ const validateExternalReference = (path: string, specifier: string): void => {
   ) {
     fail('forbidden-orchestrator-import', path, specifier);
   }
-  if (sourceLayer(path) === 'lifecycle' && specifier === '@revisium/revo-pipeline') return;
+  if (/^@revisium\/(?:revo-agent-runtime|revo-scripts)(?:\/|$)/.test(specifier)) {
+    fail('forbidden-executor-runtime-import', path, specifier);
+  }
+  if (path.startsWith('src/lifecycle/pipeline/') && specifier === '@revisium/revo-pipeline') {
+    return;
+  }
   fail('external-import', path, specifier);
 };
 
@@ -267,12 +298,20 @@ const validateRelativeReference = (path: string, target: string): void => {
     return;
   }
 
-  if (!fromLayer && targetLayer && target === `src/${targetLayer}/index.ts`) return;
+  if (isRoot(path) && targetLayer && target === `src/${targetLayer}/index.ts`) {
+    if (targetLayer !== 'composition' && targetLayer !== 'spec' && targetLayer !== 'errors') {
+      fail('forbidden-layer-import', path, `root -> ${targetLayer}`);
+    }
+    return;
+  }
 
   const resolvedFromLayer = fromLayer ?? fail('private-import', path, target);
   const resolvedTargetLayer = targetLayer ?? fail('private-import', path, target);
 
   if (resolvedFromLayer === resolvedTargetLayer) {
+    if (path === 'src/lifecycle/index.ts' && target.startsWith('src/lifecycle/pipeline/')) {
+      fail('pipeline-facade-import', path, target);
+    }
     if (isProductionLeaf(path) && target === `src/${resolvedFromLayer}/index.ts`) {
       fail('own-barrel-import', path, target);
     }
@@ -298,6 +337,23 @@ const validateReferences = (path: string, references: readonly ModuleReference[]
   }
 };
 
+const validateManagerBoundaryInference = (path: string, sourceFile: SourceFile): void => {
+  if (sourceLayer(path) !== 'manager') return;
+
+  const visit = (node: Node): void => {
+    if (
+      isTypeReferenceNode(node) &&
+      isIdentifier(node.typeName) &&
+      (node.typeName.text === 'Parameters' || node.typeName.text === 'ReturnType')
+    ) {
+      fail('manager-boundary-inference', path, node.typeName.text);
+    }
+    node.forEachChild(visit);
+  };
+
+  visit(sourceFile);
+};
+
 const validateSourceFile = (path: string, sourceFile: SourceFile): readonly ModuleReference[] => {
   if (path.startsWith('src/') && !isRoot(path) && sourceLayer(path) === undefined) {
     fail('unknown-layer', path);
@@ -305,6 +361,7 @@ const validateSourceFile = (path: string, sourceFile: SourceFile): readonly Modu
 
   validateExplicitBarrel(path, sourceFile);
   validateTypeOnlySyntax(path, sourceFile);
+  validateManagerBoundaryInference(path, sourceFile);
 
   if (isProductionLeaf(path) && exportedEntityCount(sourceFile.statements) !== 1) {
     fail('one-export-per-leaf', path);

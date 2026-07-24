@@ -1,137 +1,155 @@
 # Repository Contract
 
-This repository owns the reusable durable run-state boundary for Revo. It is a
-library package, not an orchestrator service, worker daemon, workflow authoring
-system, execution runtime, database framework, or API server.
+This repository owns the reusable durable multi-run manager for Revo. It is a
+library package, not a workflow authoring system, database framework, API
+server, provider-specific runtime, queue, or independently deployed service.
 
 ## Source of truth
 
 Use this order when sources disagree:
 
-1. Implemented source, tests, and `package.json#exports` describe shipped behavior.
+1. Implemented source, tests, and `package.json#exports` describe shipped
+   behavior.
 2. Accepted ADRs define architecture decisions.
 3. Stable specs define implemented contracts.
-4. Draft specs define target behavior only and remain marked unimplemented until
-   source, tests, declarations, exports, and README implement them together.
-5. `docs/architecture.md` explains the target dependency direction.
-6. `README.md` summarizes consumer-visible status without claiming Draft behavior.
+4. Draft specs define target behavior only.
+5. `docs/architecture.md` explains the Accepted dependency direction.
+6. `README.md` summarizes consumer-visible status.
 
-The current root export is intentionally empty. No run API or adapter is shipped.
+The architecture validator is active. Product APIs and product layers remain
+Draft/unimplemented. The current root export is intentionally empty.
 
-## Ownership
+## Package ownership
 
 The target package owns:
 
-- authoritative mutable `Run` and `RunNodeInstance` state;
-- executable-node `Attempt` records as authoritative live owner/lease/fence state;
-- multiple immutable named/typed `RunOutput` records;
-- ordered append-only audit `RunEvent` records;
-- transition validation and terminal-state rules;
-- atomic state/output/event commits;
-- claim, lease, fencing, expiry, and retry eligibility;
-- gate waiting, immutable answer recording, CAS resume;
-- fork activation and unique join activation;
-- store/query ports for commands and eligible-work discovery.
+- one reusable `RunManager` serving many durable runs;
+- manager start/quiesce/drain/stop, polling, dispatch, heartbeat, retry,
+  cancellation, recovery, observation, and terminal waits;
+- authoritative `Run`, causally scoped `RunNodeInstance`, and `Attempt`;
+- immutable `RunOutput` and ordered append-only `RunEvent`;
+- atomic state, attempt, output, event, and scoped activation transitions;
+- database-time claim, Start CAS, lease, fence, expiry, and result decisions;
+- package-generated manager incarnations;
+- exact plan-document and executor-contract resolution;
+- pipeline/gate progression through lifecycle;
+- pull-based durable subscriptions.
 
-The host owns:
+The host owns concrete storage, plan compilation/versioning, executor adapters
+and credentials, API/auth, product projections, deployment, process lifecycle,
+and observability wiring.
 
-- pipeline/profile/playbook persistence and versioning;
-- host-specific immutable `ExecutionPlan` compilation;
-- verified immutable `ExecutionPlan`/`CompiledPipeline` loading and supply on
-  every lifecycle command;
-- model, prompt, permission, agent, script, workspace, and credential selection;
-- polling cadence, worker loops, process supervision, and task execution;
-- API transports, auth, product projections, and presentation;
-- concrete database wiring, migrations, operations, and deployment.
+## Exact plan and executor authority
 
-`@revisium/revo-pipeline` owns portable pipeline graph contracts, graph
-validation, and pure next-transition calculation. `@revisium/revo-agent-runtime`
-owns one bounded agent invocation. `@revisium/revo-scripts` owns bounded
-deterministic system operations.
+`Run` persists plan id/revision/digest. `ExecutionPlanSource.loadExact()` returns
+an immutable package-owned `RunExecutionPlanDocument`. Its `compiledPipeline`
+field is bounded `JsonValue`; only private `lifecycle/pipeline/**` decodes it
+with the future public pipeline decoder. The public lifecycle index is
+pipeline-free.
+
+Ports, manager, composition, root exports, and declarations may not contain
+pipeline-owned types or casts to them.
+
+Each executable binding carries `ExecutorContractPin`, configuration digest,
+and explicit idempotency declaration. Attempt persists the exact pin/digest.
+Recovery uses `resolveExact()` with no latest/default/compatible fallback.
 
 ## Dependency direction
 
 ```text
-playbooks + profiles + pipeline versions
-                  |
-                  v
-       host ExecutionPlan compiler/store
-                  |
-                  | verified plan per command
-                  v
-          @revisium/revo-run
- authoritative state + transitions + store ports
-          |                       ^
-          v                       |
- host RunWorker -------- executes node work
-          |
-          +--> @revisium/revo-agent-runtime
-          +--> @revisium/revo-scripts
+spec      policy      errors
+  \          |          /
+            domain
+               |
+            storage     ports
+                 \       /
+                  lifecycle
+                      |
+                   manager
+                      |
+                  composition
 ```
 
-Inside `revo-run`:
+Exact allowed dependencies:
 
-```text
-spec        policy        errors
-  \           |           /
-             domain
-                |
-             storage  (type-only ports)
-                \       /
-               lifecycle
-```
+- `spec` -> none;
+- `policy` -> `spec`;
+- `errors` -> `spec`;
+- `domain` -> `spec`, `policy`, `errors`;
+- `storage` -> `spec`, `errors`, `domain`;
+- `ports` -> `spec`, `errors`;
+- `lifecycle` -> `spec`, `policy`, `errors`, `domain`, `storage`, `ports`;
+- `manager` -> `spec`, `policy`, `errors`, `ports`, `lifecycle`;
+- `composition` -> `spec`, `errors`, `storage`, `ports`, `lifecycle`,
+  `manager`.
 
-`spec`, `errors`, and `storage` are strictly type-only. Cross-layer imports use
-the target layer's explicit barrel. `domain` never depends on storage or
-lifecycle. `lifecycle` is the only layer allowed to import the public
-`@revisium/revo-pipeline` package. Production source imports no other external
-package.
+Lifecycle is the only writable storage/domain path; only its private
+`pipeline/**` subtree imports the pipeline package. Manager never imports
+storage, domain, pipeline, or private lifecycle leaves: it imports
+`lifecycle/index.ts` and consumes explicit contracts without
+`Parameters<>`/`ReturnType<>` inference. Composition wires injected store/ports
+to lifecycle and manager. Root uses curated composition/public barrels.
 
-Lifecycle is the anti-corruption seam. It verifies the supplied host plan
-identity/digest against pins stored on `Run` and passes the command plus
-authoritative aggregate to domain. Domain validates expected
-state/fence/gate-revision preconditions and computes a package-owned prospective
-state/output change without committing. Lifecycle combines authoritative
-sibling state with that prospective outcome/answer into pipeline-owned
-`PipelineFacts`, invokes the public pipeline decision API, and maps
-`PipelineDecision` to package-owned successor/join/wait intents. Domain validates
-the combined intent and aggregate invariants; storage atomically CASes expected
-Run/node/Attempt revisions and commits prospective state, outputs, events, and
-activations. Pipeline types do not enter spec or domain. The full host plan is
-never snapshotted by `revo-run`.
+`spec`, `errors`, `storage`, and `ports` are type-only. Unknown source layers
+fail closed.
 
-## Storage authority
+## Ownership and time
 
-Current state tables are authoritative. Events provide audit, observability,
-and projection inputs; replaying them is not required to recover current state.
-Every accepted command runs in one store transaction that:
+Every `start()` allocates a unique package-generated `managerIncarnationId`.
+Attempt persists it. `ownerLabel` exists only for diagnostics and cannot prove
+ownership.
 
-1. verifies the plan pins and the domain-validated combined intent;
-2. CASes expected `Run.revision`, node revision, and active Attempt
-   revision/fence or gate revision as applicable;
-3. increments monotonic `Run.revision` for every node transition;
-4. applies prospective state and Attempt/active-pointer relationships;
-5. appends prospective outputs and ordered audit events;
-6. activates package-owned successor/join/wait intents exactly once.
+All behavior-affecting time comes from the store transaction. Start, heartbeat,
+direct/reconciled/cancellation result, and lease renewal require
+`transactionNow < leaseExpiresAt`; equality is expired.
 
-Creating a claim atomically inserts its Attempt and sets
-`RunNodeInstance.activeAttemptId`. Node-level mirrored lease/fence fields, if a
-read projection later needs them, are explicitly non-authoritative.
+Claim commits phase `claimed`, incarnation, fence, lease, exact executor pin,
+and configuration digest. Exact executor resolution and configuration
+verification happen next. A separate internal Start CAS then obtains fresh
+transaction time and changes the phase to `start_committed`; only then may
+`execute()` begin.
 
-If the `Run.revision` CAS conflicts, lifecycle reloads current state, reconstructs
-its prospective domain change, reconstructs fresh sibling facts including that
-prospective outcome, and recomputes the pipeline decision/combined intent before
-retrying. This liveness rule ensures one of two concurrent final branch
-completions observes the other and can activate the join. Unique
-`(runId, activationKey)` separately prevents duplicate activation; no
-`JoinArrival` state is needed.
+Recovery may safely reclaim `claimed` without assuming a side effect. Lost
+`start_committed` is unknown. Recovery takeover is allowed only at
+database-time lease expiry or through an explicit durable handoff written under
+the incumbent incarnation/fence. It then acquires a new incarnation/fence,
+resolves the exact executor/configuration, and reconciles; it does not blindly
+execute.
 
-The storage contract is framework-neutral. A future official Prisma adapter and
-PostgreSQL E2E suite require their own accepted design; Prisma types never leak
-into the core API.
+## Forks, joins, and gates
+
+Fork-created node instances carry causal fork scope. Join readiness and
+activation uniqueness use predecessor instances from the matching scope, so
+repeated/nested forks cannot cross-satisfy.
+
+A human gate is a waiting node instance identified by runtime activation id.
+Its immutable answer and progression commit atomically. There is no
+authoritative `Gate` or `JoinArrival`.
+
+## Manager lifecycle
+
+The lifecycle is `stopped -> starting -> running -> quiescing -> draining ->
+stopped`.
+
+Quiescing stops new claims. Heartbeats and fenced result commits continue while
+draining. Timeout aborts local work only after an explicit durable handoff
+commits under the active incarnation/fence. After `stopped`, no manager timer,
+callback, or executor completion may write. A later start uses a new
+incarnation.
+
+## Durable observation
+
+`subscribe()` returns a pull `RunSubscription` `AsyncIterable`. Its `.initial`
+contains a consistent immutable snapshot plus event high-watermark cursor; it
+yields bounded cursor-bearing items/pages strictly after that cursor. Consumers
+control backpressure and resume from cursor. A terminal initial snapshot means
+the iterator is already complete; after yielding a terminal item it completes
+without another read or wait.
+
+`waitForTerminal()` uses the same durable snapshot/cursor protocol.
+Notification may optimize wakeup but is not authority.
 
 ## Public surface
 
-Public entrypoints exist only in the export map. The foundation exposes an empty
-root. Proposed future root, adapter, and testing surfaces are not reserved by
-directories or Draft documents.
+Public entrypoints exist only in the export map. The foundation exposes an
+empty root. No Draft path reserves a future deep import.

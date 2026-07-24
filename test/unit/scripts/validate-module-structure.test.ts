@@ -17,12 +17,23 @@ test('accepts the intended layer dependency direction', () => {
   expect(() =>
     validateModuleStructure([
       {
+        path: 'src/spec/json-value.ts',
+        source:
+          'export type JsonValue = null | boolean | number | string | readonly JsonValue[];\n',
+      },
+      {
         path: 'src/spec/run-input.ts',
         source: 'export interface RunInput { readonly id: string }\n',
       },
       {
+        path: 'src/spec/plan-document.ts',
+        source:
+          "import type { JsonValue } from './json-value.js';\nexport interface PlanDocument { readonly compiledPipeline: JsonValue }\n",
+      },
+      {
         path: 'src/spec/index.ts',
-        source: "export type { RunInput } from './run-input.js';\n",
+        source:
+          "export type { JsonValue } from './json-value.js';\nexport type { PlanDocument } from './plan-document.js';\nexport type { RunInput } from './run-input.js';\n",
       },
       {
         path: 'src/domain/create-run.ts',
@@ -39,9 +50,34 @@ test('accepts the intended layer dependency direction', () => {
           "import type { createRun } from '../domain/index.js';\nexport interface RunStore { save(value: ReturnType<typeof createRun>): Promise<void> }\n",
       },
       {
+        path: 'src/ports/plan-source.ts',
+        source:
+          "import type { PlanDocument, RunInput } from '../spec/index.js';\nexport interface PlanSource { loadExact(input: RunInput): PlanDocument }\n",
+      },
+      {
+        path: 'src/lifecycle/pipeline/decode.ts',
+        source:
+          "import { decodePipeline } from '@revisium/revo-pipeline';\nimport type { PlanDocument } from '../../spec/index.js';\nexport const decode = (plan: PlanDocument): void => { decodePipeline(plan.compiledPipeline); };\n",
+      },
+      {
         path: 'src/lifecycle/start-run.ts',
         source:
-          "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nimport { createRun } from '../domain/index.js';\nexport const startRun = (_pipeline: CompiledPipeline): typeof createRun => createRun;\n",
+          "import { createRun } from '../domain/index.js';\nimport type { PlanSource } from '../ports/index.js';\nimport type { RunInput } from '../spec/index.js';\nimport type { RunStore } from '../storage/index.js';\nimport { decode } from './pipeline/decode.js';\nexport const startRun = (input: RunInput, plans: PlanSource, _store: RunStore): RunInput => { decode(plans.loadExact(input)); return createRun(input); };\n",
+      },
+      {
+        path: 'src/lifecycle/run-lifecycle.ts',
+        source:
+          "import type { RunInput } from '../spec/index.js';\nexport interface RunLifecycle { start(input: RunInput): RunInput }\n",
+      },
+      {
+        path: 'src/manager/create-manager.ts',
+        source:
+          "import type { RunLifecycle } from '../lifecycle/index.js';\nimport type { PlanSource } from '../ports/index.js';\nexport const createManager = (lifecycle: RunLifecycle, _plans: PlanSource): RunLifecycle => lifecycle;\n",
+      },
+      {
+        path: 'src/composition/create.ts',
+        source:
+          "import { startRun, type RunLifecycle } from '../lifecycle/index.js';\nimport { createManager } from '../manager/index.js';\nimport type { PlanSource } from '../ports/index.js';\nimport type { RunStore } from '../storage/index.js';\nexport const create = (store: RunStore, plans: PlanSource): RunLifecycle => createManager({ start: (input) => startRun(input, plans, store) }, plans);\n",
       },
     ]),
   ).not.toThrow();
@@ -91,6 +127,16 @@ test.each([
     "import type { Orchestrator } from '@revisium/orchestrator';\nexport const useOrchestrator = (_orchestrator: Orchestrator): void => undefined;\n",
   ],
   [
+    'forbidden-executor-runtime-import',
+    'src/manager/agent-runtime.ts',
+    "import type { AgentRuntime } from '@revisium/revo-agent-runtime';\nexport const useRuntime = (_runtime: AgentRuntime): void => undefined;\n",
+  ],
+  [
+    'forbidden-executor-runtime-import',
+    'src/manager/scripts-runtime.ts',
+    "import type { RevoScripts } from '@revisium/revo-scripts';\nexport const useScripts = (_scripts: RevoScripts): void => undefined;\n",
+  ],
+  [
     'forbidden-production-import',
     'src/domain/test-helper.ts',
     "import { helper } from '../../test/helper.js';\nexport const testHelper = helper;\n",
@@ -100,7 +146,63 @@ test.each([
     'src/domain/run.ts',
     "import { execute } from '../lifecycle/index.js';\nexport const run = (): void => execute();\n",
   ],
+  [
+    'forbidden-layer-import',
+    'src/manager/store.ts',
+    "import type { RunStore } from '../storage/index.js';\nexport interface ManagerStore { readonly store: RunStore }\n",
+  ],
+  [
+    'forbidden-layer-import',
+    'src/manager/domain.ts',
+    "import { createRun } from '../domain/index.js';\nexport const managerRun = (): typeof createRun => createRun;\n",
+  ],
+  [
+    'forbidden-layer-import',
+    'src/composition/domain.ts',
+    "import { createRun } from '../domain/index.js';\nexport const composedRun = (): typeof createRun => createRun;\n",
+  ],
+  [
+    'forbidden-layer-import',
+    'src/composition/policy.ts',
+    "import { retryLimit } from '../policy/index.js';\nexport const composedPolicy = (): typeof retryLimit => retryLimit;\n",
+  ],
+  [
+    'external-import',
+    'src/composition/pipeline.ts',
+    "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nexport interface CompositionPipeline { readonly pipeline: CompiledPipeline }\n",
+  ],
+  [
+    'private-import',
+    'src/manager/private-lifecycle.ts',
+    "import { startRun } from '../lifecycle/start-run.js';\nexport const managerStart = (): typeof startRun => startRun;\n",
+  ],
+  [
+    'manager-boundary-inference',
+    'src/manager/inferred-lifecycle.ts',
+    "import type { RunLifecycle } from '../lifecycle/index.js';\nexport type ManagerStart = ReturnType<RunLifecycle['start']>;\n",
+  ],
+  [
+    'manager-boundary-inference',
+    'src/manager/inferred-parameters.ts',
+    "import type { RunLifecycle } from '../lifecycle/index.js';\nexport type ManagerInput = Parameters<RunLifecycle['start']>[0];\n",
+  ],
+  [
+    'pipeline-facade-import',
+    'src/lifecycle/index.ts',
+    "export { decode } from './pipeline/decode.js';\n",
+  ],
+  [
+    'external-import',
+    'src/lifecycle/decode.ts',
+    "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nexport interface LifecyclePipeline { readonly pipeline: CompiledPipeline }\n",
+  ],
+  [
+    'external-import',
+    'src/ports/pipeline.ts',
+    "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nexport interface PipelinePort { readonly pipeline: CompiledPipeline }\n",
+  ],
   ['type-only-layer', 'src/storage/store.ts', 'export const store = {};\n'],
+  ['type-only-layer', 'src/ports/runtime.ts', 'export const runtime = {};\n'],
   [
     'one-export-per-leaf',
     'src/domain/multiple.ts',
@@ -112,7 +214,7 @@ test.each([
     'src/domain/run.ts',
     "import type { State } from './index.js';\nexport interface Run { readonly state: State }\n",
   ],
-  ['unknown-layer', 'src/worker/poll.ts', 'export const poll = (): void => undefined;\n'],
+  ['unknown-layer', 'src/custom/extension.ts', 'export const extension = (): void => undefined;\n'],
   [
     'test-private-import',
     'test/unit/domain/run.test.ts',
@@ -154,11 +256,11 @@ test.each([
   );
 });
 
-test('allows only the pipeline package and only from lifecycle', () => {
+test('allows only the pipeline package and only from private lifecycle pipeline modules', () => {
   expect(() =>
     validateModuleStructure([
       {
-        path: 'src/lifecycle/compile.ts',
+        path: 'src/lifecycle/pipeline/compile.ts',
         source:
           "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nexport const compile = (pipeline: CompiledPipeline): CompiledPipeline => pipeline;\n",
       },
@@ -169,6 +271,28 @@ test('allows only the pipeline package and only from lifecycle', () => {
     [
       {
         path: 'src/domain/compile.ts',
+        source:
+          "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nexport const compile = (pipeline: CompiledPipeline): CompiledPipeline => pipeline;\n",
+      },
+    ],
+    'external-import',
+  );
+
+  expectViolation(
+    [
+      {
+        path: 'src/lifecycle/compile.ts',
+        source:
+          "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nexport const compile = (pipeline: CompiledPipeline): CompiledPipeline => pipeline;\n",
+      },
+    ],
+    'external-import',
+  );
+
+  expectViolation(
+    [
+      {
+        path: 'src/manager/compile.ts',
         source:
           "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nexport const compile = (pipeline: CompiledPipeline): CompiledPipeline => pipeline;\n",
       },
@@ -188,6 +312,26 @@ test('requires the root entrypoint to use curated layer barrels', () => {
     ],
     'private-import',
   );
+
+  expectViolation(
+    [
+      {
+        path: 'src/index.ts',
+        source: "export { buildRunManager } from './manager/index.js';\n",
+      },
+    ],
+    'forbidden-layer-import',
+  );
+
+  expect(() =>
+    validateModuleStructure([
+      {
+        path: 'src/index.ts',
+        source:
+          "export { createRunManager } from './composition/index.js';\nexport type { RunInput } from './spec/index.js';\n",
+      },
+    ]),
+  ).not.toThrow();
 });
 
 test.each([
@@ -215,6 +359,15 @@ test('requires type-only syntax in type-only barrels and leaves', () => {
         path: 'src/storage/run-store.ts',
         source:
           "import { RunState } from '../domain/index.js';\nexport interface RunStore { readonly state: RunState }\n",
+      },
+    ],
+    'type-only-layer',
+  );
+  expectViolation(
+    [
+      {
+        path: 'src/ports/executor.ts',
+        source: 'export const executor = {};\n',
       },
     ],
     'type-only-layer',

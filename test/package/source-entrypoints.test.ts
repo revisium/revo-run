@@ -39,7 +39,7 @@ test('package metadata declares the intended package and explicit root export', 
   }).toEqual({
     name: '@revisium/revo-run',
     version: '0.0.0',
-    description: 'Portable durable run-state engine for Revo.',
+    description: 'Reusable durable multi-run manager for Revo.',
     homepage: 'https://github.com/revisium/revo-run#readme',
     type: 'module',
     dependencies: undefined,

@@ -1,120 +1,193 @@
-# Run Transitions v1
+# Run transitions v1
 
 - Status: Draft
-- Implementation: none
-- Public export: none
+- Implementation: Not implemented
 
-## Transition result
+## Normative language and versioning
 
-For each command, lifecycle verifies the host-supplied immutable plan against
-`Run` pins and loads the authoritative aggregate. Domain first validates
-expected state/fence/gate-revision preconditions and computes a package-owned
-prospective state/output change without committing. Lifecycle then:
+BCP 14 keywords are interpreted per RFC 2119/RFC 8174 only when uppercase.
+`v1` identifies this contract family; incompatible post-Stable changes require a
+new `vN`, while this Draft may still change.
 
-1. combines authoritative sibling state with the prospective accepted
-   outcome/answer into `PipelineFacts`;
-2. calls the public pipeline decision API;
-3. maps `PipelineDecision` into package-owned successor/join/wait intents;
-4. asks domain to validate the combined intent and aggregate invariants.
+## Scope
 
-The validated combined intent describes:
+This specification defines atomic run transitions used by `RunManager`.
+`startRun`, `answerGate`, and `cancelRun` are reached through the public facade.
+Attempt, recovery, and progression transitions are package-internal.
 
-- expected Run/node/Attempt or gate revisions and preconditions;
-- prospective state mutations and outputs;
-- audit events to append;
-- successor/join/wait activations to insert;
-- conflict or terminal result.
+## Common transition protocol
 
-Storage applies that data through one transaction, CASing all expected
-Run/node/Attempt revisions before atomically committing prospective state,
-outputs, events, and activations. Every accepted node transition increments
-monotonic `Run.revision`. A CAS conflict invalidates both prospective and
-combined intent: lifecycle reloads current aggregate/siblings and recomputes
-from the first domain validation onward.
+Every mutating transition MUST:
 
-## Required transition families
+1. load the authoritative aggregate and exact persisted plan;
+2. begin a store transaction and obtain authoritative database time;
+3. validate idempotency, expected run/node/attempt or gate activation state;
+4. compute a domain prospective change without committing it;
+5. when progression is needed, combine fresh sibling state and the prospective
+   outcome/answer into pipeline facts;
+6. map the pure pipeline decision to package-owned intents;
+7. validate the combined aggregate invariants;
+8. CAS expected revisions/fence and atomically commit state, attempts, outputs,
+   events, and activations.
 
-### Create run
+On aggregate conflict, lifecycle MUST reload authoritative state and recompute.
+It MUST NOT reuse stale sibling facts or pipeline decisions.
 
-Persist the host plan identity/revision/digest pins, create the run, and
-activate initial node instances in one transaction. The full plan is not stored.
-Repeating the same idempotency key returns the same logical result; conflicting
-input fails.
+## Publicly initiated transitions
 
-### Claim executable node
+### Start run
 
-CAS `Run.revision` and the node from `ready` or due `retry_scheduled` to
-`claimed`; atomically create the next authoritative `Attempt`, assign its owner,
-lease expiry and fencing token, set `RunNodeInstance.activeAttemptId`, and append
-a claim event. Candidate queries do not claim by themselves.
+Start MUST verify the exact plan pin, allocate package-owned ids, and atomically
+persist the run plus initial activations and events. The command MUST be
+idempotent.
 
-### Start and heartbeat
+### Answer gate
 
-Only the active Attempt's matching live owner/fence may start or extend its
-bounded lease. Stale, inactive, expired, or terminal attempts cannot heartbeat.
+Answer MUST target one stable runtime gate activation id. It MUST reject a stale
+activation, non-waiting node, mismatched plan, or second distinct answer.
+
+The normalized resolution, immutable answer output, gate completion, events,
+and successor activations MUST commit atomically. The arbitrary answer payload
+MUST NOT be parsed to choose control flow.
+
+### Cancel run
+
+Cancel MUST persist cancellation intent idempotently. It MUST stop new claims
+and compute package-owned cancellation progression for ready, waiting, retrying,
+unknown, and active nodes.
+
+Active executor cancellation is coordinated after durable intent. Terminal
+cancellation MUST not be selected until lifecycle policy accounts for
+authoritative active/unknown outcomes.
+
+## Internal executable transitions
+
+### Claim
+
+Claim eligibility MUST be evaluated using transaction time and exact plan
+policy. Claim MUST atomically:
+
+- CAS run and node revisions;
+- create the Attempt in `claimed`;
+- assign package-generated manager incarnation, diagnostic owner label, fence,
+  lease, exact executor contract pin/configuration digest, and dispatch
+  idempotency identity;
+- set `activeAttemptId`;
+- update state and append events.
+
+### Start
+
+Attempt Start is a separate internal CAS. It MUST run only after
+`resolveExact()` and immutable configuration-digest verification have
+succeeded, and MUST then obtain fresh transaction time. It MUST verify active
+Attempt, manager incarnation, fence, expected revisions, exact executor pin/digest, and
+`transactionNow < leaseExpiresAt`, then atomically record `start_committed` and
+its event.
+
+Executor resolution MUST occur before Start, but grants no durable authority.
+Executor dispatch MUST occur only after Start commits. Repeating an accepted
+Start is idempotent.
+
+### Heartbeat
+
+Heartbeat MUST use store transaction time and renew only the active Attempt for
+the current manager incarnation/fence. Caller time MUST NOT determine lease
+extension. It MUST reject when `transactionNow >= leaseExpiresAt`.
 
 ### Complete
 
-Domain validates the expected Run/node/active-Attempt revisions, owner/fence,
-lease, and nonterminal state, then computes prospective Attempt/node success and
-immutable outputs without commit. Lifecycle builds `PipelineFacts` from
-authoritative siblings plus that prospective success/output, calls the pipeline
-decision API, and maps successors/joins/waits. Domain validates the combined
-intent. Storage CASes the expected Run/node/Attempt revisions and atomically
-commits prospective success, outputs, events, and activations. A stale
-completion conflicts and appends no success output.
+Completion MUST validate and copy bounded outputs, compute the prospective
+success, obtain a fresh pipeline decision, and atomically accept the result and
+progress the run.
 
-### Fail and retry
+Completion MUST reject stale incarnation/fence and
+`transactionNow >= leaseExpiresAt`. The same boundary applies to reconciled and
+cancellation results.
 
-Domain validates expected Run/node/active-Attempt revisions and fence, normalizes
-failure, and computes without commit one prospective outcome:
+### Fail
 
-- retry scheduled with bounded `availableAt`; or
-- node terminally failed for plan-defined failure transitions.
+Known failure MUST normalize a bounded fault and choose, from exact plan policy,
+either durable retry waiting or terminal node failure plus pipeline progression.
+Retry availability MUST be assigned and evaluated using store transaction time.
 
-Lifecycle includes that prospective retry/failure in `PipelineFacts`, calls the
-pipeline decision API, maps successor/join/wait intents, and asks domain to
-validate the combined result. Storage CASes expected Run/node/Attempt revisions
-and atomically commits failure/retry state, outputs, events, and any activations.
-The plan owns retry limits/policy data. The package computes eligibility. The
-host owns polling and physical execution.
+### Record unknown
+
+When physical outcome of `start_committed` is unknown, the transition MUST
+preserve explicit unknown/reconciling state. It MUST NOT schedule a blind retry.
+
+### Reconcile
+
+Recovery MUST first prove takeover eligibility from transaction time at or
+beyond lease expiry, or from an explicit durable handoff recorded by the
+incumbent under its active incarnation/fence. Only then may it acquire a new
+manager incarnation/fence. It MUST resolve the persisted exact executor contract
+and verify the configuration digest before reconciliation. A known reconciled
+result then follows the same pre-expiry fenced completion/failure path as a
+direct result. A still-unknown result remains durable attention state unless
+the exact binding declares execution idempotent and retry policy permits a new
+Attempt.
 
 ### Expire lease
 
-An expired active-Attempt lease invalidates its fence. Recovery may schedule
-retry or terminal failure according to policy from the matching host-supplied
-plan. The old worker can no longer complete.
+Expiry eligibility MUST be decided inside the transaction using current store
+time; equality is expired. Expiry invalidates the old incarnation/fence before
+recovery ownership. `claimed` without committed Start is safely reclaimable.
+`start_committed` is conservatively unknown and chooses reconciliation, safe
+retry, or durable attention according to the exact executor contract and
+idempotency declaration.
 
-### Answer human gate
+An explicit handoff is the only pre-expiry takeover path. It MUST be a durable
+CAS written under the incumbent's active incarnation/fence. Process
+observation, owner label, and local time are not takeover evidence.
 
-Domain validates expected Run/gate revisions, waiting status, absence of an
-Attempt/lease, and answer idempotency, then computes prospective gate completion
-plus one immutable answer output without commit. Lifecycle builds
-`PipelineFacts` from authoritative siblings plus the prospective accepted
-answer, calls the decision API, and maps successor/join/wait intents. Domain
-validates the combined intent. Storage CASes expected Run/gate revisions and
-atomically commits completion, answer output, events, and activations.
-Concurrent later answers conflict and append nothing.
+## Pipeline progression
 
-### Fork and join
+Only private `lifecycle/pipeline/**` modules may use
+`@revisium/revo-pipeline`. The public lifecycle index MUST expose explicit
+pipeline-free facade contracts. The private seam MUST translate package-owned
+run/node/output facts to the public pipeline API and translate the decision
+back to package-owned intents.
 
-Fork creates deterministic branch activations. Join readiness is computed from
-the supplied matching `CompiledPipeline` and fresh authoritative predecessor
-instances. If concurrent final branch completions start from the same
-`Run.revision`, one commits and the other conflicts, reloads the first result,
-and recomputes; therefore the ready join is eventually observed. Join insertion
-uses unique `(runId, activationKey)` in the same transaction to prevent
-duplicates. No `JoinArrival` record or counter participates.
+Fork successors MUST carry causal scope derived from node-instance activation
+identity. Join facts, readiness, activation key, and uniqueness MUST use only
+predecessor instances in that scope. Repeated/nested fork activations MUST NOT
+cross-satisfy.
 
-### Cancel
+## Result acceptance and fences
 
-Record cancellation intent, prevent new claims, cancel eligible nonterminal
-nodes, and finalize when plan/domain rules permit. Host process termination is
-outside this package.
+Every executor-originated result MUST prove:
 
-## Terminal rules
+- run and node identity;
+- current active attempt id;
+- owner or dispatch identity where required;
+- current fencing token;
+- current manager incarnation;
+- exact executor contract pin and configuration digest;
+- expected revisions;
+- idempotency identity.
 
-Terminal run and node states are immutable. Every transition table must define
-allowed source statuses, expected revisions/fences, resulting statuses,
-outputs/events, activation behavior, and idempotent replay behavior before the
-spec becomes Stable.
+Acceptance MUST additionally require `transactionNow < leaseExpiresAt` and be a
+CAS. No adapter response, local promise ownership, owner label, process
+identity, or in-memory lock can substitute for incarnation/fence.
+
+## Idempotency
+
+Accepted idempotency records MUST bind the key to the semantic command and
+result. Repeating the same command returns the same logical result. Reusing a
+key with different semantic input is a conflict.
+
+Idempotency records do not prove that an external physical side effect occurred
+once.
+
+## Faults
+
+Expected failures MUST be stable, typed, and bounded. At minimum the final
+contract MUST distinguish not found, invalid state, stale activation, revision
+conflict, stale fence, plan unavailable/mismatch, executor unavailable, unknown
+outcome attention, cancellation, and invalid input.
+
+## Non-goals
+
+This specification does not expose internal transitions as public API and does
+not define polling cadence, database schema, provider protocols, or pipeline
+graph authoring.
