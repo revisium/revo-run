@@ -1,4 +1,5 @@
 import type { JsonValue } from '../../spec/index.js';
+import { forEachArrayValue } from '../for-each-array-value.js';
 
 const maximumDepth = 64;
 const maximumMembers = 65_536;
@@ -27,6 +28,12 @@ Object.defineProperty(safeArrayPrototype, 'map', {
   configurable: false,
   enumerable: false,
   value: Array.prototype.map,
+  writable: false,
+});
+Object.defineProperty(safeArrayPrototype, Symbol.iterator, {
+  configurable: false,
+  enumerable: false,
+  value: Array.prototype[Symbol.iterator],
   writable: false,
 });
 Object.freeze(safeArrayPrototype);
@@ -107,11 +114,11 @@ const snapshotArray = (
     throw new TypeError(invalidArrayMessage);
   }
 
-  for (const key of Reflect.ownKeys(value)) {
+  forEachArrayValue(Reflect.ownKeys(value), (key) => {
     if (typeof key !== 'string' || (key !== 'length' && !isArrayIndex(key))) {
       throw new TypeError(invalidArrayMessage);
     }
-  }
+  });
 
   consumeBytes(state, 2);
   const snapshot: JsonValue[] = [];

@@ -94,6 +94,11 @@ const validateContents = (manifest: PackManifest): void => {
     'dist/index.d.ts.map',
     'dist/index.js',
     'dist/index.js.map',
+    'dist/errors/index.d.ts',
+    'dist/errors/index.d.ts.map',
+    'dist/spec/run-artifact-reference.d.ts',
+    'dist/spec/run-execution-plan-document.d.ts',
+    'dist/spec/run-output-payload.d.ts',
     'dist/policy/canonical-json/index.d.ts',
     'dist/policy/canonical-json/index.d.ts.map',
     'dist/policy/canonical-json/index.js',
@@ -121,6 +126,7 @@ import * as packageEntry from '@revisium/revo-run';
 import { canonicalizeJson, digestCanonicalJson } from '@revisium/revo-run/canonical-json';
 
 assert.deepEqual(Object.keys(packageEntry), []);
+assert.equal('RunConflict' in packageEntry, false);
 assert.equal(canonicalizeJson({ b: 1, a: 'value' }), '{"a":"value","b":1}');
 assert.equal(
   digestCanonicalJson({ a: 1 }),
@@ -141,20 +147,144 @@ import {
   type CanonicalJsonSha256Digest,
   type JsonValue,
 } from '@revisium/revo-run/canonical-json';
+import type {
+  ExecutionPlanPin,
+  ExecutorConfigurationDigest,
+  ExecutorContractPin,
+  RunArtifactReference,
+  RunConflict,
+  RunExecutionPlanDocument,
+  RunFault,
+  RunOutputPayload,
+} from '@revisium/revo-run';
 
 const resolvedEntry: typeof packageEntry = packageEntry;
 const value: JsonValue = { nested: [true, null, 1, 'value'] };
 const digest: CanonicalJsonSha256Digest = digestCanonicalJson(value);
 const canonical: string = canonicalizeJson(value);
+const planPin: ExecutionPlanPin = { id: 'plan', revision: '1', digest: 'host:opaque' };
+const executorPin: ExecutorContractPin = {
+  adapterId: 'adapter',
+  revision: '1',
+  digest: 'contract:opaque',
+};
+const configurationDigest: ExecutorConfigurationDigest =
+  'sha256:015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862';
+const artifact: RunArtifactReference = {
+  artifactId: 'artifact',
+  mediaType: 'application/json',
+  sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  bytes: 1,
+};
+const output: RunOutputPayload = { kind: 'artifact', artifact };
+const document: RunExecutionPlanDocument = {
+  pin: planPin,
+  compiledPipeline: {},
+  executorBindings: [
+    {
+      nodeKey: 'node',
+      executor: executorPin,
+      configuration: {},
+      configurationDigest,
+      idempotentExecution: false,
+      retryPolicy: {
+        maximumAttempts: 1,
+        initialBackoffMs: 0,
+        maximumBackoffMs: 0,
+        backoffMultiplier: 1,
+      },
+      timeoutPolicy: {
+        executionTimeoutMs: 1,
+        reconciliationTimeoutMs: 1,
+        cancellationTimeoutMs: 1,
+      },
+    },
+  ],
+};
+const fault: RunFault = { code: 'PLAN_MISMATCH', message: 'Plan mismatch.' };
+const conflict: RunConflict = {
+  code: 'IDEMPOTENCY_CONFLICT',
+  message: 'Idempotency conflict.',
+};
 void resolvedEntry;
 void digest;
 void canonical;
+void document;
+void conflict;
+void fault;
+void output;
 `;
 
 const privateTypeConsumer = `
 import * as privateEntry from '@revisium/revo-run/dist/index.js';
 
 void privateEntry;
+`;
+
+const negativeTypeConsumer = `
+import type {
+  RunArtifactReference,
+  RunConflict,
+  RunExecutionPlanDocument,
+  RunExecutionPlanExecutorBinding,
+  RunFault,
+} from '@revisium/revo-run';
+
+const invalidFaultCode: RunFault = {
+  code: 'PROVIDER_FAILURE',
+  message: 'Provider details must not define a package fault code.',
+};
+const invalidFaultShape: RunFault = {
+  code: 'INVALID_INPUT',
+  message: 'Invalid.',
+  providerMetadata: 'forbidden',
+};
+const invalidConflictCode: RunConflict = {
+  code: 'PLAN_MISMATCH',
+  message: 'Plan mismatch is a fault, not a conflict code.',
+};
+const invalidConflictShape: RunConflict = {
+  code: 'INVALID_STATE',
+  message: 'Invalid state.',
+  retryable: true,
+};
+const invalidCompiledPipeline: RunExecutionPlanDocument = {
+  pin: { id: 'plan', revision: '1', digest: 'opaque' },
+  compiledPipeline: () => undefined,
+  executorBindings: [],
+};
+const missingNormalizedBinding: RunExecutionPlanExecutorBinding = {
+  nodeKey: 'node',
+  executor: { adapterId: 'adapter', revision: '1', digest: 'opaque' },
+  configuration: {},
+  configurationDigest:
+    'sha256:015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862',
+  retryPolicy: {
+    maximumAttempts: 1,
+    initialBackoffMs: 0,
+    maximumBackoffMs: 0,
+    backoffMultiplier: 1,
+  },
+  timeoutPolicy: {
+    executionTimeoutMs: 1,
+    reconciliationTimeoutMs: 1,
+    cancellationTimeoutMs: 1,
+  },
+};
+const providerArtifact: RunArtifactReference = {
+  artifactId: 'artifact',
+  mediaType: 'application/json',
+  sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  bytes: 1,
+  provider: 's3',
+};
+void invalidFaultCode;
+void invalidFaultShape;
+void invalidConflictCode;
+void invalidConflictShape;
+void invalidCompiledPipeline;
+void missingNormalizedBinding;
+void providerArtifact;
 `;
 
 const consumerTsconfig = {
@@ -177,6 +307,11 @@ const consumerTsconfig = {
 const privateConsumerTsconfig = {
   ...consumerTsconfig,
   include: ['private-consumer.ts'],
+};
+
+const negativeConsumerTsconfig = {
+  ...consumerTsconfig,
+  include: ['negative-consumer.ts'],
 };
 
 assert.deepEqual(
@@ -225,10 +360,40 @@ try {
   const installedPackage = packagePath(consumerNodeModules, '@revisium/revo-run');
   await mkdir(installedPackage, { recursive: true });
   execFileSync('tar', ['-xzf', tarball, '-C', installedPackage, '--strip-components=1']);
-  assert.equal(
-    await readFile(join(installedPackage, 'dist/index.d.ts'), 'utf8'),
-    'export {};\n//# sourceMappingURL=index.d.ts.map',
-    'Packed declaration must contain only the empty-module marker and its source-map directive',
+  const rootDeclaration = await readFile(join(installedPackage, 'dist/index.d.ts'), 'utf8');
+  assert.match(rootDeclaration, /ExecutionPlanPin/);
+  assert.match(rootDeclaration, /RunExecutionPlanDocument/);
+  assert.match(rootDeclaration, /RunArtifactReference/);
+  assert.match(rootDeclaration, /RunConflict/);
+  assert.match(rootDeclaration, /RunFault/);
+  assert.doesNotMatch(rootDeclaration, /createRunManager|RunManager/);
+  const reachableRootDeclarations = readReachableDeclarations(
+    join(installedPackage, 'dist/index.d.ts'),
+  );
+  assert.doesNotMatch(
+    reachableRootDeclarations,
+    /@revisium\/revo-pipeline|CompiledPipeline|PipelineFacts|PipelineDecision/,
+    'Packed root declarations must remain pipeline-package-free',
+  );
+  assert.match(reachableRootDeclarations, /compiledPipeline: JsonValue/);
+  assert.match(reachableRootDeclarations, /idempotentExecution: boolean/);
+  assert.match(reachableRootDeclarations, /'PLAN_MISMATCH'/);
+  assert.match(reachableRootDeclarations, /'IDEMPOTENCY_CONFLICT'/);
+  assert.doesNotMatch(
+    reachableRootDeclarations,
+    /providerMetadata|retryable|readonly provider:|readonly url:|readonly path:/,
+    'Packed declarations must keep fault, conflict, and artifact shapes closed',
+  );
+  assert.deepEqual(
+    declarationModuleSpecifiers(reachableRootDeclarations).filter(
+      (specifier) =>
+        specifier === 'canonicalize' ||
+        specifier === 'node:crypto' ||
+        specifier.startsWith('@revisium/revo-agent-runtime') ||
+        specifier.startsWith('@revisium/revo-scripts'),
+    ),
+    [],
+    'Packed root declarations must exclude runtime and executor-provider dependencies',
   );
   const canonicalJsonDeclaration = await readFile(
     join(installedPackage, 'dist/policy/canonical-json/index.d.ts'),
@@ -258,6 +423,7 @@ try {
   );
   await writeFile(join(consumerDirectory, 'consumer.mjs'), runtimeConsumer);
   await writeFile(join(consumerDirectory, 'consumer.ts'), typeConsumer);
+  await writeFile(join(consumerDirectory, 'negative-consumer.ts'), negativeTypeConsumer);
   await writeFile(join(consumerDirectory, 'private-consumer.ts'), privateTypeConsumer);
   await writeFile(
     join(consumerDirectory, 'tsconfig.json'),
@@ -266,6 +432,10 @@ try {
   await writeFile(
     join(consumerDirectory, 'tsconfig.private.json'),
     `${JSON.stringify(privateConsumerTsconfig, undefined, 2)}\n`,
+  );
+  await writeFile(
+    join(consumerDirectory, 'tsconfig.negative.json'),
+    `${JSON.stringify(negativeConsumerTsconfig, undefined, 2)}\n`,
   );
 
   execFileSync(join(root, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.json'], {
@@ -281,13 +451,42 @@ try {
     (error: unknown) => commandFailureOutput(error).includes('TS2307'),
     'TypeScript must reject a private package deep import with TS2307',
   );
+  assert.throws(
+    () =>
+      execFileSync(join(root, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.negative.json'], {
+        cwd: consumerDirectory,
+        stdio: 'pipe',
+      }),
+    (error: unknown) => {
+      const output = commandFailureOutput(error);
+      const expectedDiagnostics = [
+        `TS2322: Type '"PROVIDER_FAILURE"' is not assignable to type 'RunFaultCode'.`,
+        `TS2353: Object literal may only specify known properties, and 'providerMetadata' does not exist in type 'RunFault'.`,
+        `TS2322: Type '"PLAN_MISMATCH"' is not assignable to type 'RunConflictCode'.`,
+        `TS2353: Object literal may only specify known properties, and 'retryable' does not exist in type 'RunConflict'.`,
+        `TS2322: Type '() => undefined' is not assignable to type 'JsonValue'.`,
+        `TS2741: Property 'idempotentExecution' is missing`,
+        `TS2353: Object literal may only specify known properties, and 'provider' does not exist in type 'RunArtifactReference'.`,
+      ];
+      const missingDiagnostics = expectedDiagnostics.filter(
+        (expected) => !output.includes(expected),
+      );
+      if (missingDiagnostics.length > 0) {
+        throw new Error(
+          `Missing expected diagnostics: ${missingDiagnostics.join(', ')}\n${output}`,
+        );
+      }
+      return true;
+    },
+    'TypeScript must report the expected closed-contract diagnostics',
+  );
   execFileSync(process.execPath, ['consumer.mjs'], {
     cwd: consumerDirectory,
     stdio: 'pipe',
   });
 
   console.log(
-    `Exact tarball validation passed (${manifest.files.length} files; ATTW, contents, ESM, types, reachable declaration isolation, runtime/type deep-import denial).`,
+    `Exact tarball validation passed (${manifest.files.length} files; ATTW, contents, ESM, types, closed-contract diagnostics, reachable declaration isolation, runtime/type deep-import denial).`,
   );
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true });

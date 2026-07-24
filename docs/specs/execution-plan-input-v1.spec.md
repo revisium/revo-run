@@ -1,7 +1,8 @@
 # Execution plan input v1
 
 - Status: Draft
-- Implementation: Not implemented
+- Implementation: Stable pins/document/policy values implemented; source and
+  lifecycle behavior not implemented
 
 ## Normative language and versioning
 
@@ -14,6 +15,10 @@ new `vN`, while this Draft may still change.
 This specification defines the immutable plan pin persisted by `revo-run`, the
 exact plan source injected into `RunManager`, and the package-owned
 `RunExecutionPlanDocument` returned through the public port.
+
+The value shapes and their boundary rules are already Stable in
+[Portable run contracts v1](portable-run-contracts-v1.spec.md). Exact source
+lookup, persistence, lifecycle loading, and pipeline decoding remain Draft.
 
 The host owns plan authoring, compilation, versioning, persistence, and digest
 construction. `revo-run` owns exact lookup and verification during run

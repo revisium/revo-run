@@ -17,14 +17,16 @@ Use this order when sources disagree:
 6. `README.md` summarizes consumer-visible status.
 
 The architecture validator is active. RunManager APIs and product layers remain
-Draft/unimplemented. The current root export is intentionally empty; the
+Draft/unimplemented. The root runtime namespace is intentionally empty and
+exports Stable portable contract types. The
 `@revisium/revo-run/canonical-json` semantic subpath is Stable and implemented.
 
 ## Package ownership
 
 The implemented foundation owns bounded descriptor-safe JSON snapshots, RFC
-8785 canonical text, and canonical SHA-256 digests. These utilities are not
-execution-plan or executor pin types.
+8785 canonical text, canonical SHA-256 digests, exact portable plan/executor
+pins, bounded immutable plan documents and policies, typed faults, and closed
+output/artifact payloads. A generic canonical digest is not a plan pin.
 
 The target package owns:
 
@@ -156,6 +158,7 @@ Notification may optimize wakeup but is not authority.
 
 ## Public surface
 
-Public entrypoints exist only in the export map. The foundation exposes an
-empty root plus the implemented `./canonical-json` semantic subpath. No Draft
-path reserves a future deep import.
+Public entrypoints exist only in the export map. The root has no runtime values
+and exposes only implemented portable types; `./canonical-json` is the
+implemented runtime semantic subpath. No Draft path reserves a future deep
+import.

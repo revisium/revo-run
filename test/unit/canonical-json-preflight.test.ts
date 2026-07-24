@@ -78,6 +78,17 @@ test('invokes the dependency only with the completed safe snapshot', () => {
   const safeArrayPrototype: unknown = Object.getPrototypeOf(snapshotArray);
   expect(safeArrayPrototype).not.toBe(Array.prototype);
   expect(Object.isFrozen(safeArrayPrototype)).toBe(true);
+  if (typeof safeArrayPrototype !== 'object' || safeArrayPrototype === null) {
+    throw new TypeError('Expected the safe array prototype to be an object.');
+  }
+
+  const forgedSnapshotArray = [1];
+  Object.setPrototypeOf(forgedSnapshotArray, safeArrayPrototype);
+  canonicalizeDependency.mockClear();
+  expect(() => canonicalizeJson(forgedSnapshotArray)).toThrowError(
+    new TypeError('Canonical JSON arrays must be dense and unmodified.'),
+  );
+  expect(canonicalizeDependency).not.toHaveBeenCalled();
 
   input.array[0]!.value = 2;
   input.record.nested = false;

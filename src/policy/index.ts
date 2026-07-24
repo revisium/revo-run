@@ -1,2 +1,15 @@
 export { canonicalizeJson } from './canonical-json/canonicalize-json.js';
 export { digestCanonicalJson } from './canonical-json/digest-canonical-json.js';
+export { snapshotExecutionPlanPin } from './snapshot-execution-plan-pin.js';
+export { snapshotExecutorConfiguration } from './snapshot-executor-configuration.js';
+export { snapshotExecutorContractPin } from './snapshot-executor-contract-pin.js';
+export { snapshotLeasePolicy } from './snapshot-lease-policy.js';
+export { snapshotPortableJsonValue } from './snapshot-portable-json-value.js';
+export { snapshotProcessLocalConcurrencyPolicy } from './snapshot-process-local-concurrency-policy.js';
+export { snapshotRetryPolicy } from './snapshot-retry-policy.js';
+export { snapshotRunArtifactReference } from './snapshot-run-artifact-reference.js';
+export { snapshotRunExecutionPlanDocument } from './snapshot-run-execution-plan-document.js';
+export { snapshotRunExecutionPlanExecutorBinding } from './snapshot-run-execution-plan-executor-binding.js';
+export { snapshotRunFaultMessage } from './snapshot-run-fault-message.js';
+export { snapshotRunOutputPayload } from './snapshot-run-output-payload.js';
+export { snapshotTimeoutPolicy } from './snapshot-timeout-policy.js';

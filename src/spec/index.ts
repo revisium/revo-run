@@ -1,2 +1,14 @@
 export type { CanonicalJsonSha256Digest } from './canonical-json-sha256-digest.js';
+export type { ExecutionPlanPin } from './execution-plan-pin.js';
+export type { ExecutorConfigurationDigest } from './executor-configuration-digest.js';
+export type { ExecutorConfigurationSnapshot } from './executor-configuration-snapshot.js';
+export type { ExecutorContractPin } from './executor-contract-pin.js';
 export type { JsonValue } from './json-value.js';
+export type { LeasePolicy } from './lease-policy.js';
+export type { ProcessLocalConcurrencyPolicy } from './process-local-concurrency-policy.js';
+export type { RetryPolicy } from './retry-policy.js';
+export type { RunArtifactReference } from './run-artifact-reference.js';
+export type { RunExecutionPlanDocument } from './run-execution-plan-document.js';
+export type { RunExecutionPlanExecutorBinding } from './run-execution-plan-executor-binding.js';
+export type { RunOutputPayload } from './run-output-payload.js';
+export type { TimeoutPolicy } from './timeout-policy.js';

@@ -1,0 +1,6 @@
+export type RunConflictCode =
+  | 'INVALID_STATE'
+  | 'STALE_ACTIVATION'
+  | 'REVISION_CONFLICT'
+  | 'STALE_FENCE'
+  | 'IDEMPOTENCY_CONFLICT';

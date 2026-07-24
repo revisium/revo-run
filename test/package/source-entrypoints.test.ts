@@ -1,9 +1,18 @@
 import { readFile } from 'node:fs/promises';
 
-import { expect, test } from 'vitest';
+import { expect, expectTypeOf, test } from 'vitest';
 
 import * as packageEntry from '../../src/index.js';
-import * as canonicalJsonEntry from '../../src/policy/index.js';
+import type {
+  ExecutionPlanPin,
+  ExecutorContractPin,
+  RunArtifactReference,
+  RunConflict,
+  RunExecutionPlanDocument,
+  RunFault,
+  RunOutputPayload,
+} from '../../src/index.js';
+import * as policyEntry from '../../src/policy/index.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -12,18 +21,44 @@ test('bootstrap entry point has no accidental public API', () => {
   expect(Object.keys(packageEntry)).toEqual([]);
 });
 
-test('canonical JSON has a curated semantic source surface', () => {
-  expect(Object.keys(canonicalJsonEntry).sort()).toEqual([
+test('policy has a curated source surface', () => {
+  expect(Object.keys(policyEntry).sort()).toEqual([
     'canonicalizeJson',
     'digestCanonicalJson',
+    'snapshotExecutionPlanPin',
+    'snapshotExecutorConfiguration',
+    'snapshotExecutorContractPin',
+    'snapshotLeasePolicy',
+    'snapshotPortableJsonValue',
+    'snapshotProcessLocalConcurrencyPolicy',
+    'snapshotRetryPolicy',
+    'snapshotRunArtifactReference',
+    'snapshotRunExecutionPlanDocument',
+    'snapshotRunExecutionPlanExecutorBinding',
+    'snapshotRunFaultMessage',
+    'snapshotRunOutputPayload',
+    'snapshotTimeoutPolicy',
   ]);
-  expect(canonicalJsonEntry.canonicalizeJson({ b: 1, a: 'value' })).toBe('{"a":"value","b":1}');
+  expect(policyEntry.canonicalizeJson({ b: 1, a: 'value' })).toBe('{"a":"value","b":1}');
 });
 
-test('source entrypoint is exactly the empty module marker', async () => {
-  expect(await readFile(new URL('../../src/index.ts', import.meta.url), 'utf8')).toBe(
-    'export {};\n',
-  );
+test('source root is type-only and does not promise a manager implementation', async () => {
+  const source = await readFile(new URL('../../src/index.ts', import.meta.url), 'utf8');
+  expect(source).toContain('export type {');
+  expect(source).not.toContain('createRunManager');
+  expect(source).not.toMatch(/export\s+(?:const|function|class)\s/);
+});
+
+test('root type surface is package-owned and provider-neutral', () => {
+  expectTypeOf<ExecutionPlanPin>().toHaveProperty('digest');
+  expectTypeOf<ExecutorContractPin>().toHaveProperty('adapterId');
+  expectTypeOf<RunExecutionPlanDocument['compiledPipeline']>().not.toBeFunction();
+  expectTypeOf<keyof RunArtifactReference>().toEqualTypeOf<
+    'artifactId' | 'bytes' | 'mediaType' | 'sha256'
+  >();
+  expectTypeOf<RunOutputPayload['kind']>().toEqualTypeOf<'artifact' | 'json'>();
+  expectTypeOf<RunFault['code']>().not.toEqualTypeOf<string>();
+  expectTypeOf<RunConflict['code']>().not.toEqualTypeOf<string>();
 });
 
 test('package metadata declares the intended package and explicit root export', async () => {
