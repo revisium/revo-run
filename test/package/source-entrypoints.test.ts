@@ -2,19 +2,21 @@ import { readFile } from 'node:fs/promises';
 
 import { expect, test } from 'vitest';
 
-import * as packageEntry from '../../src/index.js';
+import { canonicalizeJson, digestCanonicalJson } from '../../src/index.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-test('bootstrap entry point has no accidental public API', () => {
-  expect(Object.keys(packageEntry)).toEqual([]);
+test('root entry point exposes only the durable JSON utilities', () => {
+  expect(canonicalizeJson({ b: 1, a: 'value' })).toBe('{"a":"value","b":1}');
+  expect(digestCanonicalJson({ a: 1 })).toBe(
+    'sha256:015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862',
+  );
 });
 
-test('source entrypoint is exactly the empty module marker', async () => {
-  expect(await readFile(new URL('../../src/index.ts', import.meta.url), 'utf8')).toBe(
-    'export {};\n',
-  );
+test('production source has no pipeline or agent-runtime import', async () => {
+  const source = await readFile(new URL('../../src/index.ts', import.meta.url), 'utf8');
+  expect(source).not.toMatch(/@revisium\/revo-(?:pipeline|agent-runtime)/);
 });
 
 test('package metadata declares the intended package and explicit root export', async () => {
@@ -39,10 +41,10 @@ test('package metadata declares the intended package and explicit root export', 
   }).toEqual({
     name: '@revisium/revo-run',
     version: '0.0.0',
-    description: 'Portable durable run-state engine for Revo.',
+    description: 'Durable logical-attempt kernel for Revo.',
     homepage: 'https://github.com/revisium/revo-run#readme',
     type: 'module',
-    dependencies: undefined,
+    dependencies: { canonicalize: '3.0.0' },
     exports: {
       '.': {
         types: './dist/index.d.ts',

@@ -1,19 +1,14 @@
 # Documentation
 
-## Current architecture
+The architecture and ADR define the accepted package boundary. The versioned
+specifications define durable contracts; Phase-2 adapter material is explicitly
+design-only.
 
-- [Architecture](architecture.md)
-- [Boundary ADR](adr/0001-run-state-boundary.md)
-- [Expanded consumer example](examples/consumer.md)
-- [Testing](testing.md)
-- [Release train](release-train.md)
-
-## Draft target specifications
-
-- [Execution plan input v1](specs/execution-plan-input-v1.spec.md)
-- [Run domain v1](specs/run-domain-v1.spec.md)
-- [Run transitions v1](specs/run-transitions-v1.spec.md)
-- [Run storage v1](specs/run-storage-v1.spec.md)
-- [Internal module structure](specs/internal-module-structure.spec.md)
-
-Every specification above is **Draft**. None describes a shipped export yet.
+- [Architecture](./architecture.md)
+- [ADR 0001: durable logical attempts](./adr/0001-durable-logical-attempts.md)
+- [JSON envelope v1](./specs/json-envelope-v1.spec.md)
+- [Attempt lifecycle v1](./specs/attempt-lifecycle-v1.spec.md)
+- [Evidence store v1](./specs/evidence-store-v1.spec.md)
+- [Execution provider v1](./specs/execution-provider-v1.spec.md)
+- [Redaction and artifacts v1](./specs/redaction-artifacts-v1.spec.md)
+- [Pipeline adapter v1 — Phase 2 design only](./specs/pipeline-adapter-v1.spec.md)

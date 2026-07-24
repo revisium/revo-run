@@ -79,7 +79,44 @@ import assert from 'node:assert/strict';
 
 import * as packageEntry from '@revisium/revo-run';
 
-assert.deepEqual(Object.keys(packageEntry), []);
+assert.deepEqual(Object.keys(packageEntry).sort(), ['canonicalizeJson', 'digestCanonicalJson', 'validateArtifactRefV1']);
+assert.equal(packageEntry.canonicalizeJson({ b: 1, a: 'value' }), '{"a":"value","b":1}');
+assert.equal(
+  packageEntry.digestCanonicalJson({ a: 1 }),
+  'sha256:015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862',
+);
+assert.equal(
+  Buffer.from(packageEntry.canonicalizeJson({ '😀': 'grin', '€': 'euro', 'ö': 'diaeresis', '\\u0080': 'control' }), 'utf8').toString('hex'),
+  '7b22c280223a22636f6e74726f6c222c22c3b6223a22646961657265736973222c22e282ac223a226575726f222c22f09f9880223a226772696e227d',
+);
+
+const priorToJson = Object.getOwnPropertyDescriptor(Object.prototype, 'toJSON');
+let pollutionCalls = 0;
+Object.defineProperty(Object.prototype, 'toJSON', {
+  configurable: true,
+  value: () => { pollutionCalls += 1; throw new Error('must not run'); },
+});
+try {
+  assert.equal(packageEntry.canonicalizeJson({ value: 1 }), '{"value":1}');
+assert.equal(pollutionCalls, 0);
+} finally {
+  if (priorToJson) Object.defineProperty(Object.prototype, 'toJSON', priorToJson);
+  else Reflect.deleteProperty(Object.prototype, 'toJSON');
+}
+assert.equal(
+  packageEntry.validateArtifactRefV1({
+    bytes: 1,
+    contentDigest: null,
+    immutableRevision: 'git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    inline: null,
+    locator: { kind: 'git-commit', repositoryId: 'repo_1', commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+    mediaType: 'application/json',
+    mode: 'external',
+    retentionClass: 'run',
+    schemaVersion: 'revo-run/artifact-ref/v1',
+  }).ok,
+  true,
+);
 
 await assert.rejects(
   import('@revisium/revo-run/dist/index.js'),
@@ -146,8 +183,11 @@ try {
     },
   );
   const parsedPackOutput: unknown = JSON.parse(packOutput);
-  assert.ok(Array.isArray(parsedPackOutput) && parsedPackOutput.length === 1);
-  const manifest: unknown = parsedPackOutput[0];
+  const manifest: unknown = Array.isArray(parsedPackOutput)
+    ? parsedPackOutput[0]
+    : isRecord(parsedPackOutput)
+      ? Object.values(parsedPackOutput)[0]
+      : undefined;
   assert.ok(isPackManifest(manifest));
 
   const tarball = join(packDirectory, manifest.filename);
@@ -157,12 +197,13 @@ try {
   const installedPackage = packagePath(consumerNodeModules, '@revisium/revo-run');
   await mkdir(installedPackage, { recursive: true });
   execFileSync('tar', ['-xzf', tarball, '-C', installedPackage, '--strip-components=1']);
-  assert.equal(
+  assert.match(
     await readFile(join(installedPackage, 'dist/index.d.ts'), 'utf8'),
-    'export {};\n//# sourceMappingURL=index.d.ts.map',
-    'Packed declaration must contain only the empty-module marker and its source-map directive',
+    /export declare const digestCanonicalJson:/,
+    'Packed declaration must include the public digest utility',
   );
   await linkPackage(join(root, 'node_modules'), consumerNodeModules, '@types/node');
+  await linkPackage(join(root, 'node_modules'), consumerNodeModules, 'canonicalize');
 
   await writeFile(
     join(consumerDirectory, 'package.json'),

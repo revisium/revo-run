@@ -240,7 +240,9 @@ const validateExternalReference = (path: string, specifier: string): void => {
   ) {
     fail('forbidden-orchestrator-import', path, specifier);
   }
-  if (sourceLayer(path) === 'lifecycle' && specifier === '@revisium/revo-pipeline') return;
+  if (path === 'src/index.ts' && (specifier === 'canonicalize' || specifier === 'node:crypto')) {
+    return;
+  }
   fail('external-import', path, specifier);
 };
 

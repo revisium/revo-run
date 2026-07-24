@@ -1,7 +1,7 @@
 {
   "name": "@revisium/revo-run",
   "version": "0.0.0",
-  "description": "Portable durable run-state engine for Revo.",
+  "description": "Durable logical-attempt kernel for Revo.",
   "homepage": "https://github.com/revisium/revo-run#readme",
   "bugs": {
     "url": "https://github.com/revisium/revo-run/issues"
@@ -50,6 +50,9 @@
     "sonar:issues:local": "bash scripts/sonar-issues-local.sh",
     "ci:local:sonar": "bash scripts/ci-local-sonar.sh",
     "prepack": "pnpm run build"
+  },
+  "dependencies": {
+    "canonicalize": "3.0.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",

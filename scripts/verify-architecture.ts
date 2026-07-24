@@ -96,19 +96,6 @@ const positiveGraph: readonly SourceModule[] = [
     path: 'src/storage/index.ts',
     source: "export type { RunStorePort } from './run-store-port.js';\n",
   },
-  {
-    path: 'src/lifecycle/advance-lifecycle.ts',
-    source:
-      "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nimport { advanceRun } from '../domain/index.js';\nimport type { RunInput } from '../spec/index.js';\nimport type { RunStorePort } from '../storage/index.js';\nexport const advanceLifecycle = (_pipeline: CompiledPipeline, input: RunInput, _store: RunStorePort): number => advanceRun(input);\n",
-  },
-  {
-    path: 'src/lifecycle/index.ts',
-    source: "export { advanceLifecycle } from './advance-lifecycle.js';\n",
-  },
-  {
-    path: 'src/index.ts',
-    source: "export { advanceLifecycle } from './lifecycle/index.js';\n",
-  },
 ];
 
 validateModuleStructure([
@@ -166,6 +153,26 @@ const probes: readonly (readonly [ArchitectureRule, readonly SourceModule[]])[] 
         path: 'src/domain/prisma-run.ts',
         source:
           "import type { PrismaClient } from '@prisma/client';\nexport const usePrisma = (_client: PrismaClient): void => undefined;\n",
+      },
+    ],
+  ],
+  [
+    'external-import',
+    [
+      {
+        path: 'src/lifecycle/agent-runtime.ts',
+        source:
+          "import type { AgentRuntime } from '@revisium/revo-agent-runtime';\nexport const runtime = (_value: AgentRuntime): void => undefined;\n",
+      },
+    ],
+  ],
+  [
+    'external-import',
+    [
+      {
+        path: 'src/lifecycle/pipeline.ts',
+        source:
+          "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nexport const pipeline = (_value: CompiledPipeline): void => undefined;\n",
       },
     ],
   ],

@@ -38,11 +38,6 @@ test('accepts the intended layer dependency direction', () => {
         source:
           "import type { createRun } from '../domain/index.js';\nexport interface RunStore { save(value: ReturnType<typeof createRun>): Promise<void> }\n",
       },
-      {
-        path: 'src/lifecycle/start-run.ts',
-        source:
-          "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nimport { createRun } from '../domain/index.js';\nexport const startRun = (_pipeline: CompiledPipeline): typeof createRun => createRun;\n",
-      },
     ]),
   ).not.toThrow();
 });
@@ -154,28 +149,21 @@ test.each([
   );
 });
 
-test('allows only the pipeline package and only from lifecycle', () => {
-  expect(() =>
-    validateModuleStructure([
-      {
-        path: 'src/lifecycle/compile.ts',
-        source:
-          "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nexport const compile = (pipeline: CompiledPipeline): CompiledPipeline => pipeline;\n",
-      },
-    ]),
-  ).not.toThrow();
-
-  expectViolation(
-    [
-      {
-        path: 'src/domain/compile.ts',
-        source:
-          "import type { CompiledPipeline } from '@revisium/revo-pipeline';\nexport const compile = (pipeline: CompiledPipeline): CompiledPipeline => pipeline;\n",
-      },
-    ],
-    'external-import',
-  );
-});
+test.each(['@revisium/revo-pipeline', '@revisium/revo-agent-runtime'])(
+  'rejects forbidden package import %s from every production layer',
+  (packageName) => {
+    expect.hasAssertions();
+    expectViolation(
+      [
+        {
+          path: 'src/lifecycle/compile.ts',
+          source: `import type { ImportedContract } from '${packageName}';\nexport const compile = (value: ImportedContract): ImportedContract => value;\n`,
+        },
+      ],
+      'external-import',
+    );
+  },
+);
 
 test('requires the root entrypoint to use curated layer barrels', () => {
   expect.hasAssertions();
