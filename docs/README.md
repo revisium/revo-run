@@ -12,6 +12,7 @@
 ## Stable implemented specifications
 
 - [Canonical JSON v1](specs/canonical-json-v1.spec.md)
+- [Portable run contracts v1](specs/portable-run-contracts-v1.spec.md)
 
 ## Draft target specifications
 
@@ -23,9 +24,10 @@
 - [Run executor v1](specs/run-executor-v1.spec.md)
 - [Internal module structure](specs/internal-module-structure.spec.md)
 
-Every target specification in the Draft section describes no shipped export.
-Canonical JSON v1 is the only Stable implemented contract. The architecture
-rules are Accepted and already enforced by repository validation.
+Every target specification in the Draft section describes deferred behavior,
+even when it references Stable portable values. Canonical JSON v1 and portable
+run contracts v1 are Stable and implemented. The architecture rules are
+Accepted and already enforced by repository validation.
 
 ## Specification conventions
 

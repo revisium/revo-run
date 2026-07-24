@@ -2,10 +2,10 @@
 
 ## Current status
 
-The architecture validator is active. The package root is still empty, while
-the canonical JSON semantic subpath is Stable and implemented. All RunManager
-behavior proof below is required before Draft APIs become implemented or
-Stable.
+The architecture validator is active. The package root has an empty runtime
+namespace and exports Stable portable contracts as types. The canonical JSON
+semantic subpath is Stable and implemented. All RunManager behavior proof below
+is required before Draft APIs become implemented or Stable.
 
 ### Canonical JSON foundation
 
@@ -15,10 +15,20 @@ acyclic references, recursive snapshot freezing/copy isolation, invalid
 surrogates, the official RFC sorting vector and every Appendix B number row,
 including non-finite rejection, and exact
 depth/member/UTF-8 boundaries. Package proof compiles and executes the semantic
-subpath from one exact tarball while proving the root remains empty, reachable
-declarations contain no runtime dependency reference, and private deep imports
-fail. Intentionally leaking declaration fixtures prove detection of both
-`canonicalize` and `node:crypto`.
+subpath from one exact tarball while proving the root runtime namespace remains
+empty, reachable declarations contain no runtime dependency reference, and
+private deep imports fail. Intentionally leaking declaration fixtures prove
+detection of both `canonicalize` and `node:crypto`.
+
+### Portable contract foundation
+
+Tests prove exact opaque plan and executor pins, complete canonical
+configuration digests, hostile descriptor isolation, defensive recursive
+freezing with ordinary iterable portable arrays, normalized-document exact
+member/UTF-8 boundaries, exact retry/timeout/lease/concurrency bounds, unique
+executor bindings, closed provider-neutral artifact references, output payload
+union exhaustiveness, bounded faults/conflicts, negative type diagnostics, root
+type-only declarations, and use from the same exact packed tarball.
 
 ## Proof layers
 

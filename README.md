@@ -12,8 +12,9 @@
 </div>
 
 > [!IMPORTANT]
-> This repository is in bootstrap and the npm package is not published. Its root export is intentionally empty.
-> `@revisium/revo-run/canonical-json` is implemented; the RunManager APIs below remain Draft target specifications.
+> This repository is in bootstrap and the npm package is not published. Its root runtime namespace is intentionally empty
+> and currently exports only Stable portable contract types. `@revisium/revo-run/canonical-json` is implemented; the
+> RunManager APIs below remain Draft target specifications.
 > Architecture enforcement is active in repository validation.
 
 ## About
@@ -52,6 +53,36 @@ and hashes exactly the returned UTF-8 text.
 
 The root remains runtime-empty. A canonical digest is a general value digest;
 it is not an execution-plan or executor-contract pin.
+
+## Implemented portable contract types
+
+The package root exposes provider-neutral values as type-only exports:
+
+```ts
+import type {
+  ExecutionPlanPin,
+  ExecutorContractPin,
+  RunArtifactReference,
+  RunExecutionPlanDocument,
+  RunFault,
+  RunOutputPayload,
+} from '@revisium/revo-run';
+```
+
+They cover exact opaque plan/executor pins, JSON-only immutable plan documents,
+canonical executor-configuration digests, bounded retry/timeout/lease and
+process-local concurrency policy, typed faults/conflicts, and a closed
+value-or-artifact output payload.
+
+Plan digests remain opaque and host-owned. Executor configuration digests use
+the shipped canonical JSON algorithm over the complete defensive configuration
+snapshot. Artifact references contain only opaque id, media type, lowercase
+SHA-256, and safe byte count; they contain no locator, URL, path, provider,
+retention, or credential fields.
+
+The package uses internal snapshot/validation helpers at its boundaries. Those
+helpers are not package exports. Fixed v1 limits and exact shapes are defined in
+[Portable run contracts v1](./docs/specs/portable-run-contracts-v1.spec.md).
 
 ## Draft RunManager quick start
 
@@ -262,6 +293,8 @@ wires store, ports, lifecycle, and manager into `createRunManager`.
 ## Documentation
 
 - [Canonical JSON v1](./docs/specs/canonical-json-v1.spec.md) — Stable implemented value and digest contract.
+- [Portable run contracts v1](./docs/specs/portable-run-contracts-v1.spec.md) — Stable implemented pins, policies, faults,
+  plan document, and output payload values.
 - [RunManager v1](./docs/specs/run-manager-v1.spec.md) — public facade, recovery, subscriptions, and drain.
 - [Run executor v1](./docs/specs/run-executor-v1.spec.md) — dispatch, reconciliation, cancellation, and unknown outcomes.
 - [Execution plan input v1](./docs/specs/execution-plan-input-v1.spec.md) — exact immutable plan source and persisted pin.
@@ -275,8 +308,9 @@ wires store, ports, lifecycle, and manager into `createRunManager`.
 - [Release train](./docs/release-train.md) — verified package release flow.
 
 The architecture and its enforcement are Accepted and active. Canonical JSON v1
-is Stable and implemented. Every RunManager product API and specification is
-currently **Draft and unimplemented**.
+and portable run contracts v1 are Stable and implemented. Every RunManager
+behavioral API and remaining product specification is currently **Draft and
+unimplemented**.
 
 ## Requirements
 
@@ -315,11 +349,14 @@ Quality Gate and fail when open Sonar issues remain.
 
 ## Package contract
 
-The package is ESM-only, uses explicit exports, emits declarations, and ships only `dist`, `README.md`, `LICENSE`, and
-package metadata. The bootstrap entrypoint stays empty until the public `RunManager` slice is implemented, tested, and
-documented. Before shipping, exact packed-consumer and declaration tests must prove that the plan source exposes only
-package-owned JSON, subscriptions expose `.initial`, skip iteration when it is terminal, and complete immediately after a
-terminal item, and no pipeline type/cast leaks through the lifecycle facade or any other reachable public declaration.
+The package is ESM-only, uses explicit exports, emits declarations, and ships
+only `dist`, `README.md`, `LICENSE`, and package metadata. The root runtime
+namespace stays empty until the public `RunManager` slice is implemented,
+tested, and documented. Its current type-only declarations and the canonical
+JSON semantic subpath are proved from one exact tarball. Before RunManager
+ships, package proof must additionally cover subscription and lifecycle
+behavior and prove no pipeline type/cast leaks through any reachable public
+declaration.
 
 ## License
 

@@ -1,8 +1,9 @@
 # Internal module structure
 
 - Status: Draft
-- Implementation: Architecture rules and canonical JSON `spec`/`policy` leaves
-  implemented; RunManager product layers not implemented
+- Implementation: Architecture rules, canonical JSON, portable `spec`/`policy`
+  contracts, and type-only `errors` implemented; RunManager product layers not
+  implemented
 
 ## Normative language and versioning
 
