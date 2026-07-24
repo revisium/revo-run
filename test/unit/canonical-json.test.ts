@@ -225,6 +225,8 @@ describe('canonical JSON hostile-value isolation', () => {
       Number.NEGATIVE_INFINITY,
       '\ud800',
       '\udc00',
+      '\ud800x',
+      'x\udc00',
       { '\ud800': 'value' },
       { '\udc00': 'value' },
       { toJSON: null },

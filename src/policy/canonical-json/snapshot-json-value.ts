@@ -59,23 +59,17 @@ const escapedControlByteLength = (codeUnit: number): number => {
 };
 
 const encodedCharacterAt = (value: string, index: number): EncodedCharacter => {
-  const codeUnit = value.charCodeAt(index);
-  if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
-    const nextCodeUnit = value.charCodeAt(index + 1);
-    if (index + 1 >= value.length || nextCodeUnit < 0xdc00 || nextCodeUnit > 0xdfff) {
-      throw new TypeError(invalidUnicodeMessage);
-    }
-    return { codeUnits: 2, utf8Bytes: 4 };
-  }
-  if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+  const codePoint = value.codePointAt(index);
+  if (codePoint === undefined || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
     throw new TypeError(invalidUnicodeMessage);
   }
-  if (codeUnit < 0x20) {
-    return { codeUnits: 1, utf8Bytes: escapedControlByteLength(codeUnit) };
+  if (codePoint > 0xffff) return { codeUnits: 2, utf8Bytes: 4 };
+  if (codePoint < 0x20) {
+    return { codeUnits: 1, utf8Bytes: escapedControlByteLength(codePoint) };
   }
-  if (codeUnit === 0x22 || codeUnit === 0x5c) return { codeUnits: 1, utf8Bytes: 2 };
-  if (codeUnit <= 0x7f) return { codeUnits: 1, utf8Bytes: 1 };
-  if (codeUnit <= 0x7ff) return { codeUnits: 1, utf8Bytes: 2 };
+  if (codePoint === 0x22 || codePoint === 0x5c) return { codeUnits: 1, utf8Bytes: 2 };
+  if (codePoint <= 0x7f) return { codeUnits: 1, utf8Bytes: 1 };
+  if (codePoint <= 0x7ff) return { codeUnits: 1, utf8Bytes: 2 };
   return { codeUnits: 1, utf8Bytes: 3 };
 };
 
