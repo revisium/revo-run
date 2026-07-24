@@ -42,24 +42,13 @@ export type ArtifactValidationResultV1 =
   | { readonly ok: false; readonly error: ContractErrorV1 };
 
 const hasUnpairedSurrogate = (value: string): boolean => {
-  for (let index = 0; index < value.length; index += 1) {
-    const codeUnit = value.charCodeAt(index);
-    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
-      const next = value.charCodeAt(index + 1);
-      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
-      index += 1;
-    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-      return true;
-    }
-  }
-
-  return false;
+  return /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(value);
 };
 
 const isArrayIndex = (key: string): boolean => {
-  if (!/^(?:0|[1-9][0-9]*)$/.test(key)) return false;
+  if (key.length === 0) return false;
   const index = Number(key);
-  return Number.isSafeInteger(index) && index < 2 ** 32 - 1;
+  return Number.isSafeInteger(index) && String(index) === key && index >= 0 && index < 2 ** 32 - 1;
 };
 
 const canonicalArrayPrototype: object = {};
@@ -70,6 +59,63 @@ Object.defineProperty(canonicalArrayPrototype, 'map', {
   value: Array.prototype.map,
   writable: false,
 });
+
+const copyArray = (value: unknown[], ancestors: WeakSet<object>): readonly JsonValue[] => {
+  const copy: JsonValue[] = [];
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string' || (key !== 'length' && !isArrayIndex(key))) {
+      throw new TypeError('JCS arrays must not have custom properties.');
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (key !== 'length' && (!descriptor || !('value' in descriptor))) {
+      throw new TypeError('JCS arrays must not use getters or setters.');
+    }
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.hasOwn(value, index)) throw new TypeError('JCS arrays must not be sparse.');
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || !('value' in descriptor)) {
+      throw new TypeError('JCS arrays must not use getters or setters.');
+    }
+    Object.defineProperty(copy, String(index), {
+      configurable: true,
+      enumerable: true,
+      value: copyCanonicalValue(descriptor.value, ancestors),
+      writable: true,
+    });
+  }
+  Object.setPrototypeOf(copy, canonicalArrayPrototype);
+  return copy;
+};
+
+const copyObject = (
+  value: object,
+  ancestors: WeakSet<object>,
+): { readonly [key: string]: JsonValue } => {
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError('JCS values must use plain objects.');
+  }
+  const copy: { [key: string]: JsonValue } = {};
+  Object.setPrototypeOf(copy, null);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string') throw new TypeError('JCS objects must not use symbol keys.');
+    if (key === 'toJSON') throw new TypeError('JCS objects must not define toJSON.');
+    if (hasUnpairedSurrogate(key))
+      throw new TypeError('JCS object keys must not contain unpaired surrogates.');
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !('value' in descriptor)) {
+      throw new TypeError('JCS objects must not use getters or setters.');
+    }
+    Object.defineProperty(copy, key, {
+      configurable: true,
+      enumerable: true,
+      value: copyCanonicalValue(descriptor.value, ancestors),
+      writable: true,
+    });
+  }
+  return copy;
+};
 
 function copyCanonicalValue(value: unknown, ancestors: WeakSet<object>): JsonValue {
   if (value === null || typeof value === 'boolean') return value;
@@ -89,57 +135,7 @@ function copyCanonicalValue(value: unknown, ancestors: WeakSet<object>): JsonVal
 
   ancestors.add(value);
   try {
-    if (Array.isArray(value)) {
-      const copy: JsonValue[] = [];
-      for (const key of Reflect.ownKeys(value)) {
-        if (typeof key !== 'string' || (key !== 'length' && !isArrayIndex(key))) {
-          throw new TypeError('JCS arrays must not have custom properties.');
-        }
-        const descriptor = Object.getOwnPropertyDescriptor(value, key);
-        if (key !== 'length' && (!descriptor || !('value' in descriptor))) {
-          throw new TypeError('JCS arrays must not use getters or setters.');
-        }
-      }
-      for (let index = 0; index < value.length; index += 1) {
-        if (!Object.hasOwn(value, index)) throw new TypeError('JCS arrays must not be sparse.');
-        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-        if (!descriptor || !('value' in descriptor)) {
-          throw new TypeError('JCS arrays must not use getters or setters.');
-        }
-        Object.defineProperty(copy, String(index), {
-          configurable: true,
-          enumerable: true,
-          value: copyCanonicalValue(descriptor.value, ancestors),
-          writable: true,
-        });
-      }
-      Object.setPrototypeOf(copy, canonicalArrayPrototype);
-      return copy;
-    }
-
-    const prototype: unknown = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new TypeError('JCS values must use plain objects.');
-    }
-    const copy: { [key: string]: JsonValue } = {};
-    Object.setPrototypeOf(copy, null);
-    for (const key of Reflect.ownKeys(value)) {
-      if (typeof key !== 'string') throw new TypeError('JCS objects must not use symbol keys.');
-      if (key === 'toJSON') throw new TypeError('JCS objects must not define toJSON.');
-      if (hasUnpairedSurrogate(key))
-        throw new TypeError('JCS object keys must not contain unpaired surrogates.');
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (!descriptor || !('value' in descriptor)) {
-        throw new TypeError('JCS objects must not use getters or setters.');
-      }
-      Object.defineProperty(copy, key, {
-        configurable: true,
-        enumerable: true,
-        value: copyCanonicalValue(descriptor.value, ancestors),
-        writable: true,
-      });
-    }
-    return copy;
+    return Array.isArray(value) ? copyArray(value, ancestors) : copyObject(value, ancestors);
   } finally {
     ancestors.delete(value);
   }
@@ -200,17 +196,24 @@ const expectedRevision = (locator: ExternalLocatorV1): string => {
   throw new Error('Unsupported external locator kind.');
 };
 
+const allowedLocatorKeys = (kind: string): readonly string[] | undefined => {
+  switch (kind) {
+    case 'git-commit':
+    case 'github-commit':
+      return ['kind', 'repositoryId', 'commit'];
+    case 'revisium-revision':
+      return ['kind', 'projectId', 'revisionId'];
+    default:
+      return undefined;
+  }
+};
+
 const validateLocator = (value: unknown): ExternalLocatorV1 | ContractErrorV1 => {
   if (!isRecord(value) || typeof value.kind !== 'string') {
     return contractError('/locator/kind', 'locator_kind_invalid');
   }
 
-  const allowedKeys =
-    value.kind === 'revisium-revision'
-      ? ['kind', 'projectId', 'revisionId']
-      : value.kind === 'git-commit' || value.kind === 'github-commit'
-        ? ['kind', 'repositoryId', 'commit']
-        : undefined;
+  const allowedKeys = allowedLocatorKeys(value.kind);
   if (!allowedKeys) return contractError('/locator/kind', 'locator_kind_invalid');
   for (const key of Object.keys(value)) {
     if (!allowedKeys.includes(key)) return contractError(`/locator/${key}`, 'unknown_field');
@@ -259,7 +262,7 @@ const isMediaType = (value: unknown): value is string =>
 /** Validates the closed external-artifact coordinates before digest or persistence. */
 export const validateArtifactRefV1 = (value: unknown): ArtifactValidationResultV1 => {
   if (!isRecord(value)) return artifactError('', 'artifact_invalid');
-  const rootFields = [
+  const rootFields = new Set([
     'schemaVersion',
     'mode',
     'mediaType',
@@ -269,9 +272,9 @@ export const validateArtifactRefV1 = (value: unknown): ArtifactValidationResultV
     'locator',
     'immutableRevision',
     'retentionClass',
-  ];
+  ]);
   for (const key of Object.keys(value)) {
-    if (!rootFields.includes(key)) return artifactError(`/${key}`, 'unknown_field');
+    if (!rootFields.has(key)) return artifactError(`/${key}`, 'unknown_field');
   }
   if (value.schemaVersion !== 'revo-run/artifact-ref/v1') {
     return artifactError('/schemaVersion', 'schema_version_invalid');
