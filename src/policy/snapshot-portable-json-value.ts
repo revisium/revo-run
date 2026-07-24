@@ -1,5 +1,6 @@
 import type { JsonValue } from '../spec/index.js';
 import { snapshotJsonValue } from './canonical-json/snapshot-json-value.js';
+import { forEachArrayValue } from './for-each-array-value.js';
 
 type JsonRecord = { readonly [key: string]: JsonValue };
 
@@ -11,19 +12,15 @@ const isJsonRecord = (value: JsonValue): value is JsonRecord =>
 const copyPortableValue = (value: JsonValue): JsonValue => {
   if (isJsonArray(value)) {
     const copy: JsonValue[] = [];
-    for (let index = 0; index < value.length; index += 1) {
-      const item = value[index];
-      if (item === undefined) {
-        throw new TypeError('Portable JSON snapshot contains an invalid array.');
-      }
+    forEachArrayValue(value, (item) => {
       copy.push(copyPortableValue(item));
-    }
+    });
     return Object.freeze(copy);
   }
   if (isJsonRecord(value)) {
     const copy: Record<string, JsonValue> = {};
     Object.setPrototypeOf(copy, null);
-    for (const key of Object.keys(value)) {
+    forEachArrayValue(Object.keys(value), (key) => {
       const member = value[key];
       if (member === undefined) {
         throw new TypeError('Portable JSON snapshot contains an invalid record.');
@@ -34,7 +31,7 @@ const copyPortableValue = (value: JsonValue): JsonValue => {
         value: copyPortableValue(member),
         writable: true,
       });
-    }
+    });
     return Object.freeze(copy);
   }
   return value;

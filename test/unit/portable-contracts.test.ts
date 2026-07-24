@@ -95,6 +95,14 @@ describe('portable exact pins and executor configuration', () => {
     executorInput.adapterId = 'changed';
     expect(plan.id).toBe('release-plan');
     expect(executor.adapterId).toBe('agent-adapter');
+
+    const maximumAstralId = '😀'.repeat(64);
+    expect(snapshotExecutionPlanPin({ ...planInput, id: maximumAstralId }).id).toBe(
+      maximumAstralId,
+    );
+    expect(() => snapshotExecutionPlanPin({ ...planInput, id: '😀'.repeat(65) })).toThrowError(
+      new RangeError('Portable contract string exceeds its fixed UTF-8 bound.'),
+    );
   });
 
   test('rejects empty, oversized, control-bearing, surrogate, accessor, and extra pin fields', () => {
@@ -111,6 +119,7 @@ describe('portable exact pins and executor configuration', () => {
       { id: '', revision: '1', digest: 'd' },
       { id: 'x'.repeat(257), revision: '1', digest: 'd' },
       { id: 'line\nbreak', revision: '1', digest: 'd' },
+      { id: 'next\u0085line', revision: '1', digest: 'd' },
       { id: '\ud800', revision: '1', digest: 'd' },
       { id: 'plan', revision: '1', digest: 'd', extra: true },
       accessor,
@@ -256,6 +265,40 @@ describe('execution plan document', () => {
       nested: { enabled: true },
       values: [1, 'two'],
     });
+  });
+
+  test('preserves every binding in order when the array iterator is replaced', () => {
+    const originalIterator = Array.prototype[Symbol.iterator];
+    const originalIteratorDescriptor = Object.getOwnPropertyDescriptor(
+      Array.prototype,
+      Symbol.iterator,
+    );
+    const sourceBindings = [bindingFor('node-a'), bindingFor('node-b')];
+    let document: RunExecutionPlanDocument | undefined;
+
+    try {
+      Reflect.defineProperty(Array.prototype, Symbol.iterator, {
+        configurable: true,
+        value: () => originalIterator.call([]),
+        writable: true,
+      });
+      document = snapshotRunExecutionPlanDocument({
+        compiledPipeline: { nodes: ['node-a', 'node-b'] },
+        executorBindings: sourceBindings,
+        pin: { digest: 'opaque', id: 'plan', revision: '1' },
+      });
+    } finally {
+      if (originalIteratorDescriptor) {
+        Reflect.defineProperty(Array.prototype, Symbol.iterator, originalIteratorDescriptor);
+      }
+    }
+
+    expect(document?.executorBindings).toHaveLength(2);
+    expect(document?.executorBindings.map((binding) => binding.nodeKey)).toEqual([
+      'node-a',
+      'node-b',
+    ]);
+    expect(document?.compiledPipeline).toEqual({ nodes: ['node-a', 'node-b'] });
   });
 
   test('defaults a missing idempotency declaration to false', () => {

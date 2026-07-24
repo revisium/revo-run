@@ -1,12 +1,13 @@
 import { readFile } from 'node:fs/promises';
 
-import { expect, test } from 'vitest';
+import { expect, expectTypeOf, test } from 'vitest';
 
 import * as packageEntry from '../../src/index.js';
 import type {
   ExecutionPlanPin,
   ExecutorContractPin,
   RunArtifactReference,
+  RunConflict,
   RunExecutionPlanDocument,
   RunFault,
   RunOutputPayload,
@@ -49,31 +50,15 @@ test('source root is type-only and does not promise a manager implementation', a
 });
 
 test('root type surface is package-owned and provider-neutral', () => {
-  const planPin: ExecutionPlanPin = {
-    digest: 'opaque',
-    id: 'plan',
-    revision: '1',
-  };
-  const executorPin: ExecutorContractPin = {
-    adapterId: 'adapter',
-    digest: 'contract',
-    revision: '1',
-  };
-  const artifact: RunArtifactReference = {
-    artifactId: 'artifact',
-    bytes: 1,
-    mediaType: 'text/plain',
-    sha256: 'a'.repeat(64),
-  };
-  const output: RunOutputPayload = { artifact, kind: 'artifact' };
-  const document: RunExecutionPlanDocument = {
-    compiledPipeline: {},
-    executorBindings: [],
-    pin: planPin,
-  };
-  const fault: RunFault = { code: 'PLAN_UNAVAILABLE', message: 'Plan unavailable.' };
-
-  expect({ document, executorPin, fault, output }).toBeDefined();
+  expectTypeOf<ExecutionPlanPin>().toHaveProperty('digest');
+  expectTypeOf<ExecutorContractPin>().toHaveProperty('adapterId');
+  expectTypeOf<RunExecutionPlanDocument['compiledPipeline']>().not.toBeFunction();
+  expectTypeOf<keyof RunArtifactReference>().toEqualTypeOf<
+    'artifactId' | 'bytes' | 'mediaType' | 'sha256'
+  >();
+  expectTypeOf<RunOutputPayload['kind']>().toEqualTypeOf<'artifact' | 'json'>();
+  expectTypeOf<RunFault['code']>().not.toEqualTypeOf<string>();
+  expectTypeOf<RunConflict['code']>().not.toEqualTypeOf<string>();
 });
 
 test('package metadata declares the intended package and explicit root export', async () => {

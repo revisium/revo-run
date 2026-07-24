@@ -1,4 +1,5 @@
 import type { JsonValue } from '../spec/index.js';
+import { forEachArrayValue } from './for-each-array-value.js';
 import { snapshotPortableJsonValue } from './snapshot-portable-json-value.js';
 
 type JsonRecord = { readonly [key: string]: JsonValue };
@@ -24,27 +25,28 @@ const assertExactKeys = (
     throw new TypeError(invalidInputMessage);
   }
 
-  const allowed = new Set([...required, ...optional]);
-  for (const key of keys) {
+  const allowed = new Set<string>();
+  forEachArrayValue(required, (key) => allowed.add(key));
+  forEachArrayValue(optional, (key) => allowed.add(key));
+  forEachArrayValue(keys, (key) => {
     if (!allowed.has(key)) throw new TypeError(invalidInputMessage);
-  }
-  for (const key of required) {
+  });
+  forEachArrayValue(required, (key) => {
     if (!Object.hasOwn(value, key)) throw new TypeError(invalidInputMessage);
-  }
+  });
 };
 
 const assertWellFormedWithoutControls = (value: string): void => {
   for (let index = 0; index < value.length; index += 1) {
-    const codeUnit = value.charCodeAt(index);
-    if (codeUnit <= 0x1f || (codeUnit >= 0x7f && codeUnit <= 0x9f)) {
+    const codePoint = value.codePointAt(index);
+    if (codePoint === undefined || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
       throw new TypeError(invalidInputMessage);
     }
-    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
-      const next = value.charCodeAt(index + 1);
-      if (next < 0xdc00 || next > 0xdfff) throw new TypeError(invalidInputMessage);
-      index += 1;
-    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+    if (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f)) {
       throw new TypeError(invalidInputMessage);
+    }
+    if (codePoint > 0xffff) {
+      index += 1;
     }
   }
 };
