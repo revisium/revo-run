@@ -1356,6 +1356,42 @@ describe('lifecycle coordination', () => {
     };
     await acquireLifecycle.acquire(acquireRequest);
     const acquireRecord = await readIdempotency(acquireSource, acquireIdentity);
+    const maximumFenceAttempt = attemptFixture({
+      fencingToken: Number.MAX_SAFE_INTEGER,
+      leaseExpiresAt: 2_900,
+    });
+    const maximumFenceRequest = {
+      ...acquireRequest,
+      candidate: {
+        ...acquireCandidate,
+        attempt: {
+          ...acquireCandidate.attempt,
+          fencingToken: Number.MAX_SAFE_INTEGER,
+        },
+      },
+    };
+    const maximumFenceStore = new LogicalRunStoreFake(3_000);
+    maximumFenceStore.seed({
+      attempts: [maximumFenceAttempt],
+      idempotency: [{ lookup: acquireIdentity, record: acquireRecord }],
+      nodes: [incumbentNode],
+      runs: [runFixture()],
+    });
+    await expect(
+      createRunLifecycle({ store: maximumFenceStore }).acquire(maximumFenceRequest),
+    ).resolves.toEqual(invalidResult);
+    await expect(
+      maximumFenceStore.transaction((transaction) =>
+        transaction.getAttempt(maximumFenceAttempt.id),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'found',
+      value: {
+        fencingToken: Number.MAX_SAFE_INTEGER,
+        managerIncarnationId: 'manager-1',
+        revision: 0,
+      },
+    });
     const malformedAcquires = [
       structuredClone(acquireRecord),
       structuredClone(acquireRecord),
