@@ -12,9 +12,13 @@ database concurrency proof exists. Package-private executor snapshots, pure
 binding verification, fault refinements, and type-only executor ports are also
 implemented. Package-private lifecycle discovery, claim, lease renewal,
 durable handoff, ownership acquisition, and exact resolver/Start preparation
-are implemented over the Store contract. Recovery handles, observations/results, pipeline
-progression, manager/composition, and all RunManager behavioral APIs remain
-Draft and unimplemented.
+are implemented over the Store contract. Lifecycle-owned hostile observation
+normalization, reconciliation preparation, and fenced direct-unknown plus
+reconciled-running/unknown commits are also implemented. Known terminal
+observations are prepared but are not committed without pipeline progression.
+Retry selection, cancellation invocation, terminal graph progression,
+manager/composition, and all RunManager behavioral APIs remain Draft and
+unimplemented.
 
 ## Purpose
 

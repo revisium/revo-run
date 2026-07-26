@@ -1,7 +1,10 @@
 # Run executor v1
 
 - Status: Draft
-- Implementation: Package-private data, verification, faults, and type-only ports implemented; runtime behavior not implemented
+- Implementation: Package-private data, verification, faults, type-only ports,
+  hostile observation normalization, reconciliation preparation, and
+  unknown/running lifecycle commits implemented; terminal progression,
+  cancellation invocation, and manager orchestration not implemented
 
 ## Normative language and versioning
 
@@ -185,8 +188,12 @@ This specification does not define:
 
 ## Implementation boundary
 
-The implemented slice contains only immutable invocation/output snapshots,
-pure exact binding verification, executor fault refinements, and type-only
-executor/resolver ports. It does not normalize adapter results, perform Start
-or result acceptance, orchestrate recovery, invoke executors, or implement a
-manager, registry, adapter, provider, or composition root.
+The implemented package-private slices include immutable invocation/output
+snapshots, pure exact binding verification, executor fault refinements,
+type-only executor/resolver ports, exact resolve plus Start preparation,
+lifecycle-owned hostile result normalization, reconciliation begin under fresh
+authority, and fenced direct-unknown/reconciled-running/reconciled-unknown
+commits. Known terminal observations are copied and returned as
+`requires_progression` without a Store write. Retry calculation, terminal
+pipeline progression, cancellation invocation, manager orchestration,
+registry/adapters/providers, and composition remain unimplemented.

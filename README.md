@@ -17,9 +17,11 @@
 > package-private pure Run domain foundation and type-only Store contracts are implemented. Store behavior currently has
 > logical fake conformance only, not durable-database proof. Package-private executor snapshots, pure binding verification,
 > fault refinements, and type-only ports are implemented. Package-private lifecycle discovery, claim, lease renewal,
-> durable handoff, ownership acquisition, and exact resolver/Start preparation are also implemented. Recovery handles,
-> observations/results, pipeline progression, manager/composition, and the RunManager APIs below remain Draft target
-> specifications.
+> durable handoff, ownership acquisition, and exact resolver/Start preparation are also implemented. Lifecycle now
+> normalizes executor observations, prepares reconciliation under a fresh fenced CAS, records direct unknown and
+> reconciled running/unknown outcomes, and prepares known terminal observations without committing their later pipeline
+> progression. Retry/terminal progression, cancellation invocation, manager/composition, and the RunManager APIs below
+> remain Draft target specifications.
 > Architecture enforcement is active in repository validation.
 
 ## About
@@ -126,9 +128,13 @@ output snapshots, exact binding/configuration verification with deterministic
 mismatch reasons, executor-specific fault refinements, and type-only
 executor/resolver ports. Missing binding idempotence defaults to `false`.
 
-This slice does not invoke executors or normalize their runtime results. It
-does not implement Start/result Store commits, recovery orchestration,
-lifecycle, manager, composition, a registry, or a provider adapter.
+Lifecycle captures execute/reconcile capabilities only after exact resolution,
+normalizes their untrusted results into bounded package-owned observations, and
+uses fresh database-time authority for the implemented unknown/running
+transitions. Known terminal observations stop at a frozen
+`requires_progression` result because retry and graph progression require the
+later pipeline slice. Adapter cancellation invocation remains unimplemented.
+No manager, composition, registry, or provider adapter is implemented.
 
 ## Draft RunManager quick start
 
