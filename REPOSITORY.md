@@ -16,7 +16,8 @@ Use this order when sources disagree:
 5. `docs/architecture.md` explains the Accepted dependency direction.
 6. `README.md` summarizes consumer-visible status.
 
-The architecture validator is active. RunManager APIs and product layers remain
+The architecture validator is active. The package-private pure domain layer is
+implemented; storage, ports, lifecycle, manager, and composition remain
 Draft/unimplemented. The root runtime namespace is intentionally empty and
 exports Stable portable contract types. The
 `@revisium/revo-run/canonical-json` semantic subpath is Stable and implemented.
@@ -25,8 +26,9 @@ exports Stable portable contract types. The
 
 The implemented foundation owns bounded descriptor-safe JSON snapshots, RFC
 8785 canonical text, canonical SHA-256 digests, exact portable plan/executor
-pins, bounded immutable plan documents and policies, typed faults, and closed
-output/artifact payloads. A generic canonical digest is not a plan pin.
+pins, bounded immutable plan documents and policies, typed faults, closed
+output/artifact payloads, and package-private pure Run aggregate/prospective
+transition behavior. A generic canonical digest is not a plan pin.
 
 The target package owns:
 

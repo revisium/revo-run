@@ -4,8 +4,9 @@
 
 The architecture validator is active. The package root has an empty runtime
 namespace and exports Stable portable contracts as types. The canonical JSON
-semantic subpath is Stable and implemented. All RunManager behavior proof below
-is required before Draft APIs become implemented or Stable.
+semantic subpath is Stable and implemented. The package-private pure domain
+foundation is implemented and tested; storage/lifecycle/manager proof below
+remains required before Draft APIs become implemented or Stable.
 
 ### Canonical JSON foundation
 
@@ -29,6 +30,18 @@ member/UTF-8 boundaries, exact retry/timeout/lease/concurrency bounds, unique
 executor bindings, closed provider-neutral artifact references, output payload
 union exhaustiveness, bounded faults/conflicts, negative type diagnostics, root
 type-only declarations, and use from the same exact packed tarball.
+
+### Pure domain foundation
+
+Tests exhaustively cover Run/node/Attempt status tables, active-pointer and
+Attempt-status compatibility, every source-aware direct/late/reconciled pair,
+known results from unknown/reconciling state, revision/no-op/rejection
+semantics, transaction-time lease equality, diagnostic owner-label isolation,
+closed correlations, immutable outputs/event intents, deterministic scoped
+activation tuples, cancellation multi-node invariants, and negative
+root/package surface. These are pure prospective proofs; they do not claim
+database CAS, lease minting, handoff/takeover, graph progression, or terminal
+pipeline policy.
 
 ## Proof layers
 
