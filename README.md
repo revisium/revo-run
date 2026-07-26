@@ -17,7 +17,7 @@
 > package-private pure Run domain foundation and type-only Store contracts are implemented. Store behavior currently has
 > logical fake conformance only, not durable-database proof. Package-private executor snapshots, pure binding verification,
 > fault refinements, and type-only ports are implemented. Package-private lifecycle discovery, claim, lease renewal,
-> durable handoff, and ownership acquisition are also implemented. Resolver/Start, recovery handles,
+> durable handoff, ownership acquisition, and exact resolver/Start preparation are also implemented. Recovery handles,
 > observations/results, pipeline progression, manager/composition, and the RunManager APIs below remain Draft target
 > specifications.
 > Architecture enforcement is active in repository validation.
