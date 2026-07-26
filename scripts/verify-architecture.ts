@@ -204,6 +204,21 @@ const positiveGraph: readonly SourceModule[] = [
       "export { advanceLifecycle } from './advance-lifecycle.js';\nexport type { RunLifecycle } from './run-lifecycle.js';\n",
   },
   {
+    path: 'src/lifecycle/run-lifecycle-dependencies.ts',
+    source:
+      "import type { RunStorePort } from '../storage/index.js';\nexport interface RunLifecycleDependencies { readonly store: RunStorePort }\n",
+  },
+  {
+    path: 'src/lifecycle/create-run-lifecycle.ts',
+    source:
+      "import type { RunLifecycleDependencies } from './run-lifecycle-dependencies.js';\nexport const createRunLifecycle = (_dependencies: RunLifecycleDependencies): void => undefined;\n",
+  },
+  {
+    path: 'src/lifecycle/construction.ts',
+    source:
+      "export { createRunLifecycle } from './create-run-lifecycle.js';\nexport type { RunLifecycleDependencies } from './run-lifecycle-dependencies.js';\n",
+  },
+  {
     path: 'src/manager/build-run-manager.ts',
     source:
       "import type { RunLifecycle } from '../lifecycle/index.js';\nimport type { ExecutionPlanSource } from '../ports/index.js';\nimport type { RunInput } from '../spec/index.js';\nexport const buildRunManager = (lifecycle: RunLifecycle, _plans: ExecutionPlanSource, input: RunInput): number => lifecycle.advance(input);\n",
@@ -215,7 +230,7 @@ const positiveGraph: readonly SourceModule[] = [
   {
     path: 'src/composition/create-run-manager.ts',
     source:
-      "import { advanceLifecycle, type RunLifecycle } from '../lifecycle/index.js';\nimport { buildRunManager } from '../manager/index.js';\nimport type { ExecutionPlanSource } from '../ports/index.js';\nimport type { RunInput } from '../spec/index.js';\nimport type { RunStorePort } from '../storage/index.js';\nexport const createRunManager = (input: RunInput, store: RunStorePort, plans: ExecutionPlanSource): number => { const lifecycle: RunLifecycle = { advance: (value) => advanceLifecycle(value, store, plans) }; return buildRunManager(lifecycle, plans, input); };\n",
+      "import { createRunLifecycle } from '../lifecycle/construction.js';\nimport { advanceLifecycle, type RunLifecycle } from '../lifecycle/index.js';\nimport { buildRunManager } from '../manager/index.js';\nimport type { ExecutionPlanSource } from '../ports/index.js';\nimport type { RunInput } from '../spec/index.js';\nimport type { RunStorePort } from '../storage/index.js';\nexport const createRunManager = (input: RunInput, store: RunStorePort, plans: ExecutionPlanSource): number => { createRunLifecycle({ store }); const lifecycle: RunLifecycle = { advance: (value) => advanceLifecycle(value, store, plans) }; return buildRunManager(lifecycle, plans, input); };\n",
   },
   {
     path: 'src/composition/index.ts',
@@ -240,6 +255,15 @@ execFileSync(
 );
 
 const probes: readonly (readonly [ArchitectureRule, readonly SourceModule[]])[] = [
+  [
+    'manager-store-reference',
+    [
+      {
+        path: 'src/manager/run-manager.ts',
+        source: 'export interface ManagerState { readonly marker: "RunStore" }\n',
+      },
+    ],
+  ],
   [
     'canonical-json-import',
     [
@@ -626,6 +650,45 @@ try {
     negativeDeclarations,
     marker,
     'Reachable declaration scan must detect a transitive pipeline leak',
+  );
+
+  const storePositiveRoot = join(declarationProbeRoot, 'store-positive');
+  await writeFixtureFiles(storePositiveRoot, {
+    'tsconfig.json': commonFiles['tsconfig.json'],
+    'src/storage/index.ts': 'export interface RunStore { transaction(): Promise<void> }\n',
+    'src/lifecycle/run-lifecycle.ts':
+      'export interface RunLifecycle { discover(): Promise<void>; claim(): Promise<void>; renewLease(): Promise<void>; writeHandoff(): Promise<void>; acquire(): Promise<void> }\n',
+    'src/lifecycle/run-lifecycle-dependencies.ts':
+      "import type { RunStore } from '../storage/index.js';\nexport interface RunLifecycleDependencies { readonly store: RunStore }\n",
+    'src/lifecycle/create-run-lifecycle.ts':
+      "import type { RunLifecycleDependencies } from './run-lifecycle-dependencies.js';\nimport type { RunLifecycle } from './run-lifecycle.js';\nexport declare const createRunLifecycle: (dependencies: RunLifecycleDependencies) => RunLifecycle;\n",
+    'src/lifecycle/construction.ts':
+      "export { createRunLifecycle } from './create-run-lifecycle.js';\nexport type { RunLifecycleDependencies } from './run-lifecycle-dependencies.js';\n",
+    'src/lifecycle/index.ts': "export type { RunLifecycle } from './run-lifecycle.js';\n",
+  });
+  const storeNegativeRoot = join(declarationProbeRoot, 'store-negative');
+  await writeFixtureFiles(storeNegativeRoot, {
+    'tsconfig.json': commonFiles['tsconfig.json'],
+    'src/storage/index.ts': 'export interface RunStore { transaction(): Promise<void> }\n',
+    'src/lifecycle/index.ts':
+      "import type { RunStore } from '../storage/index.js';\nexport interface RunLifecycle { readonly store: RunStore }\n",
+  });
+  for (const fixtureRoot of [storePositiveRoot, storeNegativeRoot]) {
+    execFileSync(join(root, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.json'], {
+      cwd: fixtureRoot,
+      stdio: 'pipe',
+    });
+  }
+  const storeMarker = /\bRunStore\b|\/storage\//;
+  assert.doesNotMatch(
+    readReachableDeclarations(join(storePositiveRoot, 'dist/lifecycle/index.d.ts')),
+    storeMarker,
+    'Store must not be reachable from manager-facing lifecycle declarations',
+  );
+  assert.match(
+    readReachableDeclarations(join(storeNegativeRoot, 'dist/lifecycle/index.d.ts')),
+    storeMarker,
+    'Reachable declaration scan must detect a Store-bearing lifecycle facade',
   );
 
   const canonicalCommonFiles = {

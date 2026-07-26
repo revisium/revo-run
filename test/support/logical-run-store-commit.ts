@@ -811,6 +811,14 @@ const validateTransitionExpectations = (
   if (transition.outputs.some((output) => output.createdAt !== transactionNow)) {
     return invalid('New output timestamps must equal transaction time.');
   }
+  for (const attemptId of expected.absentAttemptIds) {
+    if (state.attempts.has(attemptId))
+      return conflict('REVISION_CONFLICT', 'Attempt id already exists.');
+  }
+  for (const outputId of expected.absentOutputIds) {
+    if (state.outputs.has(outputId))
+      return conflict('REVISION_CONFLICT', 'Output id already exists.');
+  }
   if (
     transition.nodes.filter((node) => state.nodes.has(node.id)).length !== expected.nodes.length ||
     transition.attempts.filter((attempt) => state.attempts.has(attempt.id)).length !==
@@ -826,14 +834,6 @@ const validateTransitionExpectations = (
   }
   if (!expected.attempts.every((attempt) => attemptExpectationMatches(state, attempt))) {
     return conflict('STALE_FENCE', 'Attempt expectation is stale.');
-  }
-  for (const attemptId of expected.absentAttemptIds) {
-    if (state.attempts.has(attemptId))
-      return conflict('REVISION_CONFLICT', 'Attempt id already exists.');
-  }
-  for (const outputId of expected.absentOutputIds) {
-    if (state.outputs.has(outputId))
-      return conflict('REVISION_CONFLICT', 'Output id already exists.');
   }
   const newNodes = transition.nodes.filter((node) => !state.nodes.has(node.id));
   return validateNewNodes(state, newNodes, expected.absentNodes);
@@ -1338,6 +1338,9 @@ export const applyLogicalRunStoreCommit = (
   if (command.kind === 'claim_attempt') {
     if (!validLeasePolicy(transactionNow, command.leasePolicy)) {
       return invalid('Claim LeasePolicy is invalid.');
+    }
+    if (state.attempts.has(command.expected.absentAttemptId)) {
+      return conflict('REVISION_CONFLICT', 'Attempt id already exists.');
     }
     const claimedAttempt = command.transition.attempts.find(
       (attempt) => attempt.id === command.expected.absentAttemptId,
