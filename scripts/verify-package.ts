@@ -99,6 +99,7 @@ const validateContents = (manifest: PackManifest): void => {
     'dist/spec/run-artifact-reference.d.ts',
     'dist/spec/run-execution-plan-document.d.ts',
     'dist/spec/run-output-payload.d.ts',
+    'dist/ports/index.d.ts',
     'dist/policy/canonical-json/index.d.ts',
     'dist/policy/canonical-json/index.d.ts.map',
     'dist/policy/canonical-json/index.js',
@@ -135,6 +136,10 @@ assert.equal(
 
 await assert.rejects(
   import('@revisium/revo-run/dist/index.js'),
+  (error) => error instanceof Error && 'code' in error && error.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED',
+);
+await assert.rejects(
+  import('@revisium/revo-run/ports'),
   (error) => error instanceof Error && 'code' in error && error.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED',
 );
 `;
@@ -221,6 +226,13 @@ import * as privateDomain from '@revisium/revo-run/domain';
 
 void privateEntry;
 void privateDomain;
+`;
+
+const privatePortsTypeConsumer = `
+import type { ExecutorResolver } from '@revisium/revo-run/ports';
+
+declare const resolver: ExecutorResolver;
+void resolver;
 `;
 
 const negativeTypeConsumer = `
@@ -316,6 +328,11 @@ const negativeConsumerTsconfig = {
   include: ['negative-consumer.ts'],
 };
 
+const privatePortsConsumerTsconfig = {
+  ...consumerTsconfig,
+  include: ['private-ports-consumer.ts'],
+};
+
 assert.deepEqual(
   declarationModuleSpecifiers(`
 import 'side-effect-package';
@@ -369,6 +386,10 @@ try {
   assert.match(rootDeclaration, /RunConflict/);
   assert.match(rootDeclaration, /RunFault/);
   assert.doesNotMatch(rootDeclaration, /createRunManager|RunManager/);
+  assert.doesNotMatch(
+    rootDeclaration,
+    /ExecutorInvocationSnapshot|ExecutorResolver|ResolvedExecutor|verifyExecutorBinding/,
+  );
   const reachableRootDeclarations = readReachableDeclarations(
     join(installedPackage, 'dist/index.d.ts'),
   );
@@ -427,6 +448,7 @@ try {
   await writeFile(join(consumerDirectory, 'consumer.ts'), typeConsumer);
   await writeFile(join(consumerDirectory, 'negative-consumer.ts'), negativeTypeConsumer);
   await writeFile(join(consumerDirectory, 'private-consumer.ts'), privateTypeConsumer);
+  await writeFile(join(consumerDirectory, 'private-ports-consumer.ts'), privatePortsTypeConsumer);
   await writeFile(
     join(consumerDirectory, 'tsconfig.json'),
     `${JSON.stringify(consumerTsconfig, undefined, 2)}\n`,
@@ -438,6 +460,10 @@ try {
   await writeFile(
     join(consumerDirectory, 'tsconfig.negative.json'),
     `${JSON.stringify(negativeConsumerTsconfig, undefined, 2)}\n`,
+  );
+  await writeFile(
+    join(consumerDirectory, 'tsconfig.private-ports.json'),
+    `${JSON.stringify(privatePortsConsumerTsconfig, undefined, 2)}\n`,
   );
 
   execFileSync(join(root, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.json'], {
@@ -452,6 +478,21 @@ try {
       }),
     (error: unknown) => commandFailureOutput(error).includes('TS2307'),
     'TypeScript must reject a private package deep import with TS2307',
+  );
+  assert.throws(
+    () =>
+      execFileSync(join(root, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.private-ports.json'], {
+        cwd: consumerDirectory,
+        stdio: 'pipe',
+      }),
+    (error: unknown) => {
+      const output = commandFailureOutput(error);
+      return (
+        output.includes('TS2307') &&
+        output.includes("Cannot find module '@revisium/revo-run/ports'")
+      );
+    },
+    'TypeScript must independently reject @revisium/revo-run/ports with an exact-path TS2307',
   );
   assert.throws(
     () =>

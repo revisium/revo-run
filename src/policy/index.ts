@@ -3,6 +3,10 @@ export { digestCanonicalJson } from './canonical-json/digest-canonical-json.js';
 export { snapshotExecutionPlanPin } from './snapshot-execution-plan-pin.js';
 export { snapshotExecutorConfiguration } from './snapshot-executor-configuration.js';
 export { snapshotExecutorContractPin } from './snapshot-executor-contract-pin.js';
+export { snapshotExecutorAttemptReference } from './snapshot-executor-attempt-reference.js';
+export { snapshotExecutorInvocationSnapshot } from './snapshot-executor-invocation-snapshot.js';
+export { snapshotExecutorOutput } from './snapshot-executor-output.js';
+export { snapshotExecutorOutputs } from './snapshot-executor-outputs.js';
 export { snapshotLeasePolicy } from './snapshot-lease-policy.js';
 export { snapshotPortableJsonValue } from './snapshot-portable-json-value.js';
 export { snapshotProcessLocalConcurrencyPolicy } from './snapshot-process-local-concurrency-policy.js';
@@ -13,3 +17,4 @@ export { snapshotRunExecutionPlanExecutorBinding } from './snapshot-run-executio
 export { snapshotRunFaultMessage } from './snapshot-run-fault-message.js';
 export { snapshotRunOutputPayload } from './snapshot-run-output-payload.js';
 export { snapshotTimeoutPolicy } from './snapshot-timeout-policy.js';
+export { verifyExecutorBinding } from './verify-executor-binding.js';

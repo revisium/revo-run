@@ -13,6 +13,7 @@ import type {
   RunOutputPayload,
 } from '../../src/index.js';
 import * as policyEntry from '../../src/policy/index.js';
+import * as portsEntry from '../../src/ports/index.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -26,8 +27,12 @@ test('policy has a curated source surface', () => {
     'canonicalizeJson',
     'digestCanonicalJson',
     'snapshotExecutionPlanPin',
+    'snapshotExecutorAttemptReference',
     'snapshotExecutorConfiguration',
     'snapshotExecutorContractPin',
+    'snapshotExecutorInvocationSnapshot',
+    'snapshotExecutorOutput',
+    'snapshotExecutorOutputs',
     'snapshotLeasePolicy',
     'snapshotPortableJsonValue',
     'snapshotProcessLocalConcurrencyPolicy',
@@ -38,8 +43,13 @@ test('policy has a curated source surface', () => {
     'snapshotRunFaultMessage',
     'snapshotRunOutputPayload',
     'snapshotTimeoutPolicy',
+    'verifyExecutorBinding',
   ]);
   expect(policyEntry.canonicalizeJson({ b: 1, a: 'value' })).toBe('{"a":"value","b":1}');
+});
+
+test('package-private executor ports are type-only', () => {
+  expect(Object.keys(portsEntry)).toEqual([]);
 });
 
 test('source root is type-only and does not promise a manager implementation', async () => {

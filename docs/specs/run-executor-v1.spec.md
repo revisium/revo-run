@@ -1,7 +1,7 @@
 # Run executor v1
 
 - Status: Draft
-- Implementation: Not implemented
+- Implementation: Package-private data, verification, faults, and type-only ports implemented; runtime behavior not implemented
 
 ## Normative language and versioning
 
@@ -54,7 +54,7 @@ reconcile(input): Promise<ReconcileResult>
 cancel(input): Promise<CancelResult>
 ```
 
-Exact TypeScript shapes remain Draft. All inputs MUST be package-owned immutable
+The package-private TypeScript shapes are implemented. All inputs MUST be package-owned immutable
 snapshots and include only the bounded execution data, attempt identity,
 idempotency identity, and cancellation signal needed by the adapter.
 
@@ -182,3 +182,11 @@ This specification does not define:
 - credential management;
 - model, prompt, permission, or workspace resolution;
 - physical process isolation.
+
+## Implementation boundary
+
+The implemented slice contains only immutable invocation/output snapshots,
+pure exact binding verification, executor fault refinements, and type-only
+executor/resolver ports. It does not normalize adapter results, perform Start
+or result acceptance, orchestrate recovery, invoke executors, or implement a
+manager, registry, adapter, provider, or composition root.
