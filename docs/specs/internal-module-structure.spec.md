@@ -3,7 +3,8 @@
 - Status: Draft
 - Implementation: Architecture rules, canonical JSON, portable `spec`/`policy`
   contracts, type-only `errors`, and package-private pure `domain` implemented;
-  storage/lifecycle/manager/composition not implemented
+  type-only storage contracts implemented; storage adapters,
+  lifecycle/manager/composition not implemented
 
 ## Normative language and versioning
 

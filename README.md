@@ -14,7 +14,8 @@
 > [!IMPORTANT]
 > This repository is in bootstrap and the npm package is not published. Its root runtime namespace is intentionally empty
 > and currently exports only Stable portable contract types. `@revisium/revo-run/canonical-json` is implemented; the
-> package-private pure Run domain foundation is implemented. The RunManager APIs below remain Draft target specifications.
+> package-private pure Run domain foundation and type-only Store contracts are implemented. Store behavior currently has
+> logical fake conformance only, not durable-database proof. The RunManager APIs below remain Draft target specifications.
 > Architecture enforcement is active in repository validation.
 
 ## About
@@ -98,6 +99,21 @@ This is intentionally not a package export or a working manager. It performs no
 storage write, CAS, polling, executor call, clock read, handoff/takeover,
 pipeline progression, or terminal-policy selection. Those boundaries remain
 Draft and are introduced only by their owning later slices.
+
+## Implemented internal Store contracts
+
+The package-private type-only `storage` layer defines the closed transactional
+Store commands, DB-time/CAS expectations, idempotency identities, fence-scoped
+handoff history, ownership acquisition results, materialized events, discovery
+candidates, and bounded cursor pages. It is not a root or package export.
+
+The repository test harness exercises the logical contract, including atomic
+rollback, transaction terminality, command families, lease/fence boundaries,
+handoff consumption, takeover pairs, scoped activation uniqueness, ordered
+events, and bounded pagination. This evidence does not claim database time,
+isolation, locking, contention, SQL rollback, reconnect behavior, or
+cross-process correctness. No PostgreSQL, SQL, Prisma, or provider adapter is
+implemented.
 
 ## Draft RunManager quick start
 

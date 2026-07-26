@@ -16,10 +16,11 @@ Use this order when sources disagree:
 5. `docs/architecture.md` explains the Accepted dependency direction.
 6. `README.md` summarizes consumer-visible status.
 
-The architecture validator is active. The package-private pure domain layer is
-implemented; storage, ports, lifecycle, manager, and composition remain
-Draft/unimplemented. The root runtime namespace is intentionally empty and
-exports Stable portable contract types. The
+The architecture validator is active. The package-private pure domain layer and
+type-only storage contracts are implemented; the Store conformance harness is
+logical-only and no durable adapter exists. Ports, lifecycle, manager, and
+composition remain Draft/unimplemented. The root runtime namespace is
+intentionally empty and exports Stable portable contract types. The
 `@revisium/revo-run/canonical-json` semantic subpath is Stable and implemented.
 
 ## Package ownership
