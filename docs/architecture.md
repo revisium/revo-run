@@ -5,9 +5,11 @@
 This architecture is **Accepted** and its module rules are actively enforced by
 repository validation. The package root remains runtime-empty while exporting
 Stable portable contract types. The semantic
-`@revisium/revo-run/canonical-json` subpath and package-private pure domain
-foundation are implemented; all RunManager behavioral APIs described below
-remain Draft and unimplemented.
+`@revisium/revo-run/canonical-json` subpath, package-private pure domain
+foundation, and package-private type-only Store contracts are implemented.
+Store behavior has a logical conformance fake only; no durable adapter or
+database concurrency proof exists. All RunManager behavioral APIs described
+below remain Draft and unimplemented.
 
 ## Purpose
 

@@ -13,9 +13,10 @@ wins for concrete commands, package boundaries, and repository policy.
 - Protected base branch: `master`.
 - Primary local gate: `pnpm verify`.
 - The root runtime namespace is intentionally empty. It exports Stable portable
-  contract types; the canonical JSON semantic subpath is implemented;
-  the pure domain foundation is package-private and implemented; RunManager
-  product specs/APIs remain Draft.
+  contract types; the canonical JSON semantic subpath, pure domain foundation,
+  and package-private type-only Store contracts are implemented. Store behavior
+  currently has logical fake conformance only; RunManager product specs/APIs
+  remain Draft.
 - The exact `canonicalize@3.0.0` dependency is isolated to the canonical JSON
   policy leaf. No product integration dependency is installed.
 

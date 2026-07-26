@@ -1,7 +1,8 @@
 # Run storage v1
 
 - Status: Draft
-- Implementation: Not implemented
+- Implementation: Package-private type contracts and logical fake conformance
+  implemented; durable adapter and database concurrency proof not implemented
 
 ## Normative language and versioning
 
