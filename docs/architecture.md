@@ -10,8 +10,10 @@ foundation, and package-private type-only Store contracts are implemented.
 Store behavior has a logical conformance fake only; no durable adapter or
 database concurrency proof exists. Package-private executor snapshots, pure
 binding verification, fault refinements, and type-only executor ports are also
-implemented. Executor invocation, normalization, durable Start/result
-acceptance, recovery orchestration, and all RunManager behavioral APIs remain
+implemented. Package-private lifecycle discovery, claim, lease renewal,
+durable handoff, and ownership acquisition are implemented over the Store
+contract. Resolver/Start, recovery handles, observations/results, pipeline
+progression, manager/composition, and all RunManager behavioral APIs remain
 Draft and unimplemented.
 
 ## Purpose

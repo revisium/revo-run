@@ -16,8 +16,10 @@
 > and currently exports only Stable portable contract types. `@revisium/revo-run/canonical-json` is implemented; the
 > package-private pure Run domain foundation and type-only Store contracts are implemented. Store behavior currently has
 > logical fake conformance only, not durable-database proof. Package-private executor snapshots, pure binding verification,
-> fault refinements, and type-only ports are implemented. Executor invocation, recovery orchestration, and the RunManager
-> APIs below remain Draft target specifications.
+> fault refinements, and type-only ports are implemented. Package-private lifecycle discovery, claim, lease renewal,
+> durable handoff, and ownership acquisition are also implemented. Resolver/Start, recovery handles,
+> observations/results, pipeline progression, manager/composition, and the RunManager APIs below remain Draft target
+> specifications.
 > Architecture enforcement is active in repository validation.
 
 ## About

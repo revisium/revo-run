@@ -49,6 +49,7 @@ export type ArchitectureRule =
   | 'forbidden-orchestrator-import'
   | 'forbidden-production-import'
   | 'manager-boundary-inference'
+  | 'manager-store-reference'
   | 'one-export-per-leaf'
   | 'own-barrel-import'
   | 'pipeline-facade-import'
@@ -113,8 +114,12 @@ const sourceLayer = (path: string): Layer | undefined => {
 
 const isRoot = (path: string): boolean => path === 'src/index.ts';
 
+const isCuratedEntrypoint = (path: string): boolean => path === 'src/lifecycle/construction.ts';
+
 const isBarrel = (path: string): boolean =>
-  !isRoot(path) && path.startsWith('src/') && posix.basename(path) === 'index.ts';
+  !isRoot(path) &&
+  path.startsWith('src/') &&
+  (posix.basename(path) === 'index.ts' || isCuratedEntrypoint(path));
 
 const isProductionLeaf = (path: string): boolean =>
   path.startsWith('src/') && path.endsWith('.ts') && !isRoot(path) && !isBarrel(path);
@@ -301,7 +306,7 @@ const validateRelativeReference = (path: string, target: string): void => {
     if (
       target.startsWith('src/') &&
       target !== 'src/index.ts' &&
-      (!targetLayer || target !== `src/${targetLayer}/index.ts`)
+      (!targetLayer || (target !== `src/${targetLayer}/index.ts` && !isCuratedEntrypoint(target)))
     ) {
       fail('test-private-import', path, target);
     }
@@ -317,6 +322,10 @@ const validateRelativeReference = (path: string, target: string): void => {
 
   const resolvedFromLayer = fromLayer ?? fail('private-import', path, target);
   const resolvedTargetLayer = targetLayer ?? fail('private-import', path, target);
+
+  if (resolvedFromLayer === 'composition' && target === 'src/lifecycle/construction.ts') {
+    return;
+  }
 
   if (resolvedFromLayer === resolvedTargetLayer) {
     if (path === 'src/lifecycle/index.ts' && target.startsWith('src/lifecycle/pipeline/')) {
@@ -349,6 +358,9 @@ const validateReferences = (path: string, references: readonly ModuleReference[]
 
 const validateManagerBoundaryInference = (path: string, sourceFile: SourceFile): void => {
   if (sourceLayer(path) !== 'manager') return;
+  if (/\bRunStore\b/.test(sourceFile.text)) {
+    fail('manager-store-reference', path, 'RunStore');
+  }
 
   const visit = (node: Node): void => {
     if (
@@ -371,7 +383,6 @@ const validateSourceFile = (path: string, sourceFile: SourceFile): readonly Modu
 
   validateExplicitBarrel(path, sourceFile);
   validateTypeOnlySyntax(path, sourceFile);
-  validateManagerBoundaryInference(path, sourceFile);
 
   if (isProductionLeaf(path) && exportedEntityCount(sourceFile.statements) !== 1) {
     fail('one-export-per-leaf', path);
@@ -379,6 +390,7 @@ const validateSourceFile = (path: string, sourceFile: SourceFile): readonly Modu
 
   const references = moduleReferences(path, sourceFile);
   validateReferences(path, references);
+  validateManagerBoundaryInference(path, sourceFile);
   return references;
 };
 

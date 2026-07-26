@@ -85,6 +85,11 @@ verification contract must use real PostgreSQL and cover:
 
 An in-memory fake is not sufficient evidence for those properties.
 
+The package-private lifecycle coordination suite uses the logical Store fake
+only as orchestration-contract evidence. It does not satisfy this conditional
+PostgreSQL gate or establish database isolation, transaction-time, or
+multi-process claim behavior.
+
 ## Sonar
 
 With `.env.sonar` or exported credentials:

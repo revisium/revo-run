@@ -14,6 +14,7 @@ import type {
   RunStoreEventPage,
   RunStoreEventQuery,
   RunStoreIdempotencyIdentity,
+  RunStoreIdempotencyRecord,
   RunStoreInvalidInput,
   RunStoreListRunsQuery,
   RunStoreLookupResult,
@@ -157,6 +158,10 @@ export class LogicalRunStoreFake implements RunStore {
     readonly attempts?: readonly Attempt[];
     readonly outputs?: readonly RunOutput[];
     readonly handoffs?: readonly AttemptHandoffState[];
+    readonly idempotency?: readonly {
+      readonly lookup: RunStoreIdempotencyIdentity;
+      readonly record: RunStoreIdempotencyRecord;
+    }[];
   }): void {
     for (const run of values.runs ?? []) this.#state.runs.set(run.id, snapshotValue(run));
     for (const node of values.nodes ?? []) this.#state.nodes.set(node.id, snapshotValue(node));
@@ -168,6 +173,9 @@ export class LogicalRunStoreFake implements RunStore {
     }
     for (const state of values.handoffs ?? []) {
       this.#state.handoffs.set(handoffKey(state.handoff.key), snapshotValue(state));
+    }
+    for (const entry of values.idempotency ?? []) {
+      this.#state.idempotency.set(identityKey(entry.lookup), snapshotValue(entry.record));
     }
   }
 
