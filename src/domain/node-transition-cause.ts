@@ -1,0 +1,16 @@
+export type NodeTransitionCause =
+  | 'claimed'
+  | 'pre_start_resolution_failure'
+  | 'pre_start_cancellation'
+  | 'direct_success'
+  | 'direct_failure'
+  | 'direct_cancellation'
+  | 'direct_unknown'
+  | 'late_success'
+  | 'late_failure'
+  | 'late_cancellation'
+  | 'reconciled_running'
+  | 'reconciled_success'
+  | 'reconciled_failure'
+  | 'reconciled_cancellation'
+  | 'cancellation_requested';

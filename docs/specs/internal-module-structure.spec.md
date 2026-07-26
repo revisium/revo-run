@@ -2,8 +2,8 @@
 
 - Status: Draft
 - Implementation: Architecture rules, canonical JSON, portable `spec`/`policy`
-  contracts, and type-only `errors` implemented; RunManager product layers not
-  implemented
+  contracts, type-only `errors`, and package-private pure `domain` implemented;
+  storage/lifecycle/manager/composition not implemented
 
 ## Normative language and versioning
 

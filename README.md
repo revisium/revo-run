@@ -14,7 +14,7 @@
 > [!IMPORTANT]
 > This repository is in bootstrap and the npm package is not published. Its root runtime namespace is intentionally empty
 > and currently exports only Stable portable contract types. `@revisium/revo-run/canonical-json` is implemented; the
-> RunManager APIs below remain Draft target specifications.
+> package-private pure Run domain foundation is implemented. The RunManager APIs below remain Draft target specifications.
 > Architecture enforcement is active in repository validation.
 
 ## About
@@ -83,6 +83,21 @@ retention, or credential fields.
 The package uses internal snapshot/validation helpers at its boundaries. Those
 helpers are not package exports. Fixed v1 limits and exact shapes are defined in
 [Portable run contracts v1](./docs/specs/portable-run-contracts-v1.spec.md).
+
+## Implemented internal domain foundation
+
+The package now contains package-private pure models and prospective reducers
+for `Run`, `RunNodeInstance`, authoritative `Attempt`, immutable `RunOutput`,
+and pre-persistence `RunEventIntent`. They implement exact status matrices,
+active-attempt compatibility, manager-incarnation/fence/lease validation
+against supplied transaction time, deterministic scoped activation keys,
+aggregate revision rules, cancellation intent, and known/unknown/reconciled
+result preparation.
+
+This is intentionally not a package export or a working manager. It performs no
+storage write, CAS, polling, executor call, clock read, handoff/takeover,
+pipeline progression, or terminal-policy selection. Those boundaries remain
+Draft and are introduced only by their owning later slices.
 
 ## Draft RunManager quick start
 
@@ -308,9 +323,9 @@ wires store, ports, lifecycle, and manager into `createRunManager`.
 - [Release train](./docs/release-train.md) — verified package release flow.
 
 The architecture and its enforcement are Accepted and active. Canonical JSON v1
-and portable run contracts v1 are Stable and implemented. Every RunManager
-behavioral API and remaining product specification is currently **Draft and
-unimplemented**.
+and portable run contracts v1 are Stable and implemented. The internal pure
+domain foundation is implemented while its product specification remains Draft.
+Every RunManager behavioral API is still **Draft and unimplemented**.
 
 ## Requirements
 

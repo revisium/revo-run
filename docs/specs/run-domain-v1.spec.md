@@ -1,7 +1,8 @@
 # Run domain v1
 
 - Status: Draft
-- Implementation: Not implemented
+- Implementation: Package-private pure domain foundation implemented;
+  persistence, lifecycle graph progression, and public snapshots not implemented
 
 ## Normative language and versioning
 
@@ -38,8 +39,9 @@ A `Run` MUST contain:
 
 The plan pin MUST never change after creation.
 
-Run status MUST distinguish non-terminal operation, durable cancellation intent,
-and terminal success, failure, or cancellation. Exact enum names remain Draft.
+Implemented status is exactly `running`, `cancelling`, `succeeded`, `failed`,
+or `cancelled`. `running` may transition to any other status; `cancelling` may
+transition to a terminal status; terminal status cannot transition.
 
 ### RunNodeInstance
 
@@ -59,9 +61,11 @@ Activation identity MUST distinguish repeated logical-node activations.
 Uniqueness of `(runId, causalForkScope, activationKey)` MUST prevent duplicate
 successors and joins without crossing repeated/nested fork scopes.
 
-Node status MUST distinguish at least ready, claimed/running, retry waiting,
-unknown/reconciling, human-gate waiting, join waiting, and terminal outcomes.
-Exact enum decomposition remains Draft.
+Implemented node status is exactly `ready`, `executing`, `retry_waiting`,
+`unknown`, `gate_waiting`, `join_waiting`, `succeeded`, `failed`, or
+`cancelled`. An `executing` node points to a `claimed` or `start_committed`
+Attempt. An `unknown` node points to an `unknown` or `reconciling` Attempt.
+Every other node status has no active Attempt pointer.
 
 ### Attempt
 
@@ -75,8 +79,8 @@ MUST contain:
 - package-generated `managerIncarnationId`;
 - monotonically changing fencing token;
 - lease/heartbeat state based on store transaction time;
-- phase distinguishing at least `claimed`, `start_committed`, unknown/reconciling,
-  and terminal outcomes;
+- exact status `claimed`, `start_committed`, `unknown`, `reconciling`,
+  `succeeded`, `failed`, or `cancelled`;
 - status and revision;
 - dispatch idempotency identity;
 - exact `ExecutorContractPin` and configuration digest;
@@ -114,6 +118,26 @@ A `RunEvent` MUST be immutable and contain:
 
 Events are audit, observation, and projection input. They MUST NOT be the
 authoritative replacement for current run, node, or attempt state.
+
+The implemented Domain layer emits immutable `RunEventIntent` values containing
+only run id, a closed event kind, closed correlation, and bounded payload.
+Sequence and transaction creation time are assigned later by Store commit.
+
+## Deterministic activation keys
+
+The implemented keys are canonical SHA-256 digests of these exact tuples:
+
+```text
+["revo-run", "fork-scope", "v1", "root", runId]
+["revo-run", "fork-scope", "v1", parentForkScopeKey, forkActivationId]
+["revo-run", "activation-key", "v1",
+ nodeKey, forkScopeKey, branchKey-or-null, iteration]
+```
+
+`branchKey` is explicit string-or-null and `iteration` is a nonnegative safe
+integer. Durable uniqueness remains `(runId, forkScopeKey, activationKey)`.
+These helpers isolate supplied causal coordinates; they do not decide graph
+progression.
 
 ## Gate model
 
@@ -165,6 +189,13 @@ model selection or a provider-specific consensus runtime.
   durable handoff under the incumbent fence before a new incarnation/fence.
 - External payloads and faults MUST be bounded and copied before persistence or
   publication.
+
+The pure implementation prepares revision deltas but does not claim CAS:
+one accepted aggregate transition increments Run once, each affected existing
+node and Attempt once, and a new Attempt begins at revision zero. Start,
+heartbeat/lease renewal, and reconciliation phase-only changes increment only
+Attempt. Rejection and idempotent no-op increment nothing. Overflow rejects
+before producing a prospective change.
 
 ## Cancellation
 

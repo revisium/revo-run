@@ -1,7 +1,8 @@
 # Run transitions v1
 
 - Status: Draft
-- Implementation: Not implemented
+- Implementation: Pure domain prospective validation/reducers implemented;
+  storage, lifecycle, pipeline decision, and atomic commit not implemented
 
 ## Normative language and versioning
 

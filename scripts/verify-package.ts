@@ -217,8 +217,10 @@ void output;
 
 const privateTypeConsumer = `
 import * as privateEntry from '@revisium/revo-run/dist/index.js';
+import * as privateDomain from '@revisium/revo-run/domain';
 
 void privateEntry;
+void privateDomain;
 `;
 
 const negativeTypeConsumer = `
