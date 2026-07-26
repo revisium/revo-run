@@ -53,10 +53,11 @@ const createCommand = (
 
 describe('RunStore contract', () => {
   it('is a package-private type-only boundary', () => {
-    expectTypeOf<RunStore>().toEqualTypeOf<RunStore>();
-    expectTypeOf<RunStoreCommitCommand>().toEqualTypeOf<RunStoreCommitCommand>();
-    expectTypeOf<RunStoreIncumbentTransitionCommand>().toEqualTypeOf<RunStoreIncumbentTransitionCommand>();
-    expect(true).toBe(true);
+    expectTypeOf<RunStore>().toHaveProperty('transaction');
+    expectTypeOf<RunStore>().not.toHaveProperty('claimAttempt');
+    expectTypeOf<RunStoreCommitCommand>().toHaveProperty('kind');
+    expectTypeOf<RunStoreIncumbentTransitionCommand>().toHaveProperty('operation');
+    expectTypeOf<RunStoreIncumbentTransitionCommand>().not.toHaveProperty('execute');
   });
 
   it('uses store transaction time and terminalizes after a commit result', async () => {

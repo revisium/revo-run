@@ -1,6 +1,4 @@
-import type { Attempt } from '../domain/index.js';
-import type { Run } from '../domain/index.js';
-import type { RunNodeInstance } from '../domain/index.js';
+import type { Attempt, Run, RunNodeInstance } from '../domain/index.js';
 import type { AttemptHandoffKey } from './attempt-handoff-key.js';
 import type { AttemptHandoffState } from './attempt-handoff-state.js';
 import type { RunStoreAttemptPage } from './run-store-attempt-page.js';

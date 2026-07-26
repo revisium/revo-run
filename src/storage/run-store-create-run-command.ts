@@ -1,7 +1,4 @@
-import type { Run } from '../domain/index.js';
-import type { RunEventIntent } from '../domain/index.js';
-import type { RunNodeInstance } from '../domain/index.js';
-import type { RunOutput } from '../domain/index.js';
+import type { Run, RunEventIntent, RunNodeInstance, RunOutput } from '../domain/index.js';
 import type { RunStoreIdempotencyWrite } from './run-store-idempotency-write.js';
 import type { RunStoreNewNodeExpectation } from './run-store-new-node-expectation.js';
 
