@@ -1,9 +1,9 @@
 import type { RunFault } from '../errors/index.js';
-import type { ExecutionPlanPin, JsonValue, RunId } from '../spec/index.js';
+import type { ExecutionPlanPin, JsonValue } from '../spec/index.js';
 import type { RunStatus } from './run-status.js';
 
 export interface Run {
-  readonly id: RunId;
+  readonly id: string;
   readonly planPin: ExecutionPlanPin;
   readonly status: RunStatus;
   readonly revision: number;

@@ -1,11 +1,11 @@
 import { digestCanonicalJson } from '../policy/index.js';
-import type { ActivationKey, BranchKey, ForkScopeKey } from '../spec/index.js';
+import type { ActivationKey, ForkScopeKey } from '../spec/index.js';
 import { domainValidation } from './domain-validation.js';
 
 export const deriveActivationKey = (coordinates: {
   readonly nodeKey: string;
   readonly forkScopeKey: ForkScopeKey;
-  readonly branchKey: BranchKey | null;
+  readonly branchKey: string | null;
   readonly iteration: number;
 }): ActivationKey =>
   digestCanonicalJson([

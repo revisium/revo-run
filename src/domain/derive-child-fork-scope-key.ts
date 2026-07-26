@@ -1,10 +1,10 @@
 import { digestCanonicalJson } from '../policy/index.js';
-import type { ForkScopeKey, RunActivationId } from '../spec/index.js';
+import type { ForkScopeKey } from '../spec/index.js';
 import { domainValidation } from './domain-validation.js';
 
 export const deriveChildForkScopeKey = (
   parentForkScopeKey: ForkScopeKey,
-  forkActivationId: RunActivationId,
+  forkActivationId: string,
 ): ForkScopeKey =>
   digestCanonicalJson([
     'revo-run',

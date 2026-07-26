@@ -2,23 +2,23 @@ import type { RunFault, RunFaultCode } from '../errors/index.js';
 import { snapshotRunFaultMessage } from '../policy/index.js';
 import { domainValidation } from './domain-validation.js';
 
-const faultCodes: readonly RunFaultCode[] = [
-  'INVALID_INPUT',
-  'NOT_FOUND',
-  'INVALID_STATE',
-  'STALE_ACTIVATION',
-  'REVISION_CONFLICT',
-  'STALE_FENCE',
-  'PLAN_UNAVAILABLE',
-  'PLAN_MISMATCH',
-  'EXECUTOR_UNAVAILABLE',
-  'EXECUTOR_MISMATCH',
-  'UNKNOWN_OUTCOME',
-  'CANCELLED',
-];
+const faultCodes = Object.freeze({
+  CANCELLED: true,
+  EXECUTOR_MISMATCH: true,
+  EXECUTOR_UNAVAILABLE: true,
+  INVALID_INPUT: true,
+  INVALID_STATE: true,
+  NOT_FOUND: true,
+  PLAN_MISMATCH: true,
+  PLAN_UNAVAILABLE: true,
+  REVISION_CONFLICT: true,
+  STALE_ACTIVATION: true,
+  STALE_FENCE: true,
+  UNKNOWN_OUTCOME: true,
+});
 
 const isRunFaultCode = (value: unknown): value is RunFaultCode =>
-  typeof value === 'string' && faultCodes.some((code) => code === value);
+  typeof value === 'string' && Object.hasOwn(faultCodes, value);
 
 export const snapshotRunFault = (value: unknown): RunFault => {
   const record = domainValidation.record(value);

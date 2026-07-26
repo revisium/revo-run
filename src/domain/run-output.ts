@@ -1,9 +1,9 @@
-import type { RunId, RunOutputId, RunOutputPayload } from '../spec/index.js';
+import type { RunOutputPayload } from '../spec/index.js';
 import type { RunCorrelation } from './run-correlation.js';
 
 export interface RunOutput {
-  readonly id: RunOutputId;
-  readonly runId: RunId;
+  readonly id: string;
+  readonly runId: string;
   readonly name: string;
   readonly payload: RunOutputPayload;
   readonly createdAt: number;

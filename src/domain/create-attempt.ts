@@ -1,3 +1,4 @@
+import type { RunFault } from '../errors/index.js';
 import { snapshotExecutorContractPin, snapshotRunFaultMessage } from '../policy/index.js';
 import type { JsonValue } from '../spec/index.js';
 import type { AttemptStatus } from './attempt-status.js';
@@ -29,6 +30,14 @@ const configurationDigest = (value: JsonValue | undefined): `sha256:${string}` =
     throw new TypeError('Executor configuration digest is invalid.');
   }
   return `sha256:${text.slice(7)}`;
+};
+
+const faultMatchesStatus = (status: AttemptStatus, fault: RunFault | null): boolean => {
+  if (status === 'failed') return fault !== null;
+  if (status === 'unknown' || status === 'reconciling') {
+    return fault?.code === 'UNKNOWN_OUTCOME';
+  }
+  return fault === null;
 };
 
 export const createAttempt = (value: unknown): Attempt => {
@@ -76,13 +85,7 @@ export const createAttempt = (value: unknown): Attempt => {
     throw new TypeError('Attempt Start time is invalid.');
   }
   if (terminal !== (terminalAt !== null)) throw new TypeError('Attempt terminal time is invalid.');
-  if (
-    status === 'failed'
-      ? fault === null
-      : status === 'unknown' || status === 'reconciling'
-        ? fault?.code !== 'UNKNOWN_OUTCOME'
-        : fault !== null
-  ) {
+  if (!faultMatchesStatus(status, fault)) {
     throw new TypeError('Attempt fault is invalid.');
   }
   if (
