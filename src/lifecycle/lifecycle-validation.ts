@@ -16,6 +16,7 @@ import type { LifecycleDiscoveryKind } from './lifecycle-discovery-kind.js';
 import type { LifecycleDiscoveryRequest } from './lifecycle-discovery-request.js';
 import type { LifecycleNodePhase } from './lifecycle-node-phase.js';
 import type { LifecycleRenewLeaseRequest } from './lifecycle-renew-lease-request.js';
+import type { LifecycleVerifyAndStartRequest } from './lifecycle-verify-and-start-request.js';
 import type { LifecycleWriteHandoffRequest } from './lifecycle-write-handoff-request.js';
 
 type JsonRecord = { readonly [key: string]: JsonValue };
@@ -364,11 +365,25 @@ const acquireRequest = (value: unknown): LifecycleAcquireRequest => {
   });
 };
 
+const verifyAndStartRequest = (value: unknown): LifecycleVerifyAndStartRequest => {
+  const source = record(value, ['authority', 'planDocument']);
+  const claimed = authority(source['authority']);
+  if (claimed.attemptPhase !== 'claimed' || claimed.nodePhase !== 'executing') {
+    throw new TypeError('INVALID_INPUT');
+  }
+  return Object.freeze({
+    authority: Object.freeze({ ...claimed, attemptPhase: 'claimed', nodePhase: 'executing' }),
+    planDocument: snapshotRunExecutionPlanDocument(source['planDocument']),
+  });
+};
+
 export const lifecycleValidation = Object.freeze({
   acquireRequest,
   authority,
+  boundedText: text,
   claimRequest,
   discoveryRequest,
   handoffRequest,
   renewRequest,
+  verifyAndStartRequest,
 });

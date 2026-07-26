@@ -11,8 +11,8 @@ Store behavior has a logical conformance fake only; no durable adapter or
 database concurrency proof exists. Package-private executor snapshots, pure
 binding verification, fault refinements, and type-only executor ports are also
 implemented. Package-private lifecycle discovery, claim, lease renewal,
-durable handoff, and ownership acquisition are implemented over the Store
-contract. Resolver/Start, recovery handles, observations/results, pipeline
+durable handoff, ownership acquisition, and exact resolver/Start preparation
+are implemented over the Store contract. Recovery handles, observations/results, pipeline
 progression, manager/composition, and all RunManager behavioral APIs remain
 Draft and unimplemented.
 
@@ -331,6 +331,23 @@ explicit barrels. Manager imports lifecycle only through `lifecycle/index.ts`
 and uses explicit contracts rather than `Parameters<>` or `ReturnType<>`
 inference across that boundary. `spec`, `errors`, `storage`, and `ports` are
 type-only. Unknown production layers fail closed.
+
+The construction facade is checked as a declaration closure. Every reachable
+exported function, variable, and public class member has an explicit
+declaration-relevant type, so runtime bodies and value inference cannot widen
+the facade. Its only port symbol is `ExecutorResolver`; its sole storage edge is
+the exact `RunStore` symbol in `run-lifecycle-dependencies.ts`, including
+aliased, namespace, import-equals, inline import-type, and re-export syntax.
+That closure has a finite public grammar: named explicitly typed functions,
+data-only interfaces with identifier properties, explicit type aliases without
+`typeof`, and named explicitly typed `const` values. Default exports,
+destructured parameters or bindings, classes, enums, namespaces, computed
+members, and interface call/construct/method/index/accessor signatures are
+rejected. Typed identifier rest parameters remain explicit and are allowed.
+Runtime bodies and typed value initializers are not traversed.
+The same grammar applies recursively to local declarations referenced by those
+public signatures, with cycle-safe traversal; unrelated private declarations
+remain outside the construction closure.
 
 ## External boundaries
 

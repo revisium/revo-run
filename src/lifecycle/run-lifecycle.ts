@@ -6,6 +6,8 @@ import type { LifecycleDiscoveryRequest } from './lifecycle-discovery-request.js
 import type { LifecycleDiscoveryResult } from './lifecycle-discovery-result.js';
 import type { LifecycleRenewLeaseRequest } from './lifecycle-renew-lease-request.js';
 import type { LifecycleRenewLeaseResult } from './lifecycle-renew-lease-result.js';
+import type { LifecycleVerifyAndStartRequest } from './lifecycle-verify-and-start-request.js';
+import type { LifecycleVerifyAndStartResult } from './lifecycle-verify-and-start-result.js';
 import type { LifecycleWriteHandoffRequest } from './lifecycle-write-handoff-request.js';
 import type { LifecycleWriteHandoffResult } from './lifecycle-write-handoff-result.js';
 
@@ -15,4 +17,5 @@ export interface RunLifecycle {
   renewLease(request: LifecycleRenewLeaseRequest): Promise<LifecycleRenewLeaseResult>;
   writeHandoff(request: LifecycleWriteHandoffRequest): Promise<LifecycleWriteHandoffResult>;
   acquire(request: LifecycleAcquireRequest): Promise<LifecycleAcquireResult>;
+  verifyAndStart(request: LifecycleVerifyAndStartRequest): Promise<LifecycleVerifyAndStartResult>;
 }

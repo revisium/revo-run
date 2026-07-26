@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createRunLifecycle } from '../../src/lifecycle/construction.js';
+import { createRunLifecycle as constructRunLifecycle } from '../../src/lifecycle/construction.js';
 import type { LifecycleAttemptAuthority } from '../../src/lifecycle/index.js';
 import { snapshotExecutorConfiguration } from '../../src/policy/index.js';
 import type {
@@ -17,6 +17,28 @@ import {
   planPin,
   runFixture,
 } from '../support/store-fixtures.js';
+
+const defaultExecutors = {
+  resolveExact: async () => ({
+    fault: { code: 'EXECUTOR_UNAVAILABLE' as const, message: 'unused' },
+    kind: 'unavailable' as const,
+  }),
+};
+const resolverReturning = (value: unknown) => {
+  const resolver = {
+    resolveExact: async () => ({
+      fault: { code: 'EXECUTOR_UNAVAILABLE' as const, message: 'unused' },
+      kind: 'unavailable' as const,
+    }),
+  };
+  Object.defineProperty(resolver, 'resolveExact', {
+    value: async () => value,
+  });
+  return resolver;
+};
+const createRunLifecycle = (
+  dependencies: Omit<Parameters<typeof constructRunLifecycle>[0], 'executors'>,
+) => constructRunLifecycle({ ...dependencies, executors: defaultExecutors });
 
 const leasePolicy = { heartbeatIntervalMs: 500, leaseDurationMs: 2_000 };
 const configuration = { model: 'stable' };
@@ -115,6 +137,19 @@ const setJsonMember = (
   Reflect.set(value, key, replacement);
 };
 
+const requiredRecord = (value: unknown): object => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Expected record.');
+  }
+  return value;
+};
+
+const requiredOwnData = (value: object, key: string): unknown => {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (!descriptor || !('value' in descriptor)) throw new Error(`Expected ${key}.`);
+  return descriptor.value;
+};
+
 const withInjectedCommitResult = (
   store: LogicalRunStoreFake,
   result: RunStoreCommitResult,
@@ -128,6 +163,23 @@ const withInjectedCommitResult = (
       callback({
         ...transaction,
         commit: async () => result,
+      }),
+    ),
+});
+
+const withInjectedLookupRecord = (
+  store: LogicalRunStoreFake,
+  record: RunStoreIdempotencyRecord,
+): RunStore => ({
+  discover: (query) => store.discover(query),
+  getRun: (runId) => store.getRun(runId),
+  listRuns: (query) => store.listRuns(query),
+  readEvents: (query) => store.readEvents(query),
+  transaction: (callback) =>
+    store.transaction((transaction) =>
+      callback({
+        ...transaction,
+        getIdempotency: async () => ({ kind: 'found', value: record }),
       }),
     ),
 });
@@ -162,6 +214,7 @@ describe('lifecycle coordination', () => {
       'claim',
       'discover',
       'renewLease',
+      'verifyAndStart',
       'writeHandoff',
     ]);
   });
@@ -239,6 +292,1435 @@ describe('lifecycle coordination', () => {
         nodeFixture({ retryAvailableAt: 1_500, status: 'retry_waiting' }),
       ).then(({ result }) => result),
     ).resolves.toMatchObject({ kind: 'committed' });
+  });
+
+  it('verifies exact execution, commits Start, and returns a single-use execute capability', async () => {
+    const store = new LogicalRunStoreFake(1_500);
+    store.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    let calls = 0;
+    let replacementCalls = 0;
+    let resolveCalls = 0;
+    let optionalGetterCalls = 0;
+    let receiverMatches = false;
+    let receivedRequest: unknown;
+    const rawResult = { kind: 'cancelled' as const };
+    const executor = {
+      contractPin: planBinding.executor,
+      execute(request: unknown) {
+        calls += 1;
+        receiverMatches = this === executor;
+        receivedRequest = request;
+        return Promise.resolve(rawResult);
+      },
+    };
+    Object.defineProperty(executor, 'reconcile', {
+      get: () => {
+        optionalGetterCalls += 1;
+        throw new Error('must not be read');
+      },
+    });
+    const lifecycle = constructRunLifecycle({
+      executors: {
+        resolveExact: async () => {
+          resolveCalls += 1;
+          return { executor, kind: 'resolved' };
+        },
+      },
+      store,
+    });
+
+    const started = await lifecycle.verifyAndStart({
+      authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+      planDocument,
+    });
+    expect(started).toMatchObject({
+      kind: 'committed',
+      transactionNow: 1_500,
+      value: {
+        authority: { attemptPhase: 'start_committed', expectedAttemptRevision: 1 },
+        kind: 'execute',
+      },
+    });
+    expect(calls).toBe(0);
+    if (started.kind !== 'committed') return;
+    expect(Object.keys(started.value.execute)).toEqual(['invoke']);
+    executor.execute = async () => {
+      replacementCalls += 1;
+      return { kind: 'cancelled' as const };
+    };
+    const signal = new AbortController().signal;
+    expect(Object.isFrozen(started.value.invocation)).toBe(true);
+    expect(Object.isFrozen(started.value.invocation.attempt)).toBe(true);
+    await expect(started.value.execute.invoke(signal)).resolves.toBe(rawResult);
+    expect(receivedRequest).toMatchObject({
+      operation: 'execute',
+      signal,
+    });
+    expect(receiverMatches).toBe(true);
+    expect(calls).toBe(1);
+    expect(replacementCalls).toBe(0);
+    expect(optionalGetterCalls).toBe(0);
+    await expect(started.value.execute.invoke(signal)).rejects.toThrow(
+      'Prepared execute capability was already consumed.',
+    );
+    expect(calls).toBe(1);
+
+    await expect(
+      lifecycle.verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toMatchObject({ kind: 'replayed', value: { attemptRevision: 1 } });
+    expect(calls).toBe(1);
+    expect(resolveCalls).toBe(1);
+    await expect(
+      lifecycle.verifyAndStart({
+        authority: {
+          ...authorityValue,
+          attemptPhase: 'claimed',
+          leaseExpiresAt: authorityValue.leaseExpiresAt - 1,
+          nodePhase: 'executing',
+        },
+        planDocument,
+      }),
+    ).resolves.toMatchObject({
+      conflict: { code: 'IDEMPOTENCY_CONFLICT' },
+      kind: 'conflict',
+    });
+    await expect(
+      lifecycle.verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument: { ...planDocument, compiledPipeline: { changed: true } },
+      }),
+    ).resolves.toMatchObject({ kind: 'replayed' });
+    expect(resolveCalls).toBe(1);
+
+    const startIdentity = {
+      key: authorityValue.dispatchIdempotencyKey,
+      operation: 'start_attempt' as const,
+      runId: authorityValue.runId,
+      subjectId: authorityValue.attemptId,
+    };
+    const startRecord = await readIdempotency(store, startIdentity);
+    const commitReplayBase = new LogicalRunStoreFake(1_500);
+    commitReplayBase.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    await expect(
+      constructRunLifecycle({
+        executors: { resolveExact: async () => ({ executor, kind: 'resolved' }) },
+        store: withInjectedCommitResult(commitReplayBase, {
+          kind: 'replayed',
+          record: startRecord,
+        }),
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toMatchObject({ kind: 'replayed', value: { attemptRevision: 1 } });
+    await expect(
+      commitReplayBase.transaction((transaction) => transaction.getAttempt('attempt-1')),
+    ).resolves.toMatchObject({ kind: 'found', value: { revision: 0, status: 'claimed' } });
+
+    const malformedStartRecord = structuredClone(startRecord);
+    if (malformedStartRecord.result !== null && typeof malformedStartRecord.result === 'object') {
+      Reflect.set(malformedStartRecord.result, 'attemptRevision', 'one');
+    }
+    const malformedReplayBase = new LogicalRunStoreFake(1_500);
+    malformedReplayBase.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    await expect(
+      constructRunLifecycle({
+        executors: { resolveExact: async () => ({ executor, kind: 'resolved' }) },
+        store: withInjectedCommitResult(malformedReplayBase, {
+          kind: 'replayed',
+          record: malformedStartRecord,
+        }),
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toEqual(invalidResult);
+    await expect(
+      malformedReplayBase.transaction((transaction) => transaction.getAttempt('attempt-1')),
+    ).resolves.toMatchObject({ kind: 'found', value: { revision: 0, status: 'claimed' } });
+
+    const changedStartRecord = structuredClone(startRecord);
+    if (
+      changedStartRecord.request !== null &&
+      typeof changedStartRecord.request === 'object' &&
+      !Array.isArray(changedStartRecord.request)
+    ) {
+      const storedAuthorityDescriptor = Object.getOwnPropertyDescriptor(
+        changedStartRecord.request,
+        'authority',
+      );
+      const storedAuthority: unknown =
+        storedAuthorityDescriptor !== undefined && 'value' in storedAuthorityDescriptor
+          ? storedAuthorityDescriptor.value
+          : null;
+      if (
+        storedAuthority !== null &&
+        typeof storedAuthority === 'object' &&
+        !Array.isArray(storedAuthority)
+      ) {
+        Reflect.set(storedAuthority, 'leaseExpiresAt', authorityValue.leaseExpiresAt - 1);
+      }
+    }
+    if (changedStartRecord.result !== null && typeof changedStartRecord.result === 'object') {
+      Reflect.set(changedStartRecord.result, 'attemptRevision', 2);
+    }
+    const changedReplayBase = new LogicalRunStoreFake(1_500);
+    changedReplayBase.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    await expect(
+      constructRunLifecycle({
+        executors: { resolveExact: async () => ({ executor, kind: 'resolved' }) },
+        store: withInjectedCommitResult(changedReplayBase, {
+          kind: 'replayed',
+          record: changedStartRecord,
+        }),
+      }).verifyAndStart({
+        authority: {
+          ...authorityValue,
+          attemptPhase: 'claimed' as const,
+          nodePhase: 'executing' as const,
+        },
+        planDocument,
+      }),
+    ).resolves.toMatchObject({
+      conflict: { code: 'IDEMPOTENCY_CONFLICT' },
+      kind: 'conflict',
+    });
+
+    const malformedReceiptWithChangedRequest = structuredClone(changedStartRecord);
+    if (
+      malformedReceiptWithChangedRequest.result !== null &&
+      typeof malformedReceiptWithChangedRequest.result === 'object'
+    ) {
+      Reflect.set(malformedReceiptWithChangedRequest.result, 'attemptId', 'a'.repeat(257));
+    }
+    const malformedCombinedBase = new LogicalRunStoreFake(1_500);
+    malformedCombinedBase.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    await expect(
+      constructRunLifecycle({
+        executors: { resolveExact: async () => ({ executor, kind: 'resolved' }) },
+        store: withInjectedCommitResult(malformedCombinedBase, {
+          kind: 'replayed',
+          record: malformedReceiptWithChangedRequest,
+        }),
+      }).verifyAndStart({
+        authority: {
+          ...authorityValue,
+          attemptPhase: 'claimed',
+          nodePhase: 'executing',
+        },
+        planDocument,
+      }),
+    ).resolves.toEqual(invalidResult);
+
+    const hostileStartRecord = new Proxy(startRecord, {
+      ownKeys: () => {
+        throw new Error('record provider detail');
+      },
+    });
+    const hostileReplayBase = new LogicalRunStoreFake(1_500);
+    hostileReplayBase.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    await expect(
+      constructRunLifecycle({
+        executors: { resolveExact: async () => ({ executor, kind: 'resolved' }) },
+        store: withInjectedCommitResult(hostileReplayBase, {
+          kind: 'replayed',
+          record: hostileStartRecord,
+        }),
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toEqual(invalidResult);
+    await expect(
+      hostileReplayBase.transaction((transaction) => transaction.getAttempt('attempt-1')),
+    ).resolves.toMatchObject({ kind: 'found', value: { revision: 0, status: 'claimed' } });
+  });
+
+  it('passes a complete deeply frozen semantic request across the Store commit boundary', async () => {
+    const base = new LogicalRunStoreFake(1_500);
+    base.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    let observedSemantic: unknown;
+    const store: RunStore = {
+      discover: (query) => base.discover(query),
+      getRun: (runId) => base.getRun(runId),
+      listRuns: (query) => base.listRuns(query),
+      readEvents: (query) => base.readEvents(query),
+      transaction: (callback) =>
+        base.transaction((transaction) =>
+          callback({
+            ...transaction,
+            commit: (command) => {
+              if (command.kind === 'apply_incumbent_transition' && command.operation === 'start') {
+                observedSemantic = command.idempotency.request;
+              }
+              return transaction.commit(command);
+            },
+          }),
+        ),
+    };
+    await expect(
+      constructRunLifecycle({
+        executors: resolverReturning({
+          executor: {
+            contractPin: planBinding.executor,
+            execute: async () => ({ kind: 'cancelled' as const }),
+          },
+          kind: 'resolved',
+        }),
+        store,
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toMatchObject({ kind: 'committed' });
+    const semantic = requiredRecord(observedSemantic);
+    const authority = requiredRecord(requiredOwnData(semantic, 'authority'));
+    const binding = requiredRecord(requiredOwnData(semantic, 'binding'));
+    const semanticConfiguration = requiredOwnData(binding, 'executorConfiguration');
+    const contractPin = requiredOwnData(binding, 'executorContractPin');
+    expect(Object.isFrozen(semantic)).toBe(true);
+    expect(Object.isFrozen(authority)).toBe(true);
+    expect(Object.isFrozen(binding)).toBe(true);
+    expect(Object.isFrozen(semanticConfiguration)).toBe(true);
+    expect(Object.isFrozen(contractPin)).toBe(true);
+    expect(Reflect.set(binding, 'nodeKey', 'mutated')).toBe(false);
+  });
+
+  it('uses the complete included/excluded Start replay semantics table', async () => {
+    const source = new LogicalRunStoreFake(1_500);
+    source.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    const executor = {
+      contractPin: planBinding.executor,
+      execute: async () => ({ kind: 'cancelled' as const }),
+    };
+    const originalRequest = {
+      authority: {
+        ...authorityValue,
+        attemptPhase: 'claimed' as const,
+        nodePhase: 'executing' as const,
+      },
+      planDocument,
+    };
+    await constructRunLifecycle({
+      executors: { resolveExact: async () => ({ executor, kind: 'resolved' }) },
+      store: source,
+    }).verifyAndStart(originalRequest);
+    const record = await readIdempotency(source, {
+      key: authorityValue.dispatchIdempotencyKey,
+      operation: 'start_attempt',
+      runId: authorityValue.runId,
+      subjectId: authorityValue.attemptId,
+    });
+
+    const includedCases = [
+      ['Run ID', { ...authorityValue, runId: 'run-2' }, planDocument],
+      ['Node instance ID', { ...authorityValue, nodeInstanceId: 'node-2' }, planDocument],
+      ['Attempt ID', { ...authorityValue, attemptId: 'attempt-2' }, planDocument],
+      ['activation ID', { ...authorityValue, activationId: 'activation-2' }, planDocument],
+      [
+        'dispatch identity',
+        { ...authorityValue, dispatchIdempotencyKey: 'dispatch-2' },
+        planDocument,
+      ],
+      [
+        'Node key and selected binding',
+        { ...authorityValue, nodeKey: 'node-2' },
+        {
+          ...planDocument,
+          executorBindings: [{ ...planBinding, nodeKey: 'node-2' }],
+        },
+      ],
+      [
+        'plan pin',
+        {
+          ...authorityValue,
+          planPin: { ...planPin, revision: '2' },
+        },
+        {
+          ...planDocument,
+          pin: { ...planPin, revision: '2' },
+        },
+      ],
+      [
+        'executor contract pin',
+        {
+          ...authorityValue,
+          executorContractPin: { ...planBinding.executor, revision: '2' },
+        },
+        {
+          ...planDocument,
+          executorBindings: [
+            {
+              ...planBinding,
+              executor: { ...planBinding.executor, revision: '2' },
+            },
+          ],
+        },
+      ],
+      ['expected Run revision', { ...authorityValue, expectedRunRevision: 1 }, planDocument],
+      ['expected Node revision', { ...authorityValue, expectedNodeRevision: 2 }, planDocument],
+      [
+        'expected Attempt revision',
+        { ...authorityValue, expectedAttemptRevision: 1 },
+        planDocument,
+      ],
+      ['lease observation', { ...authorityValue, leaseExpiresAt: 2_999 }, planDocument],
+      ['incarnation', { ...authorityValue, managerIncarnationId: 'manager-2' }, planDocument],
+      ['fence', { ...authorityValue, fencingToken: 2 }, planDocument],
+      [
+        'selected configuration',
+        {
+          ...authorityValue,
+          executorConfigurationDigest: alternativeConfigurationDigest,
+        },
+        {
+          ...planDocument,
+          executorBindings: [
+            {
+              ...planBinding,
+              configuration: { model: 'other' },
+              configurationDigest: alternativeConfigurationDigest,
+            },
+          ],
+        },
+      ],
+      [
+        'normalized idempotent execution',
+        authorityValue,
+        {
+          ...planDocument,
+          executorBindings: [{ ...planBinding, idempotentExecution: true }],
+        },
+      ],
+    ] as const;
+    await Promise.all(
+      includedCases.map(async ([axis, changedAuthority, changedPlan]) => {
+        let resolveCalls = 0;
+        const alignedRecord: RunStoreIdempotencyRecord = {
+          ...record,
+          cursor: { ...record.cursor, runId: changedAuthority.runId },
+          identity: {
+            key: changedAuthority.dispatchIdempotencyKey,
+            operation: 'start_attempt',
+            runId: changedAuthority.runId,
+            subjectId: changedAuthority.attemptId,
+          },
+          result: {
+            attemptId: changedAuthority.attemptId,
+            attemptPhase: 'start_committed',
+            attemptRevision: changedAuthority.expectedAttemptRevision + 1,
+            fencingToken: changedAuthority.fencingToken,
+            managerIncarnationId: changedAuthority.managerIncarnationId,
+            nodeInstanceId: changedAuthority.nodeInstanceId,
+            nodePhase: 'executing',
+            runId: changedAuthority.runId,
+          },
+        };
+        const result = await constructRunLifecycle({
+          executors: {
+            resolveExact: async () => {
+              resolveCalls += 1;
+              return { executor, kind: 'resolved' };
+            },
+          },
+          store: withInjectedLookupRecord(new LogicalRunStoreFake(1_500), alignedRecord),
+        }).verifyAndStart({
+          authority: {
+            ...changedAuthority,
+            attemptPhase: 'claimed',
+            nodePhase: 'executing',
+          },
+          planDocument: changedPlan,
+        });
+        expect({ axis, result }).toMatchObject({
+          axis,
+          result: {
+            conflict: { code: 'IDEMPOTENCY_CONFLICT' },
+            kind: 'conflict',
+          },
+        });
+        expect({ axis, resolveCalls }).toEqual({ axis, resolveCalls: 0 });
+      }),
+    );
+
+    const missingOwnIdempotence = structuredClone(planDocument);
+    const missingOwnBinding = missingOwnIdempotence.executorBindings[0];
+    if (missingOwnBinding === undefined) throw new Error('Expected selected binding.');
+    Reflect.deleteProperty(missingOwnBinding, 'idempotentExecution');
+    const excludedCases = [
+      ['missing-own idempotence normalized to false', missingOwnIdempotence],
+      ['compiled pipeline', { ...planDocument, compiledPipeline: { changed: true } }],
+      [
+        'retry policy',
+        {
+          ...planDocument,
+          executorBindings: [
+            {
+              ...planBinding,
+              retryPolicy: { ...planBinding.retryPolicy, maximumAttempts: 9 },
+            },
+          ],
+        },
+      ],
+      [
+        'timeout policy',
+        {
+          ...planDocument,
+          executorBindings: [
+            {
+              ...planBinding,
+              timeoutPolicy: { ...planBinding.timeoutPolicy, executionTimeoutMs: 1 },
+            },
+          ],
+        },
+      ],
+      [
+        'unrelated binding',
+        {
+          ...planDocument,
+          executorBindings: [
+            planBinding,
+            {
+              ...planBinding,
+              nodeKey: 'unrelated',
+            },
+          ],
+        },
+      ],
+    ] as const;
+    await Promise.all(
+      excludedCases.map(async ([axis, changedPlan]) => {
+        const result = await constructRunLifecycle({
+          executors: {
+            resolveExact: async () => {
+              throw new Error('resolver must remain after replay');
+            },
+          },
+          store: withInjectedLookupRecord(new LogicalRunStoreFake(1_500), record),
+        }).verifyAndStart({
+          ...originalRequest,
+          planDocument: changedPlan,
+        });
+        expect({ axis, result }).toMatchObject({ axis, result: { kind: 'replayed' } });
+      }),
+    );
+  });
+
+  it('rejects every malformed durable Start request before semantic comparison', async () => {
+    const source = new LogicalRunStoreFake(1_500);
+    source.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    const executor = {
+      contractPin: planBinding.executor,
+      execute: async () => ({ kind: 'cancelled' as const }),
+    };
+    const request = {
+      authority: {
+        ...authorityValue,
+        attemptPhase: 'claimed' as const,
+        nodePhase: 'executing' as const,
+      },
+      planDocument,
+    };
+    await constructRunLifecycle({
+      executors: { resolveExact: async () => ({ executor, kind: 'resolved' }) },
+      store: source,
+    }).verifyAndStart(request);
+    const record = await readIdempotency(source, {
+      key: authorityValue.dispatchIdempotencyKey,
+      operation: 'start_attempt',
+      runId: authorityValue.runId,
+      subjectId: authorityValue.attemptId,
+    });
+    const extra = structuredClone(record);
+    if (extra.request !== null && typeof extra.request === 'object') {
+      Reflect.set(extra.request, 'extra', true);
+    }
+    const wrongVersion = structuredClone(record);
+    if (wrongVersion.request !== null && typeof wrongVersion.request === 'object') {
+      Reflect.set(wrongVersion.request, 'version', '1');
+    }
+    const wrongNestedType = structuredClone(record);
+    if (wrongNestedType.request !== null && typeof wrongNestedType.request === 'object') {
+      const authorityDescriptor = Object.getOwnPropertyDescriptor(
+        wrongNestedType.request,
+        'authority',
+      );
+      if (
+        authorityDescriptor &&
+        'value' in authorityDescriptor &&
+        authorityDescriptor.value !== null &&
+        typeof authorityDescriptor.value === 'object'
+      ) {
+        Reflect.set(authorityDescriptor.value, 'expectedRunRevision', '0');
+      }
+    }
+    const malformedDigest = structuredClone(record);
+    if (malformedDigest.request !== null && typeof malformedDigest.request === 'object') {
+      const authorityDescriptor = Object.getOwnPropertyDescriptor(
+        malformedDigest.request,
+        'authority',
+      );
+      if (
+        authorityDescriptor &&
+        'value' in authorityDescriptor &&
+        authorityDescriptor.value !== null &&
+        typeof authorityDescriptor.value === 'object'
+      ) {
+        Reflect.set(authorityDescriptor.value, 'executorConfigurationDigest', 'sha256:bad');
+      }
+    }
+    const configurationMismatch = structuredClone(record);
+    if (
+      configurationMismatch.request !== null &&
+      typeof configurationMismatch.request === 'object'
+    ) {
+      const bindingDescriptor = Object.getOwnPropertyDescriptor(
+        configurationMismatch.request,
+        'binding',
+      );
+      if (
+        bindingDescriptor &&
+        'value' in bindingDescriptor &&
+        bindingDescriptor.value !== null &&
+        typeof bindingDescriptor.value === 'object'
+      ) {
+        Reflect.set(bindingDescriptor.value, 'executorConfiguration', { changed: true });
+      }
+    }
+    const malformedPin = structuredClone(record);
+    if (malformedPin.request !== null && typeof malformedPin.request === 'object') {
+      const bindingDescriptor = Object.getOwnPropertyDescriptor(malformedPin.request, 'binding');
+      if (
+        bindingDescriptor &&
+        'value' in bindingDescriptor &&
+        bindingDescriptor.value !== null &&
+        typeof bindingDescriptor.value === 'object'
+      ) {
+        const pinDescriptor = Object.getOwnPropertyDescriptor(
+          bindingDescriptor.value,
+          'executorContractPin',
+        );
+        if (
+          pinDescriptor &&
+          'value' in pinDescriptor &&
+          pinDescriptor.value !== null &&
+          typeof pinDescriptor.value === 'object'
+        ) {
+          Reflect.set(pinDescriptor.value, 'adapterId', '');
+        }
+      }
+    }
+    const accessorRequest = Object.defineProperty({}, 'authority', {
+      enumerable: true,
+      get: () => {
+        throw new Error('durable provider detail');
+      },
+    });
+    const hostileRequest = new Proxy(
+      {},
+      {
+        ownKeys: () => {
+          throw new Error('durable provider detail');
+        },
+      },
+    );
+    const malformed = [
+      { ...record, request: null },
+      { ...record, request: {} },
+      extra,
+      wrongVersion,
+      wrongNestedType,
+      malformedDigest,
+      configurationMismatch,
+      malformedPin,
+      { ...record, request: accessorRequest },
+      { ...record, request: hostileRequest },
+    ];
+    await Promise.all(
+      malformed.map(async (candidate) => {
+        const changedRequest = {
+          ...request,
+          authority: { ...request.authority, leaseExpiresAt: 2_999 },
+        };
+        await expect(
+          constructRunLifecycle({
+            executors: { resolveExact: async () => ({ executor, kind: 'resolved' }) },
+            store: withInjectedLookupRecord(new LogicalRunStoreFake(1_500), candidate),
+          }).verifyAndStart(changedRequest),
+        ).resolves.toEqual(invalidResult);
+      }),
+    );
+  });
+
+  it('contains hostile resolver access and rejects Start at lease equality without mutation', async () => {
+    const hostileRequest = new Proxy(
+      {
+        authority: {
+          ...authorityValue,
+          attemptPhase: 'claimed' as const,
+          nodePhase: 'executing' as const,
+        },
+        planDocument,
+      },
+      {
+        ownKeys: () => {
+          throw new Error('request provider detail');
+        },
+      },
+    );
+    await expect(
+      constructRunLifecycle({
+        executors: defaultExecutors,
+        store: new LogicalRunStoreFake(1_500),
+      }).verifyAndStart(hostileRequest),
+    ).resolves.toEqual(invalidResult);
+
+    const storeFailure = new Error('store failure');
+    const rejectingBase = new LogicalRunStoreFake(1_500);
+    const rejectingStore: RunStore = {
+      discover: (query) => rejectingBase.discover(query),
+      getRun: (runId) => rejectingBase.getRun(runId),
+      listRuns: (query) => rejectingBase.listRuns(query),
+      readEvents: (query) => rejectingBase.readEvents(query),
+      transaction: async () => {
+        throw storeFailure;
+      },
+    };
+    await expect(
+      constructRunLifecycle({
+        executors: defaultExecutors,
+        store: rejectingStore,
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).rejects.toBe(storeFailure);
+
+    const hostileStore = new LogicalRunStoreFake(1_500);
+    hostileStore.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    let getterCalls = 0;
+    const hostileResolver = {
+      resolveExact: async () => ({
+        fault: { code: 'EXECUTOR_UNAVAILABLE' as const, message: 'unused' },
+        kind: 'unavailable' as const,
+      }),
+    };
+    Object.defineProperty(hostileResolver, 'resolveExact', {
+      get: () => {
+        getterCalls += 1;
+        throw new Error('provider detail');
+      },
+    });
+    await expect(
+      constructRunLifecycle({
+        executors: hostileResolver,
+        store: hostileStore,
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toEqual({
+      fault: { code: 'EXECUTOR_UNAVAILABLE', message: 'Exact executor is unavailable.' },
+      kind: 'fault',
+    });
+    expect(getterCalls).toBe(0);
+
+    const cyclicTarget = {
+      resolveExact: async () => ({
+        fault: { code: 'EXECUTOR_UNAVAILABLE' as const, message: 'unused' },
+        kind: 'unavailable' as const,
+      }),
+    };
+    let cyclicResolver: typeof cyclicTarget;
+    cyclicResolver = new Proxy(cyclicTarget, {
+      getOwnPropertyDescriptor: () => undefined,
+      getPrototypeOf: () => cyclicResolver,
+    });
+    await expect(
+      constructRunLifecycle({
+        executors: cyclicResolver,
+        store: hostileStore,
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toEqual({
+      fault: { code: 'EXECUTOR_UNAVAILABLE', message: 'Exact executor is unavailable.' },
+      kind: 'fault',
+    });
+
+    const expiredStore = new LogicalRunStoreFake(3_000);
+    expiredStore.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    let resolveCalls = 0;
+    await expect(
+      constructRunLifecycle({
+        executors: {
+          resolveExact: async () => {
+            resolveCalls += 1;
+            return {
+              executor: {
+                contractPin: planBinding.executor,
+                execute: async () => ({ kind: 'cancelled' as const }),
+              },
+              kind: 'resolved',
+            };
+          },
+        },
+        store: expiredStore,
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toMatchObject({ conflict: { code: 'STALE_FENCE' }, kind: 'conflict' });
+    expect(resolveCalls).toBe(0);
+    await expect(
+      expiredStore.transaction((transaction) => transaction.getAttempt('attempt-1')),
+    ).resolves.toMatchObject({ kind: 'found', value: { revision: 0, status: 'claimed' } });
+  });
+
+  it('maps the verify-and-Start result and combined-fault precedence table', async () => {
+    const validExecutor = {
+      contractPin: planBinding.executor,
+      execute: async () => ({ kind: 'cancelled' as const }),
+    };
+    const cases = [
+      {
+        expected: { fault: { code: 'NOT_FOUND' }, kind: 'fault' },
+        name: 'missing authority',
+        request: {
+          authority: {
+            ...authorityValue,
+            attemptPhase: 'claimed' as const,
+            nodePhase: 'executing' as const,
+          },
+          planDocument,
+        },
+        seed: {},
+        resolver: resolverReturning({ executor: validExecutor, kind: 'resolved' }),
+      },
+      {
+        expected: { fault: { code: 'PLAN_MISMATCH' }, kind: 'fault' },
+        name: 'plan mismatch before receipt overflow',
+        request: {
+          authority: {
+            ...authorityValue,
+            attemptPhase: 'claimed' as const,
+            expectedAttemptRevision: Number.MAX_SAFE_INTEGER,
+            nodePhase: 'executing' as const,
+            planPin: { ...planPin, revision: 'other' },
+          },
+          planDocument,
+        },
+        seed: {},
+        resolver: resolverReturning({ executor: validExecutor, kind: 'resolved' }),
+      },
+      {
+        expected: { conflict: { code: 'INVALID_STATE' }, kind: 'conflict' },
+        name: 'invalid durable phase',
+        request: {
+          authority: {
+            ...authorityValue,
+            attemptPhase: 'claimed' as const,
+            nodePhase: 'executing' as const,
+          },
+          planDocument,
+        },
+        seed: {
+          attempts: [
+            attemptFixture({
+              executorConfigurationDigest: configurationDigest,
+              status: 'start_committed',
+            }),
+          ],
+          nodes: [executingNodeFixture('executing', { revision: 1 })],
+          runs: [runFixture()],
+        },
+        resolver: resolverReturning({ executor: validExecutor, kind: 'resolved' }),
+      },
+      {
+        expected: { fault: { code: 'EXECUTOR_MISMATCH' }, kind: 'fault' },
+        name: 'resolved executor mismatch',
+        request: {
+          authority: {
+            ...authorityValue,
+            attemptPhase: 'claimed' as const,
+            nodePhase: 'executing' as const,
+          },
+          planDocument,
+        },
+        seed: {
+          attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+          nodes: [executingNodeFixture('executing', { revision: 1 })],
+          runs: [runFixture()],
+        },
+        resolver: resolverReturning({
+          executor: {
+            ...validExecutor,
+            contractPin: { ...planBinding.executor, revision: 'other' },
+          },
+          kind: 'resolved',
+        }),
+      },
+      {
+        expected: { fault: { code: 'EXECUTOR_UNAVAILABLE' }, kind: 'fault' },
+        name: 'resolver synchronous throw',
+        request: {
+          authority: {
+            ...authorityValue,
+            attemptPhase: 'claimed' as const,
+            nodePhase: 'executing' as const,
+          },
+          planDocument,
+        },
+        seed: {
+          attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+          nodes: [executingNodeFixture('executing', { revision: 1 })],
+          runs: [runFixture()],
+        },
+        resolver: {
+          resolveExact() {
+            throw new Error('provider detail');
+          },
+        },
+      },
+      {
+        expected: { fault: { code: 'EXECUTOR_UNAVAILABLE' }, kind: 'fault' },
+        name: 'resolver rejection',
+        request: {
+          authority: {
+            ...authorityValue,
+            attemptPhase: 'claimed' as const,
+            nodePhase: 'executing' as const,
+          },
+          planDocument,
+        },
+        seed: {
+          attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+          nodes: [executingNodeFixture('executing', { revision: 1 })],
+          runs: [runFixture()],
+        },
+        resolver: {
+          resolveExact: () => Promise.reject(new Error('provider detail')),
+        },
+      },
+    ] as const;
+    await Promise.all(
+      cases.map(async ({ expected, name, request, resolver, seed }) => {
+        const store = new LogicalRunStoreFake(1_500);
+        store.seed(seed);
+        const result = await constructRunLifecycle({ executors: resolver, store }).verifyAndStart(
+          request,
+        );
+        expect({ name, result }).toMatchObject({ name, result: expected });
+      }),
+    );
+  });
+
+  it('contains the exact hostile resolution union and bounded fresh prototype chains', async () => {
+    const validExecutor = {
+      contractPin: planBinding.executor,
+      execute: async () => ({ kind: 'cancelled' as const }),
+    };
+    const accessorResolution = Object.defineProperty({ executor: validExecutor }, 'kind', {
+      enumerable: true,
+      get: () => 'resolved',
+    });
+    const inheritedResolution = {};
+    Object.setPrototypeOf(inheritedResolution, {
+      executor: validExecutor,
+      kind: 'resolved',
+    });
+    const symbolResolution = { executor: validExecutor, kind: 'resolved' };
+    Object.defineProperty(symbolResolution, Symbol('provider'), { value: true });
+    const extraResolution = { executor: validExecutor, extra: true, kind: 'resolved' };
+    const thenableResolution = Object.defineProperty({}, 'then', {
+      get: () => {
+        throw new Error('then provider detail');
+      },
+    });
+    let descriptorCalls = 0;
+    const changingResolution = new Proxy(
+      { executor: validExecutor, kind: 'resolved' },
+      {
+        getOwnPropertyDescriptor: (target, key) => {
+          descriptorCalls += 1;
+          if (descriptorCalls > 2) throw new Error('resolution descriptor read twice');
+          return Object.getOwnPropertyDescriptor(target, key);
+        },
+      },
+    );
+    const malformed = [
+      null,
+      {},
+      accessorResolution,
+      inheritedResolution,
+      symbolResolution,
+      extraResolution,
+      thenableResolution,
+      { fault: { code: 'EXECUTOR_UNAVAILABLE', message: 'unavailable' }, kind: 'unavailable' },
+    ];
+    await Promise.all(
+      malformed.map(async (resolution) => {
+        const store = new LogicalRunStoreFake(1_500);
+        store.seed({
+          attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+          nodes: [executingNodeFixture('executing', { revision: 1 })],
+          runs: [runFixture()],
+        });
+        await expect(
+          constructRunLifecycle({
+            executors: resolverReturning(resolution),
+            store,
+          }).verifyAndStart({
+            authority: {
+              ...authorityValue,
+              attemptPhase: 'claimed',
+              nodePhase: 'executing',
+            },
+            planDocument,
+          }),
+        ).resolves.toEqual({
+          fault: { code: 'EXECUTOR_UNAVAILABLE', message: 'Exact executor is unavailable.' },
+          kind: 'fault',
+        });
+      }),
+    );
+
+    const changingStore = new LogicalRunStoreFake(1_500);
+    changingStore.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    await expect(
+      constructRunLifecycle({
+        executors: resolverReturning(changingResolution),
+        store: changingStore,
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toMatchObject({ kind: 'committed' });
+    expect(descriptorCalls).toBe(2);
+
+    const freshChain = (): object =>
+      new Proxy(
+        {},
+        {
+          getOwnPropertyDescriptor: () => undefined,
+          getPrototypeOf: () => freshChain(),
+        },
+      );
+    const freshChainStore = new LogicalRunStoreFake(1_500);
+    freshChainStore.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    await expect(
+      constructRunLifecycle({
+        executors: new Proxy(defaultExecutors, {
+          getOwnPropertyDescriptor: () => undefined,
+          getPrototypeOf: () => freshChain(),
+        }),
+        store: freshChainStore,
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toEqual({
+      fault: { code: 'EXECUTOR_UNAVAILABLE', message: 'Exact executor is unavailable.' },
+      kind: 'fault',
+    });
+  });
+
+  it('accepts executor prototype data and rejects execute/contract-pin accessors', async () => {
+    const prototypeExecutor = {};
+    Object.setPrototypeOf(prototypeExecutor, {
+      contractPin: planBinding.executor,
+      execute: async (request: unknown) => request,
+    });
+    const store = new LogicalRunStoreFake(1_500);
+    store.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    await expect(
+      constructRunLifecycle({
+        executors: resolverReturning({ executor: prototypeExecutor, kind: 'resolved' }),
+        store,
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toMatchObject({ kind: 'committed' });
+
+    const accessorExecutors = ['execute', 'contractPin'].map((key) => {
+      const executor = {
+        contractPin: planBinding.executor,
+        execute: async () => ({ kind: 'cancelled' as const }),
+      };
+      Object.defineProperty(executor, key, {
+        get: () => {
+          throw new Error('executor provider detail');
+        },
+      });
+      return executor;
+    });
+    await Promise.all(
+      accessorExecutors.map(async (executor) => {
+        const candidateStore = new LogicalRunStoreFake(1_500);
+        candidateStore.seed({
+          attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+          nodes: [executingNodeFixture('executing', { revision: 1 })],
+          runs: [runFixture()],
+        });
+        await expect(
+          constructRunLifecycle({
+            executors: resolverReturning({ executor, kind: 'resolved' }),
+            store: candidateStore,
+          }).verifyAndStart({
+            authority: {
+              ...authorityValue,
+              attemptPhase: 'claimed',
+              nodePhase: 'executing',
+            },
+            planDocument,
+          }),
+        ).resolves.toMatchObject({
+          fault: { code: 'EXECUTOR_UNAVAILABLE' },
+          kind: 'fault',
+        });
+      }),
+    );
+  });
+
+  it('starts a claimed Attempt acquired under a successor fence', async () => {
+    const store = new LogicalRunStoreFake(3_000);
+    const acquiredAttempt = attemptFixture({
+      executorConfigurationDigest: configurationDigest,
+      fencingToken: 2,
+      lastHeartbeatAt: 3_000,
+      leaseExpiresAt: 5_000,
+      managerIncarnationId: 'manager-2',
+      revision: 1,
+      updatedAt: 3_000,
+    });
+    store.seed({
+      attempts: [acquiredAttempt],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    await expect(
+      constructRunLifecycle({
+        executors: {
+          resolveExact: async () => ({
+            executor: {
+              contractPin: planBinding.executor,
+              execute: async () => ({ kind: 'cancelled' as const }),
+            },
+            kind: 'resolved',
+          }),
+        },
+        store,
+      }).verifyAndStart({
+        authority: {
+          ...authorityValue,
+          attemptPhase: 'claimed',
+          expectedAttemptRevision: 1,
+          fencingToken: 2,
+          leaseExpiresAt: 5_000,
+          managerIncarnationId: 'manager-2',
+          nodePhase: 'executing',
+        },
+        planDocument,
+      }),
+    ).resolves.toMatchObject({
+      kind: 'committed',
+      value: {
+        authority: {
+          attemptPhase: 'start_committed',
+          expectedAttemptRevision: 2,
+          fencingToken: 2,
+          managerIncarnationId: 'manager-2',
+        },
+      },
+    });
+  });
+
+  it('keeps resolver I/O outside transactions and loses a heartbeat race without Start', async () => {
+    const store = new LogicalRunStoreFake(1_500);
+    store.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    const lifecycle = constructRunLifecycle({
+      executors: {
+        resolveExact: async () => {
+          const renewed = await lifecycle.renewLease({ authority: authorityValue, leasePolicy });
+          expect(renewed).toMatchObject({ kind: 'committed' });
+          return {
+            executor: {
+              contractPin: planBinding.executor,
+              execute: async () => ({ kind: 'cancelled' as const }),
+            },
+            kind: 'resolved',
+          };
+        },
+      },
+      store,
+    });
+    await expect(
+      lifecycle.verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toMatchObject({
+      conflict: { code: 'REVISION_CONFLICT' },
+      kind: 'conflict',
+    });
+    await expect(
+      store.transaction((transaction) => transaction.getAttempt('attempt-1')),
+    ).resolves.toMatchObject({
+      kind: 'found',
+      value: { revision: 1, status: 'claimed' },
+    });
+    await expect(
+      store.transaction((transaction) =>
+        transaction.getIdempotency({
+          key: authorityValue.dispatchIdempotencyKey,
+          operation: 'start_attempt',
+          runId: authorityValue.runId,
+          subjectId: authorityValue.attemptId,
+        }),
+      ),
+    ).resolves.toEqual({ kind: 'not_found' });
+  });
+
+  it('atomically rolls back Start state, event, and replay record on commit failure', async () => {
+    const store = new LogicalRunStoreFake(1_500);
+    store.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    store.failAfterNextStage('events');
+    await expect(
+      constructRunLifecycle({
+        executors: {
+          resolveExact: async () => ({
+            executor: {
+              contractPin: planBinding.executor,
+              execute: async () => ({ kind: 'cancelled' as const }),
+            },
+            kind: 'resolved',
+          }),
+        },
+        store,
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).rejects.toThrow('Injected logical provider failure after events.');
+    await expect(
+      store.transaction((transaction) => transaction.getAttempt('attempt-1')),
+    ).resolves.toMatchObject({
+      kind: 'found',
+      value: { revision: 0, status: 'claimed' },
+    });
+    await expect(
+      store.readEvents({
+        limit: 10,
+        runId: authorityValue.runId,
+        scan: { after: { runId: authorityValue.runId, sequence: 0 }, kind: 'start' },
+      }),
+    ).resolves.toMatchObject({ kind: 'page', page: { items: [] } });
+    await expect(
+      store.transaction((transaction) =>
+        transaction.getIdempotency({
+          key: authorityValue.dispatchIdempotencyKey,
+          operation: 'start_attempt',
+          runId: authorityValue.runId,
+          subjectId: authorityValue.attemptId,
+        }),
+      ),
+    ).resolves.toEqual({ kind: 'not_found' });
+  });
+
+  it('maps an authoritative Run input snapshot trap to INVALID_INPUT without Start', async () => {
+    const base = new LogicalRunStoreFake(1_500);
+    const hostileInput = new Proxy(
+      {},
+      {
+        ownKeys: () => {
+          throw new Error('authoritative input provider detail');
+        },
+      },
+    );
+    const hostileRun = { ...runFixture(), input: hostileInput };
+    base.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    const store: RunStore = {
+      discover: (query) => base.discover(query),
+      getRun: async () => ({ kind: 'found', value: hostileRun }),
+      listRuns: (query) => base.listRuns(query),
+      readEvents: (query) => base.readEvents(query),
+      transaction: (callback) =>
+        base.transaction((transaction) =>
+          callback({
+            ...transaction,
+            getRun: async () => ({ kind: 'found', value: hostileRun }),
+          }),
+        ),
+    };
+    await expect(
+      constructRunLifecycle({
+        executors: resolverReturning({
+          executor: {
+            contractPin: planBinding.executor,
+            execute: async () => ({ kind: 'cancelled' as const }),
+          },
+          kind: 'resolved',
+        }),
+        store,
+      }).verifyAndStart({
+        authority: { ...authorityValue, attemptPhase: 'claimed', nodePhase: 'executing' },
+        planDocument,
+      }),
+    ).resolves.toEqual(invalidResult);
+    await expect(
+      base.transaction((transaction) => transaction.getAttempt('attempt-1')),
+    ).resolves.toMatchObject({ kind: 'found', value: { revision: 0, status: 'claimed' } });
+  });
+
+  it('uses one initial Start snapshot and returns an accepted interleaving replay at commit', async () => {
+    const source = new LogicalRunStoreFake(1_500);
+    source.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    const executor = {
+      contractPin: planBinding.executor,
+      execute: async () => ({ kind: 'cancelled' as const }),
+    };
+    const request = {
+      authority: {
+        ...authorityValue,
+        attemptPhase: 'claimed' as const,
+        nodePhase: 'executing' as const,
+      },
+      planDocument,
+    };
+    await constructRunLifecycle({
+      executors: resolverReturning({ executor, kind: 'resolved' }),
+      store: source,
+    }).verifyAndStart(request);
+    const record = await readIdempotency(source, {
+      key: authorityValue.dispatchIdempotencyKey,
+      operation: 'start_attempt',
+      runId: authorityValue.runId,
+      subjectId: authorityValue.attemptId,
+    });
+
+    const base = new LogicalRunStoreFake(1_500);
+    base.seed({
+      attempts: [attemptFixture({ executorConfigurationDigest: configurationDigest })],
+      nodes: [executingNodeFixture('executing', { revision: 1 })],
+      runs: [runFixture()],
+    });
+    let transactionCount = 0;
+    const transactionSnapshots: string[] = [];
+    const store: RunStore = {
+      discover: (query) => base.discover(query),
+      getRun: (runId) => base.getRun(runId),
+      listRuns: (query) => base.listRuns(query),
+      readEvents: (query) => base.readEvents(query),
+      transaction: (callback) => {
+        transactionCount += 1;
+        const finalTransaction = transactionCount === 2;
+        transactionSnapshots.push(finalTransaction ? 'accepted-interleaving' : 'initial-snapshot');
+        return base.transaction((transaction) =>
+          callback({
+            ...transaction,
+            getIdempotency: async (identity) =>
+              finalTransaction
+                ? { kind: 'found', value: record }
+                : transaction.getIdempotency(identity),
+          }),
+        );
+      },
+    };
+    let resolveCalls = 0;
+    const result = await constructRunLifecycle({
+      executors: {
+        resolveExact: async () => {
+          resolveCalls += 1;
+          return { executor, kind: 'resolved' };
+        },
+      },
+      store,
+    }).verifyAndStart(request);
+    expect(result).toMatchObject({ kind: 'replayed', value: { attemptPhase: 'start_committed' } });
+    expect(result).not.toHaveProperty('value.execute');
+    expect(resolveCalls).toBe(1);
+    expect(transactionCount).toBe(2);
+    expect(transactionSnapshots).toEqual(['initial-snapshot', 'accepted-interleaving']);
+    await expect(
+      base.transaction((transaction) => transaction.getAttempt('attempt-1')),
+    ).resolves.toMatchObject({ kind: 'found', value: { revision: 0, status: 'claimed' } });
   });
 
   it('strictly maps deterministic commit-time claim replays', async () => {

@@ -171,8 +171,13 @@ const positiveGraph: readonly SourceModule[] = [
       "import type { RunState } from '../domain/index.js';\nexport interface RunStorePort { load(): Promise<RunState> }\n",
   },
   {
+    path: 'src/storage/run-store.ts',
+    source: 'export interface RunStore { transaction(): Promise<void> }\n',
+  },
+  {
     path: 'src/storage/index.ts',
-    source: "export type { RunStorePort } from './run-store-port.js';\n",
+    source:
+      "export type { RunStore } from './run-store.js';\nexport type { RunStorePort } from './run-store-port.js';\n",
   },
   {
     path: 'src/ports/execution-plan-source.ts',
@@ -200,13 +205,12 @@ const positiveGraph: readonly SourceModule[] = [
   },
   {
     path: 'src/lifecycle/index.ts',
-    source:
-      "export { advanceLifecycle } from './advance-lifecycle.js';\nexport type { RunLifecycle } from './run-lifecycle.js';\n",
+    source: "export type { RunLifecycle } from './run-lifecycle.js';\n",
   },
   {
     path: 'src/lifecycle/run-lifecycle-dependencies.ts',
     source:
-      "import type { RunStorePort } from '../storage/index.js';\nexport interface RunLifecycleDependencies { readonly store: RunStorePort }\n",
+      "import type { ExecutorResolver } from '../ports/index.js';\nimport type { RunStore } from '../storage/index.js';\nexport interface RunLifecycleDependencies { readonly executors: ExecutorResolver; readonly store: RunStore }\n",
   },
   {
     path: 'src/lifecycle/create-run-lifecycle.ts',
@@ -214,9 +218,44 @@ const positiveGraph: readonly SourceModule[] = [
       "import type { RunLifecycleDependencies } from './run-lifecycle-dependencies.js';\nexport const createRunLifecycle = (_dependencies: RunLifecycleDependencies): void => undefined;\n",
   },
   {
+    path: 'src/lifecycle/generic-function-shadow.ts',
+    source:
+      'const hostile = 1;\ntype T = typeof hostile;\nexport function createShadow<T>(value: T): T { return value; }\n',
+  },
+  {
+    path: 'src/lifecycle/generic-type-shadow.ts',
+    source:
+      'const hostile = 1;\ntype T = typeof hostile;\nexport type GenericShadow<T> = { readonly value: T };\n',
+  },
+  {
+    path: 'src/lifecycle/interface-shadow.ts',
+    source:
+      'const hostile = 1;\ntype T = typeof hostile;\nexport interface InterfaceShadow<T> { readonly value: T }\n',
+  },
+  {
+    path: 'src/lifecycle/property-shadow.ts',
+    source:
+      'const hostile = 1;\ntype collision = typeof hostile;\nexport type PropertyShadow = { readonly collision: string };\n',
+  },
+  {
+    path: 'src/lifecycle/function-parameter-shadow.ts',
+    source:
+      'const hostile = 1;\ntype value = typeof hostile;\nexport type FunctionParameterShadow = (value: string) => string;\n',
+  },
+  {
+    path: 'src/lifecycle/infer-constraint-shadow.ts',
+    source:
+      'const hostile = 1;\ntype T = typeof hostile;\nexport type InferConstraintShadow<T> = T extends (infer U extends T) ? U : T;\n',
+  },
+  {
+    path: 'src/lifecycle/tuple-infer-constraint-shadow.ts',
+    source:
+      'const hostile = 1;\ntype X = typeof hostile;\nexport type TupleInferConstraintShadow<X> = X extends readonly [infer U extends X, ...unknown[]] ? U : X;\n',
+  },
+  {
     path: 'src/lifecycle/construction.ts',
     source:
-      "export { createRunLifecycle } from './create-run-lifecycle.js';\nexport type { RunLifecycleDependencies } from './run-lifecycle-dependencies.js';\n",
+      "export { createRunLifecycle } from './create-run-lifecycle.js';\nexport { createShadow } from './generic-function-shadow.js';\nexport type { FunctionParameterShadow } from './function-parameter-shadow.js';\nexport type { GenericShadow } from './generic-type-shadow.js';\nexport type { InferConstraintShadow } from './infer-constraint-shadow.js';\nexport type { InterfaceShadow } from './interface-shadow.js';\nexport type { PropertyShadow } from './property-shadow.js';\nexport type { RunLifecycleDependencies } from './run-lifecycle-dependencies.js';\nexport type { TupleInferConstraintShadow } from './tuple-infer-constraint-shadow.js';\n",
   },
   {
     path: 'src/manager/build-run-manager.ts',
@@ -230,7 +269,7 @@ const positiveGraph: readonly SourceModule[] = [
   {
     path: 'src/composition/create-run-manager.ts',
     source:
-      "import { createRunLifecycle } from '../lifecycle/construction.js';\nimport { advanceLifecycle, type RunLifecycle } from '../lifecycle/index.js';\nimport { buildRunManager } from '../manager/index.js';\nimport type { ExecutionPlanSource } from '../ports/index.js';\nimport type { RunInput } from '../spec/index.js';\nimport type { RunStorePort } from '../storage/index.js';\nexport const createRunManager = (input: RunInput, store: RunStorePort, plans: ExecutionPlanSource): number => { createRunLifecycle({ store }); const lifecycle: RunLifecycle = { advance: (value) => advanceLifecycle(value, store, plans) }; return buildRunManager(lifecycle, plans, input); };\n",
+      "import { createRunLifecycle } from '../lifecycle/construction.js';\nimport { advanceLifecycle, type RunLifecycle } from '../lifecycle/index.js';\nimport { buildRunManager } from '../manager/index.js';\nimport type { ExecutionPlanSource, ExecutorResolver } from '../ports/index.js';\nimport type { RunInput } from '../spec/index.js';\nimport type { RunStorePort } from '../storage/index.js';\nexport const createRunManager = (input: RunInput, store: RunStorePort, plans: ExecutionPlanSource, executors: ExecutorResolver): number => { createRunLifecycle({ executors, store }); const lifecycle: RunLifecycle = { advance: (value) => advanceLifecycle(value, store, plans) }; return buildRunManager(lifecycle, plans, input); };\n",
   },
   {
     path: 'src/composition/index.ts',
@@ -247,6 +286,23 @@ validateModuleStructure([
   ...(await collectTypeScriptModules(join(root, 'test'))),
 ]);
 validateModuleStructure(positiveGraph);
+validateModuleStructure([
+  {
+    path: 'src/lifecycle/construction.ts',
+    source:
+      "export { createArrow } from './runtime-arrow.js';\nexport { createFunction } from './runtime-function.js';\n",
+  },
+  {
+    path: 'src/lifecycle/runtime-function.ts',
+    source:
+      "import { runtimeOnly } from '../ports/index.js';\nexport function createFunction(): void { runtimeOnly(); }\n",
+  },
+  {
+    path: 'src/lifecycle/runtime-arrow.ts',
+    source:
+      "import { runtimeOnly } from '../ports/index.js';\nexport const createArrow = (): void => runtimeOnly();\n",
+  },
+]);
 
 execFileSync(
   join(root, 'node_modules/.bin/oxlint'),
@@ -260,7 +316,376 @@ const probes: readonly (readonly [ArchitectureRule, readonly SourceModule[]])[] 
     [
       {
         path: 'src/manager/run-manager.ts',
-        source: 'export interface ManagerState { readonly marker: "RunStore" }\n',
+        source:
+          'interface RunStore { readonly marker: string }\nexport interface ManagerState { readonly marker: RunStore }\n',
+      },
+    ],
+  ],
+  [
+    'lifecycle-port-boundary',
+    [
+      {
+        path: 'src/lifecycle/run-lifecycle-dependencies.ts',
+        source:
+          "import type { ExecutionPlanSource } from '../ports/index.js';\nexport interface RunLifecycleDependencies { readonly plans: ExecutionPlanSource }\n",
+      },
+    ],
+  ],
+  ...(
+    [
+      [
+        'inline import type',
+        "export interface Helper { readonly plans: import('../ports/index.js').ExecutionPlanSource }\n",
+      ],
+      [
+        'namespace import',
+        "import type * as Ports from '../ports/index.js';\nexport interface Helper { readonly plans: Ports.ExecutionPlanSource }\n",
+      ],
+      [
+        'default type import',
+        "import type PlanSource from '../ports/index.js';\nexport interface Helper { readonly plans: PlanSource }\n",
+      ],
+      [
+        'private alias chain',
+        "import type { ExecutionPlanSource } from '../ports/index.js';\ntype Private = ExecutionPlanSource;\nexport interface Helper { readonly plans: Private }\n",
+      ],
+      [
+        'class surface',
+        "import type { ExecutionPlanSource } from '../ports/index.js';\nexport class Helper { constructor(readonly plans: ExecutionPlanSource) {} method(): ExecutionPlanSource { throw new Error('unused') } }\n",
+      ],
+    ] as const
+  ).map(
+    ([_name, helperSource]) =>
+      [
+        'lifecycle-port-boundary',
+        [
+          {
+            path: 'src/lifecycle/construction.ts',
+            source: "export { create } from './create.js';\n",
+          },
+          {
+            path: 'src/lifecycle/create.ts',
+            source:
+              "import type { Helper } from './helper.js';\nexport declare function create(helper: Helper): void;\n",
+          },
+          { path: 'src/lifecycle/helper.ts', source: helperSource },
+        ],
+      ] as const,
+  ),
+  ...[
+    'export function create() { return undefined; }\n',
+    'export const create = () => undefined;\n',
+    'export class create { method() { return undefined; } }\n',
+    'export class create { get value() { return 1; } }\n',
+    'export class create { readonly value = 1; }\n',
+    'const local = (): void => undefined;\nexport const create = local;\n',
+    "import { advanceRun } from '../domain/index.js';\nconst { create } = { create: advanceRun };\nexport { create };\n",
+    "import type { RunState } from '../domain/index.js';\nexport function create<T extends RunState>(): void {}\n",
+    "import type { ExecutionPlanSource } from '../ports/index.js';\nexport function create<T = ExecutionPlanSource>(): void {}\n",
+    'export default (): void => undefined;\n',
+    'export default class create {}\n',
+    'export default interface create { readonly value: number }\n',
+    'export default { create(): void {} };\n',
+    'const create: () => void = () => undefined;\nexport default create;\n',
+    'export class create { readonly ["value"]: number = 1; }\n',
+    'export interface create { readonly ["value"]: number }\n',
+    'export interface create { (): void }\n',
+    'export interface create { new (): create }\n',
+    'export interface create { run(): void }\n',
+    'export interface create { [key: string]: number }\n',
+    'export function create({ value }: { value: number }): void { void value; }\n',
+    'export const create = ({ value }: { value: number }): void => { void value; };\n',
+    'export type create = ({ value }: { value: number }) => void;\n',
+    'const local = { value: 1 };\nexport type create = typeof local;\n',
+    'const hostile = 1;\ntype Alias = typeof hostile;\nexport type create<T> = T extends (infer U extends Alias) ? U : T;\n',
+    "import type { RunState } from '../domain/index.js';\nexport type create<T> = T extends (infer U extends RunState) ? U : T;\n",
+    "import type { RunState } from '../domain/index.js';\nexport type create<T> = T extends readonly [infer U extends RunState, ...unknown[]] ? U : T;\n",
+    "export type create<T> = T extends (infer U extends import('../domain/index.js').RunState) ? U : T;\n",
+    "import type { RunState } from '../domain/index.js';\nexport type create<T> = T extends (infer U extends { readonly state: RunState }) ? U : T;\n",
+    "import type { RunState } from '../domain/index.js';\ndeclare const key: unique symbol;\nexport interface create { readonly [key]: RunState }\n",
+    "import { advanceRun } from '../domain/index.js';\nconst hidden = advanceRun;\ntype Hidden = typeof hidden;\nexport interface create { readonly hidden: Hidden }\n",
+    'interface Hidden { (): void }\nexport interface create { readonly hidden: Hidden }\n',
+    'class Hidden {}\nexport interface create { readonly hidden: Hidden }\n',
+    'interface Hidden { readonly ["value"]: number }\nexport interface create { readonly hidden: Hidden }\n',
+    'interface Hidden { run(): void }\nexport const create: Hidden = {} as Hidden;\n',
+    'type Hidden = ({ value }: { value: number }) => void;\nexport interface create { readonly hidden: Hidden }\n',
+    "import type { RunState } from '../domain/index.js';\ntype Hidden<T extends RunState = RunState> = { readonly value: T };\nexport interface create { readonly hidden: Hidden<RunState> }\n",
+    "import type { RunState } from '../domain/index.js';\nexport interface create { [key: string]: RunState }\n",
+  ].map(
+    (source) =>
+      [
+        'lifecycle-port-boundary',
+        [
+          {
+            path: 'src/lifecycle/construction.ts',
+            source: "export { create } from './inferred.js';\n",
+          },
+          { path: 'src/lifecycle/inferred.ts', source },
+        ],
+      ] as const,
+  ),
+  ...[
+    "import type RunStoreInvalidInput from '../storage/index.js';\nexport interface RunLifecycleDependencies { readonly store: RunStoreInvalidInput }\n",
+    "import type { RunStoreInvalidInput as Store } from '../storage/index.js';\nexport interface RunLifecycleDependencies { readonly store: Store }\n",
+    "export interface RunLifecycleDependencies { readonly store: import('../storage/index.js').RunStoreInvalidInput }\n",
+    "import type * as Storage from '../storage/index.js';\nexport interface RunLifecycleDependencies { readonly store: Storage.RunStoreInvalidInput }\n",
+    "import type * as Storage from '../storage/index.js';\nexport interface RunLifecycleDependencies { readonly store: Storage /* gap */ . RunStoreInvalidInput }\n",
+    "import Storage = require('../storage/index.js');\nexport interface RunLifecycleDependencies { readonly store: Storage.RunStoreInvalidInput }\n",
+    "export interface RunLifecycleDependencies { readonly store: Storage.RunStoreInvalidInput }\nimport type * as Storage from '../storage/index.js';\n",
+    "export type { RunStoreInvalidInput } from '../storage/index.js';\n",
+  ].map(
+    (source) =>
+      [
+        'lifecycle-port-boundary',
+        [
+          {
+            path: 'src/lifecycle/construction.ts',
+            source:
+              "export type { RunLifecycleDependencies } from './run-lifecycle-dependencies.js';\n",
+          },
+          { path: 'src/lifecycle/run-lifecycle-dependencies.ts', source },
+        ],
+      ] as const,
+  ),
+  [
+    'lifecycle-port-boundary',
+    [
+      {
+        path: 'src/lifecycle/construction.ts',
+        source: "export { build } from './local-export.js';\n",
+      },
+      {
+        path: 'src/lifecycle/local-export.ts',
+        source: "import { helper } from './helper.js';\nexport { helper as build };\n",
+      },
+      {
+        path: 'src/lifecycle/helper.ts',
+        source: 'export const helper = () => undefined;\n',
+      },
+    ],
+  ],
+  [
+    'lifecycle-port-boundary',
+    [
+      {
+        path: 'src/lifecycle/construction.ts',
+        source: "export { create } from './create.js';\n",
+      },
+      {
+        path: 'src/lifecycle/create.ts',
+        source: "import { helper } from './helper.js';\nexport const create = helper;\n",
+      },
+      {
+        path: 'src/lifecycle/helper.ts',
+        source:
+          "import type { ExecutionPlanSource } from '../ports/index.js';\nexport declare function helper(plans: ExecutionPlanSource): void;\n",
+      },
+    ],
+  ],
+  ...(
+    [
+      [
+        'port',
+        "import type { ExecutionPlanSource } from '../ports/index.js';\nexport interface Helper { readonly plans: ExecutionPlanSource }\n",
+      ],
+      [
+        'storage',
+        "import type { RunStore } from '../storage/index.js';\nexport interface Helper { readonly store: RunStore }\n",
+      ],
+      [
+        'domain',
+        "import type { RunState } from '../domain/index.js';\nexport interface Helper { readonly state: RunState }\n",
+      ],
+    ] as const
+  ).map(
+    ([_name, helperSource]) =>
+      [
+        'lifecycle-port-boundary',
+        [
+          {
+            path: 'src/lifecycle/construction.ts',
+            source: "export { create } from './create.js';\n",
+          },
+          {
+            path: 'src/lifecycle/create.ts',
+            source:
+              "import type { Helper } from './helper.js';\nexport declare function create(helper: Helper): void;\n",
+          },
+          { path: 'src/lifecycle/helper.ts', source: helperSource },
+        ],
+      ] as const,
+  ),
+  [
+    'lifecycle-port-boundary',
+    [
+      {
+        path: 'src/lifecycle/construction.ts',
+        source: "export { create } from './create.js';\n",
+      },
+      {
+        path: 'src/lifecycle/create.ts',
+        source:
+          "import type { Helper } from './helper.js';\nexport declare function create(helper: Helper): void;\n",
+      },
+      {
+        path: 'src/lifecycle/helper.ts',
+        source:
+          "import Next = require('./next.js');\nexport interface Helper { readonly next: Next.Deep }\n",
+      },
+      {
+        path: 'src/lifecycle/next.ts',
+        source:
+          "import Ports = require('../ports/index.js');\nexport interface Deep { readonly plans: Ports.ExecutionPlanSource }\n",
+      },
+    ],
+  ],
+  ...(
+    [
+      [
+        'storage',
+        "import type { RunStore } from '../storage/index.js';\nexport interface Leak { readonly store: RunStore }\n",
+      ],
+      [
+        'domain',
+        "import type { RunState } from '../domain/index.js';\nexport interface Leak { readonly state: RunState }\n",
+      ],
+      [
+        'pipeline',
+        "import type { PrivatePipeline } from './pipeline/private.js';\nexport interface Leak { readonly pipeline: PrivatePipeline }\n",
+      ],
+      ['provider', 'export interface Leak { readonly provider: ProviderPayload }\n'],
+    ] as const
+  ).map(
+    ([name, source]) =>
+      [
+        'lifecycle-port-boundary',
+        [
+          {
+            path: 'src/lifecycle/index.ts',
+            source: "export type { Leak } from './boundary-leak.js';\n",
+          },
+          {
+            path: 'src/lifecycle/boundary-leak.ts',
+            source:
+              name === 'provider'
+                ? `import type { ProviderPayload } from '../provider/index.js';\n${source}`
+                : source,
+          },
+        ],
+      ] as const,
+  ),
+  [
+    'lifecycle-port-boundary',
+    [
+      {
+        path: 'src/lifecycle/index.ts',
+        source: "export { createRunLifecycle } from './construction.js';\n",
+      },
+    ],
+  ],
+  [
+    'lifecycle-port-boundary',
+    [
+      {
+        path: 'src/lifecycle/construction.ts',
+        source: "export type { Helper } from './construction-helper.js';\n",
+      },
+      {
+        path: 'src/lifecycle/construction-helper.ts',
+        source:
+          "import type { ExecutionPlanSource } from '../ports/index.js';\nexport interface Helper { readonly plans: ExecutionPlanSource }\n",
+      },
+    ],
+  ],
+  [
+    'lifecycle-port-boundary',
+    [
+      {
+        path: 'src/lifecycle/construction.ts',
+        source:
+          "export type { ExecutionPlanSource as ExecutorResolver } from '../ports/index.js';\n",
+      },
+    ],
+  ],
+  [
+    'lifecycle-port-boundary',
+    [
+      {
+        path: 'src/lifecycle/construction.ts',
+        source: "export type { Helper } from './construction-helper.js';\n",
+      },
+      {
+        path: 'src/lifecycle/construction-helper.ts',
+        source:
+          "import Ports = require('../ports/index.js');\nexport interface Helper { readonly resolver: Ports.ExecutorResolver }\n",
+      },
+    ],
+  ],
+  ...(
+    [
+      [
+        'storage',
+        "import type { RunStore } from '../storage/index.js';\nexport interface Helper { readonly store: RunStore }\n",
+      ],
+      [
+        'domain',
+        "import type { RunState } from '../domain/index.js';\nexport interface Helper { readonly state: RunState }\n",
+      ],
+    ] as const
+  ).map(
+    ([name, source]) =>
+      [
+        'lifecycle-port-boundary',
+        [
+          {
+            path: 'src/lifecycle/construction.ts',
+            source: "export type { Helper } from './construction-helper.js';\n",
+          },
+          { path: 'src/lifecycle/construction-helper.ts', source: `${source}// ${name}\n` },
+        ],
+      ] as const,
+  ),
+  [
+    'lifecycle-port-boundary',
+    [
+      {
+        path: 'src/lifecycle/run-lifecycle-dependencies.ts',
+        source:
+          "import type { ExecutionPlanSource as ExecutorResolver } from '../ports/index.js';\nexport interface RunLifecycleDependencies { readonly plans: ExecutorResolver }\n",
+      },
+    ],
+  ],
+  [
+    'lifecycle-port-boundary',
+    [
+      {
+        path: 'src/lifecycle/run-lifecycle-dependencies.ts',
+        source:
+          "export interface RunLifecycleDependencies { readonly plans: import('../ports/index.js').ExecutionPlanSource }\n",
+      },
+    ],
+  ],
+  [
+    'lifecycle-port-boundary',
+    [
+      {
+        path: 'src/lifecycle/index.ts',
+        source: "export type { LeakedResult } from './leaked-result.js';\n",
+      },
+      {
+        path: 'src/lifecycle/leaked-result.ts',
+        source:
+          "import type { ExecutorResult } from '../ports/index.js';\nexport interface LeakedResult { readonly result: ExecutorResult }\n",
+      },
+    ],
+  ],
+  [
+    'lifecycle-port-boundary',
+    [
+      {
+        path: 'src/lifecycle/run-lifecycle.ts',
+        source:
+          "import type { ResolvedExecutor } from '../ports/index.js';\nexport interface RunLifecycle { readonly executor: ResolvedExecutor }\n",
       },
     ],
   ],
@@ -655,11 +1080,12 @@ try {
   const storePositiveRoot = join(declarationProbeRoot, 'store-positive');
   await writeFixtureFiles(storePositiveRoot, {
     'tsconfig.json': commonFiles['tsconfig.json'],
+    'src/ports/index.ts': 'export interface ExecutorResolver { resolveExact(): Promise<void> }\n',
     'src/storage/index.ts': 'export interface RunStore { transaction(): Promise<void> }\n',
     'src/lifecycle/run-lifecycle.ts':
-      'export interface RunLifecycle { discover(): Promise<void>; claim(): Promise<void>; renewLease(): Promise<void>; writeHandoff(): Promise<void>; acquire(): Promise<void> }\n',
+      'export interface RunLifecycle { discover(): Promise<void>; claim(): Promise<void>; renewLease(): Promise<void>; writeHandoff(): Promise<void>; acquire(): Promise<void>; verifyAndStart(): Promise<void> }\n',
     'src/lifecycle/run-lifecycle-dependencies.ts':
-      "import type { RunStore } from '../storage/index.js';\nexport interface RunLifecycleDependencies { readonly store: RunStore }\n",
+      "import type { ExecutorResolver } from '../ports/index.js';\nimport type { RunStore } from '../storage/index.js';\nexport interface RunLifecycleDependencies { readonly executors: ExecutorResolver; readonly store: RunStore }\n",
     'src/lifecycle/create-run-lifecycle.ts':
       "import type { RunLifecycleDependencies } from './run-lifecycle-dependencies.js';\nimport type { RunLifecycle } from './run-lifecycle.js';\nexport declare const createRunLifecycle: (dependencies: RunLifecycleDependencies) => RunLifecycle;\n",
     'src/lifecycle/construction.ts':
@@ -669,9 +1095,15 @@ try {
   const storeNegativeRoot = join(declarationProbeRoot, 'store-negative');
   await writeFixtureFiles(storeNegativeRoot, {
     'tsconfig.json': commonFiles['tsconfig.json'],
+    'src/domain/index.ts': 'export interface RunState { readonly revision: number }\n',
+    'src/pipeline/index.ts':
+      'export interface DecodedPipeline { readonly nodes: readonly string[] }\n',
+    'src/provider/index.ts': 'export interface ProviderPayload { readonly opaque: string }\n',
+    'src/ports/index.ts':
+      'export interface ResolvedExecutor { execute(): Promise<void>; reconcile(): Promise<void>; cancel(): Promise<void> }\nexport type ExecutorResolution = { readonly kind: "resolved"; readonly executor: ResolvedExecutor }\nexport interface ExecutorRequest { readonly operation: "execute" }\nexport interface ExecutorResult { readonly kind: "completed" }\n',
     'src/storage/index.ts': 'export interface RunStore { transaction(): Promise<void> }\n',
     'src/lifecycle/index.ts':
-      "import type { RunStore } from '../storage/index.js';\nexport interface RunLifecycle { readonly store: RunStore }\n",
+      "import type { RunState } from '../domain/index.js';\nimport type { DecodedPipeline } from '../pipeline/index.js';\nimport type { ExecutorRequest, ExecutorResolution, ExecutorResult, ResolvedExecutor } from '../ports/index.js';\nimport type { ProviderPayload } from '../provider/index.js';\nimport type { RunStore } from '../storage/index.js';\nexport interface RunLifecycle { readonly store: RunStore; readonly state: RunState; readonly pipeline: DecodedPipeline; readonly executor: ResolvedExecutor; readonly resolution: ExecutorResolution; readonly request: ExecutorRequest; readonly result: ExecutorResult; readonly provider: ProviderPayload; reconcile(): Promise<void>; cancel(): Promise<void> }\n",
   });
   for (const fixtureRoot of [storePositiveRoot, storeNegativeRoot]) {
     execFileSync(join(root, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.json'], {
@@ -679,9 +1111,39 @@ try {
       stdio: 'pipe',
     });
   }
+  const operationalLeakMarkers = [
+    /\bRunStore\b|\/storage\//,
+    /\bRunState\b|\/domain\//,
+    /\bDecodedPipeline\b|\/pipeline\//,
+    /\bProviderPayload\b|\/provider\//,
+    /\bResolvedExecutor\b/,
+    /\bExecutorResolution\b/,
+    /\bExecutorRequest\b/,
+    /\bExecutorResult\b/,
+    /\breconcile\b/,
+    /\bcancel\b/,
+  ] as const;
+  const positiveOperationalDeclarations = readReachableDeclarations(
+    join(storePositiveRoot, 'dist/lifecycle/index.d.ts'),
+  );
+  const negativeOperationalDeclarations = readReachableDeclarations(
+    join(storeNegativeRoot, 'dist/lifecycle/index.d.ts'),
+  );
+  for (const leakMarker of operationalLeakMarkers) {
+    assert.doesNotMatch(
+      positiveOperationalDeclarations,
+      leakMarker,
+      `Operational lifecycle declarations must not expose ${leakMarker.source}`,
+    );
+    assert.match(
+      negativeOperationalDeclarations,
+      leakMarker,
+      `Reachable declaration scan must detect ${leakMarker.source}`,
+    );
+  }
   const storeMarker = /\bRunStore\b|\/storage\//;
   assert.doesNotMatch(
-    readReachableDeclarations(join(storePositiveRoot, 'dist/lifecycle/index.d.ts')),
+    positiveOperationalDeclarations,
     storeMarker,
     'Store must not be reachable from manager-facing lifecycle declarations',
   );
@@ -809,6 +1271,50 @@ const temporaryRoot = await mkdtemp(join(root, '.architecture-probe-'));
 try {
   const lintProbes = [
     {
+      name: 'operational exact MCP baseline',
+      path: 'src/lifecycle/index.ts',
+      source:
+        "import type { Server } from '@modelcontextprotocol/sdk/server/index.js';\nexport type { Server };\n",
+      expectedMessage: 'MCP transport and server dependencies belong to the host, not revo-run.',
+      expectedCount: 2,
+    },
+    {
+      name: 'construction exact Nest baseline',
+      path: 'src/lifecycle/construction.ts',
+      source:
+        "import type { Injectable } from '@nestjs/common';\nexport type ConstructionProbe = Injectable;\n",
+      expectedMessage:
+        'Database frameworks, worker runtimes, queues, and API transports are outside revo-run.',
+    },
+    {
+      name: 'construction helper non-resolver port',
+      path: 'src/lifecycle/construction-helper.ts',
+      source:
+        "import type { ExecutionPlanSource } from '../ports/index.js';\nexport interface Probe { readonly plans: ExecutionPlanSource }\n",
+      expectedMessage: 'Lifecycle modules may import only ExecutorResolver from ports.',
+    },
+    {
+      name: 'construction non-resolver port',
+      path: 'src/lifecycle/run-lifecycle-dependencies.ts',
+      source:
+        "import type { ExecutionPlanSource } from '../ports/index.js';\nexport interface Probe { readonly plans: ExecutionPlanSource }\n",
+      expectedMessage: 'Lifecycle modules may import only ExecutorResolver from ports.',
+    },
+    {
+      name: 'construction aliased non-resolver port',
+      path: 'src/lifecycle/create-run-lifecycle.ts',
+      source:
+        "import type { ExecutionPlanSource as ExecutorResolver } from '../ports/index.js';\nexport interface Probe { readonly plans: ExecutorResolver }\n",
+      expectedMessage: 'Lifecycle modules may import only ExecutorResolver from ports.',
+    },
+    {
+      name: 'operational runtime port',
+      path: 'src/lifecycle/run-lifecycle.ts',
+      source:
+        "import type { ResolvedExecutor } from '../ports/index.js';\nexport interface Probe { readonly executor: ResolvedExecutor }\n",
+      expectedMessage: 'Operational lifecycle declarations must not import runtime port types.',
+    },
+    {
       name: 'canonicalize misplacement',
       path: 'src/policy/canonicalize-probe.ts',
       source: "import canonicalize from 'canonicalize';\nexport const probe = canonicalize;\n",
@@ -904,13 +1410,14 @@ try {
       );
       assert.equal(
         lintOutput.diagnostics.length,
-        1,
-        `${probe.name} fixture must match exactly one configured restriction`,
+        'expectedCount' in probe ? probe.expectedCount : 1,
+        `${probe.name} fixture must match the expected configured restrictions`,
       );
-      const diagnostic: unknown = lintOutput.diagnostics[0];
-      assert.ok(isRecord(diagnostic), `${probe.name} Oxc diagnostic must be an object`);
-      assert.equal(diagnostic.code, 'eslint(no-restricted-imports)');
-      assert.equal(diagnostic.help, probe.expectedMessage);
+      for (const diagnostic of lintOutput.diagnostics) {
+        assert.ok(isRecord(diagnostic), `${probe.name} Oxc diagnostic must be an object`);
+        assert.equal(diagnostic.code, 'eslint(no-restricted-imports)');
+        assert.equal(diagnostic.help, probe.expectedMessage);
+      }
     }),
   );
 } finally {

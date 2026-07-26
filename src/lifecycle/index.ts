@@ -30,4 +30,11 @@ export type { LifecycleRenewLeaseResult } from './lifecycle-renew-lease-result.j
 export type { LifecycleReplayed } from './lifecycle-replayed.js';
 export type { LifecycleWriteHandoffRequest } from './lifecycle-write-handoff-request.js';
 export type { LifecycleWriteHandoffResult } from './lifecycle-write-handoff-result.js';
+export type { LifecycleClaimedExecutionAuthority } from './lifecycle-claimed-execution-authority.js';
+export type { LifecyclePreparedExecuteCall } from './lifecycle-prepared-execute-call.js';
+export type { LifecyclePreparedExecuteCapability } from './lifecycle-prepared-execute-capability.js';
+export type { LifecycleStartedExecutionAuthority } from './lifecycle-started-execution-authority.js';
+export type { LifecycleStartReplayReceipt } from './lifecycle-start-replay-receipt.js';
+export type { LifecycleVerifyAndStartRequest } from './lifecycle-verify-and-start-request.js';
+export type { LifecycleVerifyAndStartResult } from './lifecycle-verify-and-start-result.js';
 export type { RunLifecycle } from './run-lifecycle.js';
