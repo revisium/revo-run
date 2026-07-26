@@ -120,11 +120,19 @@ const sha256Hex = (value: JsonValue | undefined): string => {
   return value;
 };
 
+const executorConfigurationDigest = (value: JsonValue | undefined): string => {
+  if (typeof value !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(value)) {
+    throw new TypeError(invalidInputMessage);
+  }
+  return value;
+};
+
 export const contractValidation = Object.freeze({
   array,
   booleanWithDefault,
   boundedInteger,
   boundedString,
+  executorConfigurationDigest,
   mediaType,
   record,
   requiredValue,

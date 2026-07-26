@@ -20,19 +20,19 @@ const plans: ExecutionPlanSource = {
 
     return structuredClone({
       pin: document.pin,
-      compiledPipeline: document.compiledPipelineJson,
-      nodes: document.nodes.map((node) => ({
-        key: node.key,
+      compiledPipeline: document.compiledPipeline,
+      executorBindings: document.nodes.map((node) => ({
+        nodeKey: node.key,
         executor: {
-          contract: {
-            id: node.executor.id,
-            revision: node.executor.revision,
-            digest: node.executor.contractDigest,
-          },
-          configuration: node.executor.configuration,
-          configurationDigest: node.executor.configurationDigest,
-          idempotentExecution: node.executor.idempotentExecution,
+          adapterId: node.executor.adapterId,
+          revision: node.executor.revision,
+          digest: node.executor.contractDigest,
         },
+        configuration: node.executor.configuration,
+        configurationDigest: node.executor.configurationDigest,
+        idempotentExecution: node.executor.idempotentExecution,
+        retryPolicy: node.retryPolicy,
+        timeoutPolicy: node.timeoutPolicy,
       })),
     });
   },
@@ -50,7 +50,7 @@ public lifecycle facade stays pipeline-free.
 const executors = {
   async resolveExact(pin) {
     const executor = executorRegistry.find({
-      id: pin.id,
+      adapterId: pin.adapterId,
       revision: pin.revision,
       digest: pin.digest,
     });

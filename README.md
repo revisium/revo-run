@@ -15,7 +15,9 @@
 > This repository is in bootstrap and the npm package is not published. Its root runtime namespace is intentionally empty
 > and currently exports only Stable portable contract types. `@revisium/revo-run/canonical-json` is implemented; the
 > package-private pure Run domain foundation and type-only Store contracts are implemented. Store behavior currently has
-> logical fake conformance only, not durable-database proof. The RunManager APIs below remain Draft target specifications.
+> logical fake conformance only, not durable-database proof. Package-private executor snapshots, pure binding verification,
+> fault refinements, and type-only ports are implemented. Executor invocation, recovery orchestration, and the RunManager
+> APIs below remain Draft target specifications.
 > Architecture enforcement is active in repository validation.
 
 ## About
@@ -114,6 +116,17 @@ events, and bounded pagination. This evidence does not claim database time,
 isolation, locking, contention, SQL rollback, reconnect behavior, or
 cross-process correctness. No PostgreSQL, SQL, Prisma, or provider adapter is
 implemented.
+
+## Implemented internal executor contracts
+
+The package-private executor slice defines bounded immutable invocation and
+output snapshots, exact binding/configuration verification with deterministic
+mismatch reasons, executor-specific fault refinements, and type-only
+executor/resolver ports. Missing binding idempotence defaults to `false`.
+
+This slice does not invoke executors or normalize their runtime results. It
+does not implement Start/result Store commits, recovery orchestration,
+lifecycle, manager, composition, a registry, or a provider adapter.
 
 ## Draft RunManager quick start
 
@@ -341,7 +354,9 @@ wires store, ports, lifecycle, and manager into `createRunManager`.
 The architecture and its enforcement are Accepted and active. Canonical JSON v1
 and portable run contracts v1 are Stable and implemented. The internal pure
 domain foundation is implemented while its product specification remains Draft.
-Every RunManager behavioral API is still **Draft and unimplemented**.
+The package-private executor contract slice is implemented, but executor
+runtime behavior and every RunManager behavioral API remain **Draft and
+unimplemented**.
 
 ## Requirements
 
