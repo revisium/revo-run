@@ -1,6 +1,7 @@
 import { acquire } from './acquire.js';
 import { claim } from './claim.js';
 import { discover } from './discover.js';
+import { hydrateOwnedAuthority } from './hydrate-owned-authority.js';
 import { prepareReconciliation } from './prepare-reconciliation.js';
 import { executorObservationProcessing } from './process-executor-observation.js';
 import { renewLease } from './renew-lease.js';
@@ -14,6 +15,7 @@ export const createRunLifecycle = (dependencies: RunLifecycleDependencies): RunL
     acquire: (request) => acquire(dependencies.store, request),
     claim: (request) => claim(dependencies.store, request),
     discover: (request) => discover(dependencies.store, request),
+    hydrateOwnedAuthority: (request) => hydrateOwnedAuthority(dependencies.store, request),
     renewLease: (request) => renewLease(dependencies.store, request),
     prepareReconciliation: (request) =>
       prepareReconciliation(dependencies.store, dependencies.executors, request),

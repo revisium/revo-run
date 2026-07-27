@@ -26,6 +26,7 @@ createRunManager({
   executors,
   ids,
   clock,
+  scheduler,
   coordination,
 });
 ```
@@ -36,11 +37,14 @@ Required ports:
   database-authoritative time contract;
 - `plans`: exact lookup returning package-owned `RunExecutionPlanDocument`;
 - `executors`: `resolveExact()` by `ExecutorContractPin`;
-- `ids`: package-owned durable and manager-incarnation id generation.
+- `ids`: purpose-specific Attempt, output, lifecycle-idempotency, handoff, and
+  manager-incarnation id generation. Claim idempotency and later Start handoff
+  use distinct purposes; neither reuses the other's generated id.
 
 Optional inputs:
 
 - `clock`: process-local waits, timeouts, wakeups, and test control only;
+- `scheduler`: process-local enqueue and abortable waits only;
 - `coordination`: diagnostic `ownerLabel`, polling, heartbeat, lease,
   concurrency, observation, and drain policy.
 
@@ -108,6 +112,12 @@ retained by the final API, means immediate local abort plus that durable fenced
 handoff; it MUST NOT skip ownership cleanup. If handoff cannot commit, the
 manager MUST NOT report `stopped` while it still owns writable work. Concurrent
 callers MUST observe one serialized start or stop result.
+
+The starting-cycle cleanup path uses `manager_start_failure`. It MUST NOT reuse
+that reason for ordinary shutdown, unavailable pipeline progression, or a later
+recovery-loop failure; those use `manager_shutdown`,
+`manager_progression_unavailable`, and `manager_recovery_failure`
+respectively.
 
 Stopping the manager MUST NOT terminate the host process. Multiple manager
 instances MAY coordinate through the same store; durable correctness MUST not

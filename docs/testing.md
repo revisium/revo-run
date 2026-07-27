@@ -149,6 +149,16 @@ Before `RunManager` ships, declaration and one-exact-tarball tests MUST prove:
 - only the approved facade is public;
 - internal attempt/recovery operations are absent;
 - `ExecutionPlanSource` returns `RunExecutionPlanDocument`;
+- exact plan loading has only complete-pin loaded-or-bounded-fault outcomes;
+- manager identifier methods are semantic rather than a generic next-string
+  source;
+- local scheduler/clock declarations carry no durable-time authority;
+- owned-authority hydration declaration closure contains no Store, executor
+  capability, resolver, pipeline, or private implementation type;
+- hydration uses fresh Store transaction time, rejects lease equality and
+  handoff/stale ownership, and performs no write;
+- every closed handoff reason survives record, event, semantic idempotency, and
+  exact replay;
 - `compiledPipeline` is `JsonValue`;
 - executor resolution requires exact pin and digest;
 - subscription exposes `.initial` snapshot/cursor and is a pull

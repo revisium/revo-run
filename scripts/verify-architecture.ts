@@ -765,6 +765,16 @@ const probes: readonly (readonly [ArchitectureRule, readonly SourceModule[]])[] 
     ],
   ],
   [
+    'forbidden-layer-import',
+    [
+      {
+        path: 'src/ports/hostile-domain-port.ts',
+        source:
+          "import type { RunState } from '../domain/index.js';\nexport interface HostileDomainPort { readonly state: RunState }\n",
+      },
+    ],
+  ],
+  [
     'pipeline-facade-import',
     [
       {
@@ -1188,6 +1198,63 @@ try {
     'Reachable declaration scan must detect a Store-bearing lifecycle facade',
   );
 
+  const hydrationPositiveRoot = join(declarationProbeRoot, 'hydration-positive');
+  await writeFixtureFiles(hydrationPositiveRoot, {
+    'tsconfig.json': commonFiles['tsconfig.json'],
+    'src/spec/index.ts':
+      'export interface ExecutionPlanPin { readonly id: string; readonly revision: string; readonly digest: string }\nexport interface ExecutorContractPin { readonly adapterId: string; readonly revision: string; readonly digest: string }\nexport type ExecutorConfigurationDigest = `sha256:${string}`;\n',
+    'src/errors/index.ts':
+      'export interface RunConflict { readonly code: "INVALID_STATE" | "STALE_FENCE"; readonly message: string }\nexport interface RunFault { readonly code: "INVALID_INPUT" | "NOT_FOUND"; readonly message: string }\n',
+    'src/lifecycle/lifecycle-active-attempt-phase.ts':
+      'export type LifecycleActiveAttemptPhase = "claimed" | "start_committed" | "unknown" | "reconciling";\n',
+    'src/lifecycle/lifecycle-node-phase.ts':
+      'export type LifecycleNodePhase = "executing" | "unknown";\n',
+    'src/lifecycle/lifecycle-attempt-authority.ts':
+      "import type { ExecutionPlanPin, ExecutorConfigurationDigest, ExecutorContractPin } from '../spec/index.js';\nimport type { LifecycleActiveAttemptPhase } from './lifecycle-active-attempt-phase.js';\nimport type { LifecycleNodePhase } from './lifecycle-node-phase.js';\nexport interface LifecycleAttemptAuthority { readonly runId: string; readonly attemptPhase: LifecycleActiveAttemptPhase; readonly nodePhase: LifecycleNodePhase; readonly planPin: ExecutionPlanPin; readonly executorContractPin: ExecutorContractPin; readonly executorConfigurationDigest: ExecutorConfigurationDigest }\n",
+    'src/lifecycle/lifecycle-conflict-result.ts':
+      "import type { RunConflict } from '../errors/index.js';\nexport interface LifecycleConflictResult { readonly kind: 'conflict'; readonly conflict: RunConflict }\n",
+    'src/lifecycle/lifecycle-fault-result.ts':
+      "import type { RunFault } from '../errors/index.js';\nexport interface LifecycleFaultResult { readonly kind: 'fault'; readonly fault: RunFault }\n",
+    'src/lifecycle/lifecycle-hydrated-owned-authority.ts':
+      "import type { LifecycleActiveAttemptPhase } from './lifecycle-active-attempt-phase.js';\nimport type { LifecycleAttemptAuthority } from './lifecycle-attempt-authority.js';\nexport interface LifecycleHydratedOwnedAuthority { readonly authority: LifecycleAttemptAuthority; readonly phase: LifecycleActiveAttemptPhase; readonly recovery: 'reconcile' | 'start' }\n",
+    'src/lifecycle/lifecycle-hydrate-owned-authority-result.ts':
+      "import type { LifecycleConflictResult } from './lifecycle-conflict-result.js';\nimport type { LifecycleFaultResult } from './lifecycle-fault-result.js';\nimport type { LifecycleHydratedOwnedAuthority } from './lifecycle-hydrated-owned-authority.js';\nexport type LifecycleHydrateOwnedAuthorityResult = { readonly kind: 'hydrated'; readonly transactionNow: number; readonly value: LifecycleHydratedOwnedAuthority } | LifecycleConflictResult | LifecycleFaultResult;\n",
+  });
+  const hydrationNegativeRoot = join(declarationProbeRoot, 'hydration-negative');
+  await writeFixtureFiles(hydrationNegativeRoot, {
+    'tsconfig.json': commonFiles['tsconfig.json'],
+    'src/spec/index.ts':
+      'export interface ExecutionPlanPin { readonly id: string; readonly revision: string; readonly digest: string }\n',
+    'src/errors/index.ts':
+      'export interface RunFault { readonly code: "INVALID_INPUT"; readonly message: string }\n',
+    'src/ports/index.ts':
+      'export interface LifecyclePreparedExecuteCapability { readonly invoke: () => Promise<void> }\n',
+    'src/lifecycle/lifecycle-hydrate-owned-authority-result.ts':
+      "import type { LifecyclePreparedExecuteCapability } from '../ports/index.js';\nexport interface LifecycleHydrateOwnedAuthorityResult { readonly kind: 'hydrated'; readonly capability: LifecyclePreparedExecuteCapability }\n",
+  });
+  for (const fixtureRoot of [hydrationPositiveRoot, hydrationNegativeRoot]) {
+    execFileSync(join(root, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.json'], {
+      cwd: fixtureRoot,
+      stdio: 'pipe',
+    });
+  }
+  const hydrationLeakMarker =
+    /\b(?:RunStore|ExecutorResolver|LifecyclePreparedExecuteCapability)\b|\/(?:storage|ports)\//;
+  assert.doesNotMatch(
+    readReachableDeclarations(
+      join(hydrationPositiveRoot, 'dist/lifecycle/lifecycle-hydrate-owned-authority-result.d.ts'),
+    ),
+    hydrationLeakMarker,
+    'Hydration result closure must contain no Store, resolver, port, or execution capability',
+  );
+  assert.match(
+    readReachableDeclarations(
+      join(hydrationNegativeRoot, 'dist/lifecycle/lifecycle-hydrate-owned-authority-result.d.ts'),
+    ),
+    hydrationLeakMarker,
+    'Hydration declaration probe must detect a transitive execution capability leak',
+  );
+
   const canonicalCommonFiles = {
     'tsconfig.json': JSON.stringify({
       compilerOptions: {
@@ -1349,6 +1416,12 @@ try {
         "import type { ExecutorReconcileResult, ResolvedExecutor } from '../ports/index.js';\nexport interface Probe { readonly executor: ResolvedExecutor; readonly result: ExecutorReconcileResult }\n",
       expectedMessage: 'Operational lifecycle declarations must not import runtime port types.',
     },
+    ...(['domain', 'storage', 'lifecycle', 'manager', 'composition'] as const).map((layer) => ({
+      name: `ports ${layer} direction`,
+      path: `src/ports/${layer}-probe.ts`,
+      source: `import type { Probe } from '../${layer}/index.js';\nexport interface PortProbe { readonly probe: Probe }\n`,
+      expectedMessage: 'Ports may import only package-owned spec and error contracts.',
+    })),
     {
       name: 'canonicalize misplacement',
       path: 'src/policy/canonicalize-probe.ts',

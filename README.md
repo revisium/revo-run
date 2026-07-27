@@ -20,8 +20,11 @@
 > durable handoff, ownership acquisition, and exact resolver/Start preparation are also implemented. Lifecycle now
 > normalizes executor observations, prepares reconciliation under a fresh fenced CAS, records direct unknown and
 > reconciled running/unknown outcomes, and prepares known terminal observations without committing their later pipeline
-> progression. Retry/terminal progression, cancellation invocation, manager/composition, and the RunManager APIs below
-> remain Draft target specifications.
+> progression. Package-private exact plan-source, purpose-specific manager identifier (including handoff ids), local
+> clock/scheduler, and
+> read-only owned-authority hydration contracts now enable the later supervisor without introducing manager behavior.
+> Retry/terminal progression, cancellation invocation, manager/composition, and the RunManager APIs below remain Draft
+> target specifications.
 > Architecture enforcement is active in repository validation.
 
 ## About
@@ -136,6 +139,29 @@ transitions. Known terminal observations stop at a frozen
 later pipeline slice. Adapter cancellation invocation remains unimplemented.
 No manager, composition, registry, or provider adapter is implemented.
 
+## Implemented internal manager-enablement contracts
+
+The package-private type-only ports now define exact plan loading by the
+complete `ExecutionPlanPin`, purpose-specific manager identifier generation
+(including independently generated handoff ids), and local clock/scheduler
+contracts. Plan loading is a closed loaded-or-fault result; it has no latest,
+partial, compatible, or default fallback. Local time and scheduling are only
+process-local coordination inputs and never authorize a durable lease, fence,
+retry, or takeover decision.
+
+Lifecycle can read-only hydrate authority already owned by one manager
+incarnation. A fresh Store transaction verifies the correlated Run, node and
+active Attempt, expected phase, incumbent incarnation and fence, absence of a
+handoff, and `transactionNow < leaseExpiresAt`, then returns a new immutable
+`LifecycleAttemptAuthority` plus the required start-or-reconcile recovery path.
+Hydration does not mutate, renew, acquire, resolve an executor, or return an
+execution capability.
+
+Durable handoffs distinguish normal shutdown, an actual manager starting-cycle
+failure, progression unavailable while the real pipeline bridge is absent, and
+manager recovery failure. The reasons are preserved in handoff history,
+idempotency semantics, and audit events.
+
 ## Draft RunManager quick start
 
 The target API is intentionally small. All names and exact shapes in this example are **Draft and unimplemented**.
@@ -239,8 +265,9 @@ export interface RunManagerOptions {
   readonly store: RunStore;
   readonly plans: ExecutionPlanSource;
   readonly executors: ExecutorResolver;
-  readonly ids: IdSource;
+  readonly ids: ManagerIdSource;
   readonly clock?: LocalClock;
+  readonly scheduler?: LocalScheduler;
   readonly coordination?: RunManagerCoordination;
 }
 ```

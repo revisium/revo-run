@@ -4,6 +4,8 @@ import type { LifecycleClaimRequest } from './lifecycle-claim-request.js';
 import type { LifecycleClaimResult } from './lifecycle-claim-result.js';
 import type { LifecycleDiscoveryRequest } from './lifecycle-discovery-request.js';
 import type { LifecycleDiscoveryResult } from './lifecycle-discovery-result.js';
+import type { LifecycleHydrateOwnedAuthorityRequest } from './lifecycle-hydrate-owned-authority-request.js';
+import type { LifecycleHydrateOwnedAuthorityResult } from './lifecycle-hydrate-owned-authority-result.js';
 import type { LifecyclePrepareReconciliationRequest } from './lifecycle-prepare-reconciliation-request.js';
 import type { LifecyclePrepareReconciliationResult } from './lifecycle-prepare-reconciliation-result.js';
 import type { LifecycleProcessExecuteObservationRequest } from './lifecycle-process-execute-observation-request.js';
@@ -18,6 +20,9 @@ import type { LifecycleWriteHandoffResult } from './lifecycle-write-handoff-resu
 
 export interface RunLifecycle {
   discover(request: LifecycleDiscoveryRequest): Promise<LifecycleDiscoveryResult>;
+  hydrateOwnedAuthority(
+    request: LifecycleHydrateOwnedAuthorityRequest,
+  ): Promise<LifecycleHydrateOwnedAuthorityResult>;
   claim(request: LifecycleClaimRequest): Promise<LifecycleClaimResult>;
   renewLease(request: LifecycleRenewLeaseRequest): Promise<LifecycleRenewLeaseResult>;
   writeHandoff(request: LifecycleWriteHandoffRequest): Promise<LifecycleWriteHandoffResult>;

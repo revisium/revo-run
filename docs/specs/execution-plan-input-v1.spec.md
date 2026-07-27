@@ -1,8 +1,9 @@
 # Execution plan input v1
 
 - Status: Draft
-- Implementation: Stable pins/document/policy values implemented; source and
-  lifecycle behavior not implemented
+- Implementation: Stable pins/document/policy values and package-private exact
+  source port implemented; manager loading and pipeline lifecycle behavior not
+  implemented
 
 ## Normative language and versioning
 
@@ -18,7 +19,8 @@ exact plan source injected into `RunManager`, and the package-owned
 
 The value shapes and their boundary rules are already Stable in
 [Portable run contracts v1](portable-run-contracts-v1.spec.md). Exact source
-lookup, persistence, lifecycle loading, and pipeline decoding remain Draft.
+lookup is now represented by a package-private type-only port. Persistence,
+manager loading, public composition, and pipeline decoding remain Draft.
 
 The host owns plan authoring, compilation, versioning, persistence, and digest
 construction. `revo-run` owns exact lookup and verification during run
@@ -144,7 +146,8 @@ This specification does not define:
 
 ## Required package proof
 
-Before this contract ships, declaration and one-exact-tarball consumer tests
+Before the public manager form of this contract ships, declaration and
+one-exact-tarball consumer tests
 MUST prove:
 
 - `ExecutionPlanSource` returns `RunExecutionPlanDocument`;
