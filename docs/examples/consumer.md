@@ -11,30 +11,38 @@ observation lifecycle; there is no host `RunWorker`.
 The public plan source returns package-owned JSON-compatible data:
 
 ```ts
-import type { ExecutionPlanSource, RunExecutionPlanDocument } from '@revisium/revo-run';
+import type { ExecutionPlanSource } from '@revisium/revo-run';
 
 const plans: ExecutionPlanSource = {
-  async loadExact(pin): Promise<RunExecutionPlanDocument> {
+  async loadExact(pin) {
     const document = await planRepository.findExact(pin);
-    if (!document) throw new PlanNotFoundFault(pin);
+    if (!document) {
+      return {
+        kind: 'fault',
+        fault: { code: 'NOT_FOUND', message: 'Exact execution plan was not found.' },
+      };
+    }
 
-    return structuredClone({
-      pin: document.pin,
-      compiledPipeline: document.compiledPipeline,
-      executorBindings: document.nodes.map((node) => ({
-        nodeKey: node.key,
-        executor: {
-          adapterId: node.executor.adapterId,
-          revision: node.executor.revision,
-          digest: node.executor.contractDigest,
-        },
-        configuration: node.executor.configuration,
-        configurationDigest: node.executor.configurationDigest,
-        idempotentExecution: node.executor.idempotentExecution,
-        retryPolicy: node.retryPolicy,
-        timeoutPolicy: node.timeoutPolicy,
-      })),
-    });
+    return {
+      kind: 'loaded',
+      planDocument: snapshotImmutablePlanDocument({
+        pin: document.pin,
+        compiledPipeline: document.compiledPipeline,
+        executorBindings: document.nodes.map((node) => ({
+          nodeKey: node.key,
+          executor: {
+            adapterId: node.executor.adapterId,
+            revision: node.executor.revision,
+            digest: node.executor.contractDigest,
+          },
+          configuration: node.executor.configuration,
+          configurationDigest: node.executor.configurationDigest,
+          idempotentExecution: node.executor.idempotentExecution,
+          retryPolicy: node.retryPolicy,
+          timeoutPolicy: node.timeoutPolicy,
+        })),
+      }),
+    };
   },
 };
 ```

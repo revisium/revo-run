@@ -157,10 +157,14 @@ data is part of this contract.
 
 This contract does not implement or promise:
 
-- `ExecutionPlanSource`;
 - pipeline JSON decoding or graph progression;
-- store, lifecycle, executor, or manager ports;
+- manager behavior or a public manager facade;
 - `createRunManager`;
 - provider artifact retrieval;
 - agent-runtime or script executors;
 - production composition.
+
+The package-private `ExecutionPlanSource` now defines exact loading by the
+complete pin into a package-owned immutable document or a closed bounded
+not-found/unavailable/mismatch fault. It remains an internal construction
+contract until production composition and the public manager facade ship.

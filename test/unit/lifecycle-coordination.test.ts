@@ -213,6 +213,7 @@ describe('lifecycle coordination', () => {
       'acquire',
       'claim',
       'discover',
+      'hydrateOwnedAuthority',
       'prepareReconciliation',
       'processExecuteObservation',
       'processReconcileObservation',

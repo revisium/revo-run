@@ -14,6 +14,7 @@ import type { LifecycleDiscoveryCandidate } from './lifecycle-discovery-candidat
 import type { LifecycleDiscoveryCursor } from './lifecycle-discovery-cursor.js';
 import type { LifecycleDiscoveryKind } from './lifecycle-discovery-kind.js';
 import type { LifecycleDiscoveryRequest } from './lifecycle-discovery-request.js';
+import type { LifecycleHydrateOwnedAuthorityRequest } from './lifecycle-hydrate-owned-authority-request.js';
 import type { LifecycleNodePhase } from './lifecycle-node-phase.js';
 import type { LifecycleRenewLeaseRequest } from './lifecycle-renew-lease-request.js';
 import type { LifecycleVerifyAndStartRequest } from './lifecycle-verify-and-start-request.js';
@@ -333,9 +334,33 @@ const renewRequest = (value: unknown): LifecycleRenewLeaseRequest => {
   });
 };
 
+const hydrateOwnedAuthorityRequest = (value: unknown): LifecycleHydrateOwnedAuthorityRequest => {
+  const source = record(value, [
+    'attemptId',
+    'expectedAttemptFence',
+    'expectedManagerIncarnationId',
+    'expectedPhase',
+    'nodeInstanceId',
+    'runId',
+  ]);
+  return Object.freeze({
+    attemptId: text(source['attemptId']),
+    expectedAttemptFence: integer(source['expectedAttemptFence']),
+    expectedManagerIncarnationId: text(source['expectedManagerIncarnationId']),
+    expectedPhase: attemptPhase(source['expectedPhase']),
+    nodeInstanceId: text(source['nodeInstanceId']),
+    runId: text(source['runId']),
+  });
+};
+
 const handoffRequest = (value: unknown): LifecycleWriteHandoffRequest => {
   const source = record(value, ['authority', 'generatedHandoffId', 'idempotencyKey', 'reason']);
-  if (source['reason'] !== 'manager_shutdown' && source['reason'] !== 'manager_start_failure') {
+  if (
+    source['reason'] !== 'manager_progression_unavailable' &&
+    source['reason'] !== 'manager_recovery_failure' &&
+    source['reason'] !== 'manager_shutdown' &&
+    source['reason'] !== 'manager_start_failure'
+  ) {
     throw new TypeError('INVALID_INPUT');
   }
   return Object.freeze({
@@ -384,6 +409,7 @@ export const lifecycleValidation = Object.freeze({
   claimRequest,
   discoveryRequest,
   handoffRequest,
+  hydrateOwnedAuthorityRequest,
   renewRequest,
   verifyAndStartRequest,
 });

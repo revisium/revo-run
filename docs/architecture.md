@@ -16,9 +16,11 @@ are implemented over the Store contract. Lifecycle-owned hostile observation
 normalization, reconciliation preparation, and fenced direct-unknown plus
 reconciled-running/unknown commits are also implemented. Known terminal
 observations are prepared but are not committed without pipeline progression.
-Retry selection, cancellation invocation, terminal graph progression,
-manager/composition, and all RunManager behavioral APIs remain Draft and
-unimplemented.
+Package-private exact plan-source, purpose-specific manager identifier, local
+clock/scheduler, and read-only owned-authority hydration contracts are also
+implemented. Retry selection, cancellation invocation, terminal graph
+progression, manager/composition, and all RunManager behavioral APIs remain
+Draft and unimplemented.
 
 ## Purpose
 
@@ -95,8 +97,9 @@ host
   +-- RunStore ---------------- durable transactions and DB time
   +-- ExecutionPlanSource ----- exact JSON plan document by persisted pin
   +-- ExecutorResolver -------- resolveExact plus execute/reconcile/cancel
-  +-- IdSource ---------------- durable ids and manager incarnation ids
+  +-- ManagerIdSource --------- purpose-specific durable, handoff, and incarnation ids
   +-- LocalClock -------------- local waits/testing only
+  +-- LocalScheduler ---------- local enqueue and abortable waits only
   `-- coordination policy ----- owner label, polling, heartbeat, concurrency
           |
           v
@@ -116,6 +119,21 @@ boundary from lifecycle implementation functions with `Parameters<>` or
 `ownerLabel` is diagnostic only. Each successful `start()` allocates a unique,
 package-generated `managerIncarnationId`; every claimed Attempt records it.
 No configured process label can be durable ownership authority.
+
+Before acting on remembered ownership, manager hydrates it through lifecycle.
+Hydration opens a fresh Store transaction and reads the exact Run, node, and
+active Attempt. It accepts only the requested incumbent manager incarnation,
+fence, active phase, compatible nonterminal Run/node state, no handoff, and
+transaction time strictly before lease expiry. The result is a newly copied
+full authority plus `start` for `claimed` or `reconcile` for
+`start_committed`/`unknown`/`reconciling`. It contains no capability and performs
+no write, renewal, takeover, executor resolution, or idempotency operation.
+
+Handoff history uses closed reasons. `manager_shutdown` covers ordinary drain
+or stop, while `manager_start_failure` remains reserved for a real manager
+starting-cycle failure. `manager_progression_unavailable` preserves authority
+that cannot yet cross the real pipeline bridge, and `manager_recovery_failure`
+preserves authority when supervisor recovery cannot continue safely.
 
 ## Public and internal surfaces
 

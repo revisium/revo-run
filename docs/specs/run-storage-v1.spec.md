@@ -109,6 +109,17 @@ MUST be consumed atomically by one successor ownership acquisition. A manager
 MUST NOT report a drained/stopped state until every abandoned local Attempt has
 such a committed handoff or has otherwise reached a durable terminal state.
 
+Handoff reason is a closed durable value:
+
+- `manager_shutdown` for ordinary quiesce/drain/stop abandonment;
+- `manager_start_failure` only for failure of an actual manager starting cycle;
+- `manager_progression_unavailable` when safe lifecycle work cannot continue
+  without the real pipeline progression bridge;
+- `manager_recovery_failure` when supervisor recovery cannot safely continue.
+
+The exact reason MUST be preserved by the handoff record, semantic idempotency
+request, replay, and `attempt.handoff_recorded` event.
+
 Ordering and pagination MUST be deterministic and starvation-aware. Query
 limits MUST be bounded.
 

@@ -96,10 +96,13 @@ const validateContents = (manifest: PackManifest): void => {
     'dist/index.js.map',
     'dist/errors/index.d.ts',
     'dist/errors/index.d.ts.map',
+    'dist/lifecycle/lifecycle-hydrate-owned-authority-result.d.ts',
     'dist/spec/run-artifact-reference.d.ts',
     'dist/spec/run-execution-plan-document.d.ts',
     'dist/spec/run-output-payload.d.ts',
     'dist/ports/index.d.ts',
+    'dist/ports/execution-plan-source.d.ts',
+    'dist/ports/manager-id-source.d.ts',
     'dist/policy/canonical-json/index.d.ts',
     'dist/policy/canonical-json/index.d.ts.map',
     'dist/policy/canonical-json/index.js',
@@ -386,6 +389,25 @@ try {
   assert.match(rootDeclaration, /RunConflict/);
   assert.match(rootDeclaration, /RunFault/);
   assert.doesNotMatch(rootDeclaration, /createRunManager|RunManager/);
+  const portsDeclarations = readReachableDeclarations(
+    join(installedPackage, 'dist/ports/index.d.ts'),
+  );
+  assert.match(portsDeclarations, /\bExecutionPlanSource\b/);
+  assert.match(portsDeclarations, /\bManagerIdSource\b/);
+  assert.match(portsDeclarations, /\bnextHandoffId\b/);
+  assert.doesNotMatch(
+    portsDeclarations,
+    /\/(?:domain|storage|lifecycle|manager|composition|pipeline)\//,
+    'Packed ports declaration closure may depend only on spec and errors',
+  );
+  const hydrationDeclarations = readReachableDeclarations(
+    join(installedPackage, 'dist/lifecycle/lifecycle-hydrate-owned-authority-result.d.ts'),
+  );
+  assert.doesNotMatch(
+    hydrationDeclarations,
+    /\b(?:RunStore|ExecutorResolver|LifecyclePreparedExecuteCapability)\b|\/(?:storage|ports|pipeline)\//,
+    'Packed hydration declaration closure must not leak Store, resolver, pipeline, or capability types',
+  );
   assert.doesNotMatch(
     rootDeclaration,
     /ExecutorInvocationSnapshot|ExecutorResolver|ResolvedExecutor|verifyExecutorBinding/,
