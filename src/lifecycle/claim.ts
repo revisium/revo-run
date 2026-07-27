@@ -116,6 +116,7 @@ const claimCandidateIsStale = (
   run.id !== request.candidate.run.runId ||
   !samePin(run.planPin, request.candidate.run.planPin) ||
   node.id !== request.candidate.node.nodeInstanceId ||
+  node.nodeKey !== request.candidate.node.nodeKey ||
   node.runId !== run.id;
 
 const claimAuthorityIsStale = (

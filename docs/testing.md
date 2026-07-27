@@ -48,8 +48,12 @@ observation normalization, exact reconciliation preparation, pre-resolver and
 pre-commit replay, final fresh-authority CAS, missing/accessor capability
 handling, direct-unknown and reconciled-running/unknown logical commits,
 lease-equality rejection, semantic idempotency, generated-output identity
-bounds, and no-write terminal progression preparation. These remain logical
-Store-fake tests and are not PostgreSQL concurrency evidence.
+bounds, no-write terminal progression preparation, and descriptor-safe bounded
+discovery `nodeKey` projection across every node-bearing candidate. Discovery
+tests distinguish repeated runtime activations from their shared logical key,
+preserve exact-plan context, and prove pre-replay authoritative correlation
+without changing v1 semantic idempotency JSON. These remain logical Store-fake
+tests and are not PostgreSQL concurrency evidence.
 
 ## Proof layers
 

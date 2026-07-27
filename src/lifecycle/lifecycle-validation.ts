@@ -170,10 +170,16 @@ const discoveryCandidate = (value: unknown): LifecycleDiscoveryCandidate => {
       run,
     });
   }
-  const nodeSource = record(source['node'], ['activeAttemptId', 'nodeInstanceId', 'nodeRevision']);
+  const nodeSource = record(source['node'], [
+    'activeAttemptId',
+    'nodeInstanceId',
+    'nodeKey',
+    'nodeRevision',
+  ]);
   const node = {
     activeAttemptId: nullableText(nodeSource['activeAttemptId']),
     nodeInstanceId: text(nodeSource['nodeInstanceId']),
+    nodeKey: text(nodeSource['nodeKey']),
     nodeRevision: integer(nodeSource['nodeRevision']),
   };
   if (candidateKind === 'claimable_node') {

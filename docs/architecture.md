@@ -129,6 +129,13 @@ full authority plus `start` for `claimed` or `reconcile` for
 `start_committed`/`unknown`/`reconciling`. It contains no capability and performs
 no write, renewal, takeover, executor resolution, or idempotency operation.
 
+Node-bearing discovery observations include the runtime `nodeInstanceId` and
+the bounded logical `nodeKey`. This lets manager select the exact plan binding
+and reserve process-local per-adapter capacity before claim. The key remains
+contextual to the observed Run's exact plan pin and is re-correlated with
+authoritative node state before claim or acquisition replay; it is not durable
+authority and does not change v1 semantic idempotency records.
+
 Handoff history uses closed reasons. `manager_shutdown` covers ordinary drain
 or stop, while `manager_start_failure` remains reserved for a real manager
 starting-cycle failure. `manager_progression_unavailable` preserves authority

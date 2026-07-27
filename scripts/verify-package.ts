@@ -96,6 +96,7 @@ const validateContents = (manifest: PackManifest): void => {
     'dist/index.js.map',
     'dist/errors/index.d.ts',
     'dist/errors/index.d.ts.map',
+    'dist/lifecycle/index.d.ts',
     'dist/lifecycle/lifecycle-hydrate-owned-authority-result.d.ts',
     'dist/spec/run-artifact-reference.d.ts',
     'dist/spec/run-execution-plan-document.d.ts',
@@ -407,6 +408,21 @@ try {
     hydrationDeclarations,
     /\b(?:RunStore|ExecutorResolver|LifecyclePreparedExecuteCapability)\b|\/(?:storage|ports|pipeline)\//,
     'Packed hydration declaration closure must not leak Store, resolver, pipeline, or capability types',
+  );
+  const lifecycleDeclarations = readReachableDeclarations(
+    join(installedPackage, 'dist/lifecycle/index.d.ts'),
+  );
+  assert.match(lifecycleDeclarations, /\binterface RunLifecycle\b/);
+  assert.match(lifecycleDeclarations, /\bdiscover\(request: LifecycleDiscoveryRequest\)/);
+  assert.match(
+    lifecycleDeclarations,
+    /interface LifecycleObservedNode\s*{[^}]*readonly nodeKey: string;/s,
+    'Packed lifecycle discovery declarations must require readonly nodeKey:string',
+  );
+  assert.doesNotMatch(
+    lifecycleDeclarations,
+    /@revisium\/revo-pipeline|\b(?:RunStore|ExecutorResolver|createRunLifecycle)\b|\/(?:storage|ports|pipeline)\//,
+    'Packed lifecycle declaration closure must remain pipeline, Store, port, and construction free',
   );
   assert.doesNotMatch(
     rootDeclaration,

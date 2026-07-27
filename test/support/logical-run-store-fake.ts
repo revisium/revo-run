@@ -671,6 +671,7 @@ export class LogicalRunStoreFake implements RunStore {
         const observedNode = {
           activeAttemptId: node.activeAttemptId,
           nodeInstanceId: node.id,
+          nodeKey: node.nodeKey,
           nodeRevision: node.revision,
         };
         if (

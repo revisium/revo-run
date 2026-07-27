@@ -111,6 +111,7 @@ const expiredCandidate = {
   node: {
     activeAttemptId: 'attempt-1',
     nodeInstanceId: 'node-1',
+    nodeKey: 'node',
     nodeRevision: 1,
   },
   run: { planPin, runId: 'run-1', runRevision: 0 },
@@ -235,6 +236,7 @@ describe('lifecycle coordination', () => {
       node: {
         activeAttemptId: null,
         nodeInstanceId: node.id,
+        nodeKey: node.nodeKey,
         nodeRevision: node.revision,
       },
       run: { planPin: run.planPin, runId: run.id, runRevision: run.revision },
@@ -1804,6 +1806,149 @@ describe('lifecycle coordination', () => {
     });
   });
 
+  it('correlates claim nodeKey before replay without changing v1 semantic JSON', async () => {
+    const source = new LogicalRunStoreFake(1_500);
+    source.seed({ nodes: [nodeFixture()], runs: [runFixture()] });
+    const lifecycle = createRunLifecycle({ store: source });
+    const discovery = await lifecycle.discover({
+      kinds: ['claimable_node'],
+      limit: 1,
+      renewal: null,
+      scan: { kind: 'start' },
+    });
+    if (discovery.kind !== 'page') return;
+    const candidate = discovery.page.items[0];
+    if (candidate?.kind !== 'claimable_node') return;
+    const request = {
+      candidate,
+      generatedAttemptId: 'node-key-replay-attempt',
+      generatedDispatchIdempotencyKey: 'node-key-replay-dispatch',
+      idempotencyKey: 'node-key-replay-claim',
+      leasePolicy,
+      managerIncarnationId: 'node-key-replay-manager',
+      ownerLabel: 'node key replay manager',
+      planDocument,
+    };
+
+    await expect(lifecycle.claim(request)).resolves.toMatchObject({ kind: 'committed' });
+    await expect(lifecycle.claim(request)).resolves.toMatchObject({ kind: 'replayed' });
+    const identity = {
+      key: request.idempotencyKey,
+      operation: 'claim_attempt' as const,
+      runId: candidate.run.runId,
+      subjectId: candidate.node.nodeInstanceId,
+    };
+    const record = await readIdempotency(source, identity);
+    const semantic = requiredRecord(record.request);
+    const semanticCandidate = requiredRecord(requiredOwnData(semantic, 'candidate'));
+    expect(Object.keys(semanticCandidate).sort()).toEqual([
+      'activeAttemptId',
+      'eligibleAt',
+      'kind',
+      'nodeInstanceId',
+      'nodeRevision',
+      'runId',
+      'runRevision',
+    ]);
+
+    const staleStore = new LogicalRunStoreFake(1_500);
+    staleStore.seed({ nodes: [nodeFixture()], runs: [runFixture()] });
+    const staleLifecycle = createRunLifecycle({ store: staleStore });
+    await expect(
+      staleLifecycle.claim({
+        ...request,
+        candidate: { ...candidate, node: { ...candidate.node, nodeKey: 'other-node' } },
+      }),
+    ).resolves.toMatchObject({
+      conflict: { code: 'REVISION_CONFLICT' },
+      kind: 'conflict',
+    });
+    await staleStore.transaction(async (transaction) => {
+      await expect(transaction.getAttempt(request.generatedAttemptId)).resolves.toEqual({
+        kind: 'not_found',
+      });
+      await expect(transaction.getIdempotency(identity)).resolves.toEqual({ kind: 'not_found' });
+    });
+    await expect(
+      staleStore.readEvents({
+        limit: 10,
+        runId: candidate.run.runId,
+        scan: {
+          after: { runId: candidate.run.runId, sequence: 0 },
+          kind: 'start',
+        },
+      }),
+    ).resolves.toMatchObject({ kind: 'page', page: { items: [] } });
+  });
+
+  it('correlates acquisition nodeKey before replay without changing v1 semantic JSON', async () => {
+    const run = runFixture();
+    const node = executingNodeFixture('executing', { revision: 1 });
+    const attempt = attemptFixture({ leaseExpiresAt: 2_999 });
+    const source = new LogicalRunStoreFake(3_000);
+    source.seed({ attempts: [attempt], nodes: [node], runs: [run] });
+    const lifecycle = createRunLifecycle({ store: source });
+    const discovery = await lifecycle.discover({
+      kinds: ['expired_attempt'],
+      limit: 1,
+      renewal: null,
+      scan: { kind: 'start' },
+    });
+    if (discovery.kind !== 'page') return;
+    const candidate = discovery.page.items[0];
+    if (candidate?.kind !== 'expired_attempt') return;
+    const request = {
+      candidate,
+      idempotencyKey: 'node-key-replay-acquire',
+      leasePolicy,
+      successorManagerIncarnationId: 'node-key-successor',
+    };
+
+    await expect(lifecycle.acquire(request)).resolves.toMatchObject({ kind: 'committed' });
+    await expect(lifecycle.acquire(request)).resolves.toMatchObject({ kind: 'replayed' });
+    const identity = {
+      key: request.idempotencyKey,
+      operation: 'acquire_attempt' as const,
+      runId: candidate.run.runId,
+      subjectId: candidate.attempt.attemptId,
+    };
+    const record = await readIdempotency(source, identity);
+    const semantic = requiredRecord(record.request);
+    const semanticCandidate = requiredRecord(requiredOwnData(semantic, 'candidate'));
+    const semanticNode = requiredRecord(requiredOwnData(semanticCandidate, 'node'));
+    expect(Object.keys(semanticNode).sort()).toEqual([
+      'activeAttemptId',
+      'nodeInstanceId',
+      'nodeRevision',
+    ]);
+
+    const staleStore = new LogicalRunStoreFake(3_000);
+    staleStore.seed({ attempts: [attempt], nodes: [node], runs: [run] });
+    await expect(
+      createRunLifecycle({ store: staleStore }).acquire({
+        ...request,
+        candidate: { ...candidate, node: { ...candidate.node, nodeKey: 'other-node' } },
+      }),
+    ).resolves.toMatchObject({ conflict: { code: 'STALE_FENCE' }, kind: 'conflict' });
+    await staleStore.transaction(async (transaction) => {
+      await expect(transaction.getAttempt(attempt.id)).resolves.toMatchObject({
+        kind: 'found',
+        value: { fencingToken: attempt.fencingToken, revision: attempt.revision },
+      });
+      await expect(transaction.getIdempotency(identity)).resolves.toEqual({ kind: 'not_found' });
+    });
+    await expect(
+      staleStore.readEvents({
+        limit: 10,
+        runId: candidate.run.runId,
+        scan: {
+          after: { runId: candidate.run.runId, sequence: 0 },
+          kind: 'start',
+        },
+      }),
+    ).resolves.toMatchObject({ kind: 'page', page: { items: [] } });
+  });
+
   it('discovers, claims, renews, hands off, and acquires with Store transaction time', async () => {
     const store = new LogicalRunStoreFake(1_500);
     store.seed({ nodes: [nodeFixture()], runs: [runFixture()] });
@@ -1913,6 +2058,7 @@ describe('lifecycle coordination', () => {
           node: {
             activeAttemptId: renewed.value.authority.attemptId,
             nodeInstanceId: renewed.value.authority.nodeInstanceId,
+            nodeKey: renewed.value.authority.nodeKey,
             nodeRevision: renewed.value.authority.expectedNodeRevision,
           },
           run: {

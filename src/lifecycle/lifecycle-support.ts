@@ -124,6 +124,50 @@ const mapDiscoveryCursor = (
               }),
       });
 
+const isDiscoveryRecord = (value: JsonValue): value is { readonly [key: string]: JsonValue } =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const snapshotObservedNode = (
+  value: NonNullable<RunStoreDiscoveryCandidate['observedNode']>,
+): {
+  readonly activeAttemptId: string | null;
+  readonly nodeInstanceId: string;
+  readonly nodeKey: string;
+  readonly nodeRevision: number;
+} => {
+  const snapshot = snapshotPortableJsonValue(value);
+  if (!isDiscoveryRecord(snapshot)) {
+    throw new TypeError('Store discovery node is invalid.');
+  }
+  const keys = Object.keys(snapshot);
+  if (
+    keys.length !== 4 ||
+    keys.some(
+      (key) =>
+        key !== 'activeAttemptId' &&
+        key !== 'nodeInstanceId' &&
+        key !== 'nodeKey' &&
+        key !== 'nodeRevision',
+    )
+  ) {
+    throw new TypeError('Store discovery node is invalid.');
+  }
+  const activeAttemptId = snapshot['activeAttemptId'];
+  const nodeRevision = snapshot['nodeRevision'];
+  if (activeAttemptId !== null && typeof activeAttemptId !== 'string') {
+    throw new TypeError('Store discovery node is invalid.');
+  }
+  if (typeof nodeRevision !== 'number' || !Number.isSafeInteger(nodeRevision) || nodeRevision < 0) {
+    throw new TypeError('Store discovery node is invalid.');
+  }
+  return Object.freeze({
+    activeAttemptId: activeAttemptId === null ? null : boundedString(activeAttemptId),
+    nodeInstanceId: boundedString(snapshot['nodeInstanceId']),
+    nodeKey: boundedString(snapshot['nodeKey']),
+    nodeRevision,
+  });
+};
+
 const mapCandidate = (candidate: RunStoreDiscoveryCandidate): LifecycleDiscoveryCandidate => {
   const run = Object.freeze({
     planPin: Object.freeze({ ...candidate.observedRun.planPin }),
@@ -140,11 +184,7 @@ const mapCandidate = (candidate: RunStoreDiscoveryCandidate): LifecycleDiscovery
       run,
     });
   }
-  const node = Object.freeze({
-    activeAttemptId: candidate.observedNode.activeAttemptId,
-    nodeInstanceId: candidate.observedNode.nodeInstanceId,
-    nodeRevision: candidate.observedNode.nodeRevision,
-  });
+  const node = snapshotObservedNode(candidate.observedNode);
   if (candidate.observedAttempt === null) {
     return Object.freeze({
       attempt: null,

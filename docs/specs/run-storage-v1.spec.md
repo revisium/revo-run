@@ -96,6 +96,14 @@ including:
 Discovery returns candidates only. Authoritative reservation happens in the
 subsequent claim/CAS transaction.
 
+Every node-bearing candidate MUST carry both the unique runtime node instance
+id and a bounded logical `nodeKey`; run-only candidates MUST carry no node.
+`nodeKey` is interpreted only in the context of the candidate's exact Run plan
+pin. Lifecycle MUST defensively copy and validate it, then correlate it with
+fresh authoritative node state before claim or acquisition replay. The added
+observation MUST NOT change the accepted v1 semantic idempotency request,
+identity, cursor, ordering, high-watermark, or CAS contract.
+
 Recovery acquisition MUST atomically assign a new manager incarnation/fence
 before heartbeat, reconcile, cancellation result, or result acceptance. Its CAS
 MUST succeed only when transaction time is at or beyond lease expiry, or when an
