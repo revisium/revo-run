@@ -64,16 +64,16 @@ const boundedMessage = (value: JsonValue | undefined): string => {
   return value;
 };
 
+const knownObservationKeys = (value: JsonValue): readonly string[] => {
+  if (!isRecord(value)) return ['kind'];
+  if (value['kind'] === 'failed') return ['fault', 'kind'];
+  if (value['kind'] === 'succeeded') return ['kind', 'outputs'];
+  return ['kind'];
+};
+
 const knownObservation = (value: JsonValue): LifecycleKnownObservation | null => {
   if (isRecord(value) && value['kind'] === 'unknown') return null;
-  const top = exactRecord(
-    value,
-    isRecord(value) && value['kind'] === 'failed'
-      ? ['fault', 'kind']
-      : isRecord(value) && value['kind'] === 'succeeded'
-        ? ['kind', 'outputs']
-        : ['kind'],
-  );
+  const top = exactRecord(value, knownObservationKeys(value));
   if (top['kind'] === 'cancelled') return Object.freeze({ kind: 'cancelled' });
   if (top['kind'] === 'succeeded') {
     return Object.freeze({

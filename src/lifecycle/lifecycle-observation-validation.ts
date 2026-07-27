@@ -111,16 +111,15 @@ const unknownFault = (value: JsonValue | undefined) => {
 const kindOf = (value: JsonValue): JsonValue | undefined =>
   isRecord(value) ? value['kind'] : undefined;
 
+const executeObservationKeys = (kind: JsonValue | undefined): readonly string[] => {
+  if (kind === 'succeeded') return ['kind', 'outputs'];
+  if (kind === 'failed' || kind === 'unknown') return ['fault', 'kind'];
+  return ['kind'];
+};
+
 const executeObservation = (value: JsonValue): LifecycleExecuteObservation => {
   const kind = kindOf(value);
-  const source = exactRecord(
-    value,
-    kind === 'succeeded'
-      ? ['kind', 'outputs']
-      : kind === 'failed' || kind === 'unknown'
-        ? ['fault', 'kind']
-        : ['kind'],
-  );
+  const source = exactRecord(value, executeObservationKeys(kind));
   if (source['kind'] === 'cancelled') return Object.freeze({ kind: 'cancelled' });
   if (source['kind'] === 'succeeded') {
     return Object.freeze({
