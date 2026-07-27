@@ -27,6 +27,7 @@ import { lifecycleSupport } from './lifecycle-support.js';
 import { lifecycleValidation } from './lifecycle-validation.js';
 import type { LifecycleVerifyAndStartRequest } from './lifecycle-verify-and-start-request.js';
 import type { LifecycleVerifyAndStartResult } from './lifecycle-verify-and-start-result.js';
+import { executorObservationNormalization } from './normalize-executor-observation.js';
 
 const {
   authority,
@@ -356,12 +357,15 @@ const createCapability = (
   invocation: ExecutorInvocationSnapshot,
 ): LifecyclePreparedExecuteCapability => {
   let consumed = false;
-  const invoke = Object.freeze(async (signal: AbortSignal): Promise<unknown> => {
+  const invoke = Object.freeze(async (signal: AbortSignal) => {
     if (consumed) throw new TypeError('Prepared execute capability was already consumed.');
     consumed = true;
-    return Reflect.apply(resolution.execute, resolution.executor, [
-      Object.freeze({ invocation, operation: 'execute', signal }),
-    ]);
+    return executorObservationNormalization.invokeExecute(() => {
+      const result: unknown = Reflect.apply(resolution.execute, resolution.executor, [
+        Object.freeze({ invocation, operation: 'execute', signal }),
+      ]);
+      return Promise.resolve(result);
+    });
   });
   return Object.freeze({ invoke });
 };

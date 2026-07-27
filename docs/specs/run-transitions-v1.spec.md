@@ -1,8 +1,10 @@
 # Run transitions v1
 
 - Status: Draft
-- Implementation: Pure domain prospective validation/reducers implemented;
-  storage, lifecycle, pipeline decision, and atomic commit not implemented
+- Implementation: Pure domain validation/reducers, Store contracts, and
+  pipeline-free lifecycle coordination through direct-unknown and
+  reconciled-running/unknown commits implemented; terminal pipeline decisions
+  and atomic graph progression not implemented
 
 ## Normative language and versioning
 

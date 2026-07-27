@@ -1080,17 +1080,22 @@ try {
   const storePositiveRoot = join(declarationProbeRoot, 'store-positive');
   await writeFixtureFiles(storePositiveRoot, {
     'tsconfig.json': commonFiles['tsconfig.json'],
+    'src/errors/index.ts':
+      'export type ExecutorFailureFaultCode = "EXECUTOR_MISMATCH" | "EXECUTOR_UNAVAILABLE" | "INVALID_INPUT" | "INVALID_STATE" | "PLAN_MISMATCH" | "PLAN_UNAVAILABLE" | "REVISION_CONFLICT" | "STALE_ACTIVATION" | "STALE_FENCE";\nexport interface ExecutorFailureFault { readonly code: ExecutorFailureFaultCode; readonly message: string }\n',
     'src/ports/index.ts': 'export interface ExecutorResolver { resolveExact(): Promise<void> }\n',
     'src/storage/index.ts': 'export interface RunStore { transaction(): Promise<void> }\n',
+    'src/lifecycle/lifecycle-observation.ts':
+      'import type { ExecutorFailureFault } from "../errors/index.js";\nexport type LifecycleObservation = { readonly kind: "running" } | { readonly kind: "unknown" } | { readonly kind: "failed"; readonly fault: ExecutorFailureFault };\nexport interface LifecyclePreparedReconcileCall { readonly kind: "reconcile"; readonly reconcile: { readonly invoke: () => Promise<LifecycleObservation> } }\n',
     'src/lifecycle/run-lifecycle.ts':
-      'export interface RunLifecycle { discover(): Promise<void>; claim(): Promise<void>; renewLease(): Promise<void>; writeHandoff(): Promise<void>; acquire(): Promise<void>; verifyAndStart(): Promise<void> }\n',
+      "import type { LifecycleObservation, LifecyclePreparedReconcileCall } from './lifecycle-observation.js';\nexport interface RunLifecycle { discover(): Promise<void>; claim(): Promise<void>; renewLease(): Promise<void>; writeHandoff(): Promise<void>; acquire(): Promise<void>; verifyAndStart(): Promise<void>; prepareReconciliation(): Promise<LifecyclePreparedReconcileCall>; processExecuteObservation(): Promise<LifecycleObservation>; processReconcileObservation(): Promise<LifecycleObservation> }\n",
     'src/lifecycle/run-lifecycle-dependencies.ts':
       "import type { ExecutorResolver } from '../ports/index.js';\nimport type { RunStore } from '../storage/index.js';\nexport interface RunLifecycleDependencies { readonly executors: ExecutorResolver; readonly store: RunStore }\n",
     'src/lifecycle/create-run-lifecycle.ts':
       "import type { RunLifecycleDependencies } from './run-lifecycle-dependencies.js';\nimport type { RunLifecycle } from './run-lifecycle.js';\nexport declare const createRunLifecycle: (dependencies: RunLifecycleDependencies) => RunLifecycle;\n",
     'src/lifecycle/construction.ts':
       "export { createRunLifecycle } from './create-run-lifecycle.js';\nexport type { RunLifecycleDependencies } from './run-lifecycle-dependencies.js';\n",
-    'src/lifecycle/index.ts': "export type { RunLifecycle } from './run-lifecycle.js';\n",
+    'src/lifecycle/index.ts':
+      "export type { LifecycleObservation, LifecyclePreparedReconcileCall } from './lifecycle-observation.js';\nexport type { RunLifecycle } from './run-lifecycle.js';\n",
   });
   const storeNegativeRoot = join(declarationProbeRoot, 'store-negative');
   await writeFixtureFiles(storeNegativeRoot, {
@@ -1100,10 +1105,10 @@ try {
       'export interface DecodedPipeline { readonly nodes: readonly string[] }\n',
     'src/provider/index.ts': 'export interface ProviderPayload { readonly opaque: string }\n',
     'src/ports/index.ts':
-      'export interface ResolvedExecutor { execute(): Promise<void>; reconcile(): Promise<void>; cancel(): Promise<void> }\nexport type ExecutorResolution = { readonly kind: "resolved"; readonly executor: ResolvedExecutor }\nexport interface ExecutorRequest { readonly operation: "execute" }\nexport interface ExecutorResult { readonly kind: "completed" }\n',
+      'export interface ResolvedExecutor { execute(): Promise<void>; reconcile(): Promise<void>; cancel(): Promise<void> }\nexport type ExecutorResolution = { readonly kind: "resolved"; readonly executor: ResolvedExecutor }\nexport interface ExecutorRequest { readonly operation: "execute" }\nexport interface ExecutorResult { readonly kind: "completed" }\nexport interface ExecutorExecuteResult { readonly kind: "executed" }\nexport interface ExecutorReconcileResult { readonly kind: "reconciled" }\nexport interface ExecutorCancelResult { readonly kind: "cancelled" }\n',
     'src/storage/index.ts': 'export interface RunStore { transaction(): Promise<void> }\n',
     'src/lifecycle/index.ts':
-      "import type { RunState } from '../domain/index.js';\nimport type { DecodedPipeline } from '../pipeline/index.js';\nimport type { ExecutorRequest, ExecutorResolution, ExecutorResult, ResolvedExecutor } from '../ports/index.js';\nimport type { ProviderPayload } from '../provider/index.js';\nimport type { RunStore } from '../storage/index.js';\nexport interface RunLifecycle { readonly store: RunStore; readonly state: RunState; readonly pipeline: DecodedPipeline; readonly executor: ResolvedExecutor; readonly resolution: ExecutorResolution; readonly request: ExecutorRequest; readonly result: ExecutorResult; readonly provider: ProviderPayload; reconcile(): Promise<void>; cancel(): Promise<void> }\n",
+      "import type { RunState } from '../domain/index.js';\nimport type { DecodedPipeline } from '../pipeline/index.js';\nimport type { ExecutorCancelResult, ExecutorExecuteResult, ExecutorReconcileResult, ExecutorRequest, ExecutorResolution, ExecutorResult, ResolvedExecutor } from '../ports/index.js';\nimport type { ProviderPayload } from '../provider/index.js';\nimport type { RunStore } from '../storage/index.js';\nexport interface RunLifecycle { readonly store: RunStore; readonly state: RunState; readonly pipeline: DecodedPipeline; readonly executor: ResolvedExecutor; readonly resolution: ExecutorResolution; readonly request: ExecutorRequest; readonly result: ExecutorResult; readonly executeResult: ExecutorExecuteResult; readonly reconcileResult: ExecutorReconcileResult; readonly cancelResult: ExecutorCancelResult; readonly provider: ProviderPayload; reconcile(): Promise<void>; cancel(): Promise<void> }\n",
   });
   for (const fixtureRoot of [storePositiveRoot, storeNegativeRoot]) {
     execFileSync(join(root, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.json'], {
@@ -1111,6 +1116,29 @@ try {
       stdio: 'pipe',
     });
   }
+  const failureCodeNegativeRoot = join(declarationProbeRoot, 'failure-code-negative');
+  await writeFixtureFiles(failureCodeNegativeRoot, {
+    'tsconfig.json': commonFiles['tsconfig.json'],
+    'src/errors/index.ts':
+      'export type ExecutorFailureFaultCode = "EXECUTOR_MISMATCH" | "EXECUTOR_UNAVAILABLE" | "INVALID_INPUT" | "INVALID_STATE" | "PLAN_MISMATCH" | "PLAN_UNAVAILABLE" | "REVISION_CONFLICT" | "STALE_ACTIVATION" | "STALE_FENCE";\n',
+    'src/index.ts':
+      'import type { ExecutorFailureFaultCode } from "./errors/index.js";\nexport const cancelled: ExecutorFailureFaultCode = "CANCELLED";\nexport const notFound: ExecutorFailureFaultCode = "NOT_FOUND";\nexport const unknown: ExecutorFailureFaultCode = "UNKNOWN_OUTCOME";\n',
+  });
+  const failureCodeNegative = spawnSync(
+    join(root, 'node_modules/.bin/tsc'),
+    ['-p', 'tsconfig.json'],
+    { cwd: failureCodeNegativeRoot, encoding: 'utf8' },
+  );
+  assert.notEqual(
+    failureCodeNegative.status,
+    0,
+    'Excluded lifecycle failure codes must fail TypeScript compilation',
+  );
+  assert.match(
+    `${failureCodeNegative.stdout}${failureCodeNegative.stderr}`,
+    /"CANCELLED"[\s\S]*"NOT_FOUND"[\s\S]*"UNKNOWN_OUTCOME"/,
+    'Failure-code negative proof must reject cancellation, not-found, and unknown outcomes',
+  );
   const operationalLeakMarkers = [
     /\bRunStore\b|\/storage\//,
     /\bRunState\b|\/domain\//,
@@ -1120,7 +1148,9 @@ try {
     /\bExecutorResolution\b/,
     /\bExecutorRequest\b/,
     /\bExecutorResult\b/,
-    /\breconcile\b/,
+    /\bExecutorExecuteResult\b/,
+    /\bExecutorReconcileResult\b/,
+    /\bExecutorCancelResult\b/,
     /\bcancel\b/,
   ] as const;
   const positiveOperationalDeclarations = readReachableDeclarations(
@@ -1128,6 +1158,11 @@ try {
   );
   const negativeOperationalDeclarations = readReachableDeclarations(
     join(storeNegativeRoot, 'dist/lifecycle/index.d.ts'),
+  );
+  assert.match(
+    positiveOperationalDeclarations,
+    /ExecutorFailureFault/,
+    'Operational lifecycle declarations must retain the package-owned executor failure fault',
   );
   for (const leakMarker of operationalLeakMarkers) {
     assert.doesNotMatch(
@@ -1311,7 +1346,7 @@ try {
       name: 'operational runtime port',
       path: 'src/lifecycle/run-lifecycle.ts',
       source:
-        "import type { ResolvedExecutor } from '../ports/index.js';\nexport interface Probe { readonly executor: ResolvedExecutor }\n",
+        "import type { ExecutorReconcileResult, ResolvedExecutor } from '../ports/index.js';\nexport interface Probe { readonly executor: ResolvedExecutor; readonly result: ExecutorReconcileResult }\n",
       expectedMessage: 'Operational lifecycle declarations must not import runtime port types.',
     },
     {

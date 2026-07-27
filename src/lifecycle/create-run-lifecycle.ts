@@ -1,6 +1,8 @@
 import { acquire } from './acquire.js';
 import { claim } from './claim.js';
 import { discover } from './discover.js';
+import { prepareReconciliation } from './prepare-reconciliation.js';
+import { executorObservationProcessing } from './process-executor-observation.js';
 import { renewLease } from './renew-lease.js';
 import type { RunLifecycleDependencies } from './run-lifecycle-dependencies.js';
 import type { RunLifecycle } from './run-lifecycle.js';
@@ -13,6 +15,12 @@ export const createRunLifecycle = (dependencies: RunLifecycleDependencies): RunL
     claim: (request) => claim(dependencies.store, request),
     discover: (request) => discover(dependencies.store, request),
     renewLease: (request) => renewLease(dependencies.store, request),
+    prepareReconciliation: (request) =>
+      prepareReconciliation(dependencies.store, dependencies.executors, request),
+    processExecuteObservation: (request) =>
+      executorObservationProcessing.processExecute(dependencies.store, request),
+    processReconcileObservation: (request) =>
+      executorObservationProcessing.processReconcile(dependencies.store, request),
     verifyAndStart: (request) =>
       verifyAndStart(dependencies.store, dependencies.executors, request),
     writeHandoff: (request) => writeHandoff(dependencies.store, request),

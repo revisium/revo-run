@@ -43,6 +43,14 @@ root/package surface. These are pure prospective proofs; they do not claim
 database CAS, lease minting, handoff/takeover, graph progression, or terminal
 pipeline policy.
 
+Pipeline-free lifecycle tests additionally cover descriptor-safe executor
+observation normalization, exact reconciliation preparation, pre-resolver and
+pre-commit replay, final fresh-authority CAS, missing/accessor capability
+handling, direct-unknown and reconciled-running/unknown logical commits,
+lease-equality rejection, semantic idempotency, generated-output identity
+bounds, and no-write terminal progression preparation. These remain logical
+Store-fake tests and are not PostgreSQL concurrency evidence.
+
 ## Proof layers
 
 ### Domain and lifecycle

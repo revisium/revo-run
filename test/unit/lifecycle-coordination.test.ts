@@ -213,6 +213,9 @@ describe('lifecycle coordination', () => {
       'acquire',
       'claim',
       'discover',
+      'prepareReconciliation',
+      'processExecuteObservation',
+      'processReconcileObservation',
       'renewLease',
       'verifyAndStart',
       'writeHandoff',
@@ -355,7 +358,10 @@ describe('lifecycle coordination', () => {
     const signal = new AbortController().signal;
     expect(Object.isFrozen(started.value.invocation)).toBe(true);
     expect(Object.isFrozen(started.value.invocation.attempt)).toBe(true);
-    await expect(started.value.execute.invoke(signal)).resolves.toBe(rawResult);
+    const observation = await started.value.execute.invoke(signal);
+    expect(observation).toEqual(rawResult);
+    expect(observation).not.toBe(rawResult);
+    expect(Object.isFrozen(observation)).toBe(true);
     expect(receivedRequest).toMatchObject({
       operation: 'execute',
       signal,
