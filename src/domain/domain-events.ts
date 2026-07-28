@@ -25,7 +25,12 @@ const attemptCorrelation = (node: RunNodeInstance, attempt: Attempt): AttemptCor
   });
 
 const activated = (node: RunNodeInstance): RunEventIntent => {
-  if (node.status !== 'ready' && node.status !== 'gate_waiting' && node.status !== 'join_waiting') {
+  if (
+    node.status !== 'ready' &&
+    node.status !== 'gate_waiting' &&
+    node.status !== 'join_waiting' &&
+    node.status !== 'selector_waiting'
+  ) {
     throw new TypeError('Only waiting or ready nodes can be activated.');
   }
   return Object.freeze({
@@ -104,6 +109,26 @@ const cancellationRequested = (run: Run): RunEventIntent =>
     runId: run.id,
   });
 
+const terminalized = (
+  run: Run,
+  terminal: { readonly nodeKey: string; readonly outcome: string },
+): RunEventIntent => {
+  if (run.status !== 'succeeded' && run.status !== 'failed' && run.status !== 'cancelled') {
+    throw new TypeError('Only a terminal Run can emit a terminal event.');
+  }
+  return Object.freeze({
+    correlation: Object.freeze({ kind: 'run' }),
+    kind: 'run.terminalized',
+    payload: Object.freeze({
+      fault: run.terminalFault,
+      nodeKey: terminal.nodeKey,
+      outcome: terminal.outcome,
+      status: run.status,
+    }),
+    runId: run.id,
+  });
+};
+
 export const domainEvents = Object.freeze({
   activated,
   attemptCreated,
@@ -111,4 +136,5 @@ export const domainEvents = Object.freeze({
   cancellationRequested,
   nodeTransitioned,
   outputRecorded,
+  terminalized,
 });

@@ -2,7 +2,7 @@
 
 - Status: Draft
 - Implementation: Package-private pure domain foundation implemented;
-  progression-state extension Accepted by ADR 0003 but unimplemented;
+  dependency-free progression-state extension implemented;
   persistence, lifecycle graph progression, and public snapshots not implemented
 
 ## Normative language and versioning
@@ -183,6 +183,12 @@ Join readiness MUST be derived from the exact immutable plan and authoritative
 predecessor node instances in the matching causal fork scope. Join activation
 identity and uniqueness MUST include the scope. No arrival counter or
 `JoinArrival` entity is authoritative.
+
+Every successor or fork activation intent identifies both the logical node key
+and exact activation id of its predecessor. Fork intents also identify the
+fork's logical key and exact activation id. Entry, member, exit and join
+coordinates are validated against those exact instances so repeated
+activations of the same logical node cannot be substituted.
 
 Consensus is expressed by the exact plan and pipeline progression. The run
 aggregate stores ordinary activations, attempts, and outputs; it does not own

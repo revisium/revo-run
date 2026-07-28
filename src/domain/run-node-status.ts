@@ -5,6 +5,10 @@ export type RunNodeStatus =
   | 'unknown'
   | 'gate_waiting'
   | 'join_waiting'
+  | 'selector_waiting'
   | 'succeeded'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'skipped'
+  | 'retiring'
+  | 'retired';

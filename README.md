@@ -14,7 +14,7 @@
 > [!IMPORTANT]
 > This repository is in bootstrap and the npm package is not published. Its root runtime namespace is intentionally empty
 > and currently exports only Stable portable contract types. `@revisium/revo-run/canonical-json` is implemented; the
-> package-private pure Run domain foundation and type-only Store contracts are implemented. Store behavior currently has
+> package-private pure Run domain and progression foundations plus type-only Store contracts are implemented. Store behavior currently has
 > logical fake conformance only, not durable-database proof. Package-private executor snapshots, pure binding verification,
 > fault refinements, and type-only ports are implemented. Package-private lifecycle discovery, claim, lease renewal,
 > durable handoff, ownership acquisition, and exact resolver/Start preparation are also implemented. Lifecycle now
@@ -27,8 +27,9 @@
 > target specifications.
 > Architecture enforcement is active in repository validation.
 > The private progression architecture is Accepted in
-> [ADR 0003](./docs/adr/0003-private-pipeline-progression.md), but the seam and
-> pipeline dependency remain unimplemented.
+> [ADR 0003](./docs/adr/0003-private-pipeline-progression.md). Its
+> dependency-free domain/Store foundation is implemented; the seam and pipeline
+> dependency remain unimplemented.
 
 ## About
 
@@ -105,12 +106,14 @@ and pre-persistence `RunEventIntent`. They implement exact status matrices,
 active-attempt compatibility, manager-incarnation/fence/lease validation
 against supplied transaction time, deterministic scoped activation keys,
 aggregate revision rules, cancellation intent, and known/unknown/reconciled
-result preparation.
+result preparation. It also owns immutable versioned progression state,
+closed command receipts, terminal bindings, selector/skipped/retiring/retired
+node states, and the `progressionClosedAt` logical-closure fence.
 
 This is intentionally not a package export or a working manager. It performs no
-storage write, CAS, polling, executor call, clock read, handoff/takeover,
-pipeline progression, or terminal-policy selection. Those boundaries remain
-Draft and are introduced only by their owning later slices.
+storage write, polling, executor call, clock read, pipeline decode/reduce, or
+terminal-policy selection. The private pipeline adapter and lifecycle
+coordination remain Draft.
 
 ## Implemented internal Store contracts
 
@@ -118,6 +121,8 @@ The package-private type-only `storage` layer defines the closed transactional
 Store commands, DB-time/CAS expectations, idempotency identities, fence-scoped
 handoff history, ownership acquisition results, materialized events, discovery
 candidates, and bounded cursor pages. It is not a root or package export.
+The closed Store command union now includes the pipeline-free atomic
+`apply_progression_transition` family and `retiring_attempt` discovery.
 Every node-bearing discovery candidate carries both its unique runtime node
 instance id and its bounded logical `nodeKey`. The key is contextual to the
 candidate's exact Run plan pin; lifecycle rechecks it against authoritative
@@ -188,7 +193,7 @@ exact package-owned plan JSON + authoritative Run progression state + command
   -> one atomic Store transition
 ```
 
-`revo-run` will persist its own typed, versioned progression state rather than
+`revo-run` now defines its own typed, versioned progression state rather than
 pipeline-owned snapshots or inferred output/event facts. Human-gate resolution,
 explicit scalar facts and arbitrary answer output stay separate and commit
 together. Logical terminal closure retains live/unknown Attempt evidence for
@@ -200,9 +205,10 @@ full recomputation belong to a separately implemented RunManager coordinator.
 No Prisma schema, concrete adapter or manager behavior is accepted by this
 contract.
 
-The exact registry dependency is added only when the private seam is
-implemented and after a separate publication/provenance gate. This contracts
-slice adds no runtime dependency, source API or export.
+The dependency-free domain and abstract Store foundation is implemented. The
+exact registry dependency is added only when the private seam is implemented
+and after a separate publication/provenance gate. This slice adds no runtime
+dependency, source API or root export.
 
 ## Draft RunManager quick start
 

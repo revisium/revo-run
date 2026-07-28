@@ -13,9 +13,13 @@ const nodeStatus = (value: JsonValue | undefined): RunNodeStatus => {
     value === 'unknown' ||
     value === 'gate_waiting' ||
     value === 'join_waiting' ||
+    value === 'selector_waiting' ||
     value === 'succeeded' ||
     value === 'failed' ||
-    value === 'cancelled'
+    value === 'cancelled' ||
+    value === 'skipped' ||
+    value === 'retiring' ||
+    value === 'retired'
   ) {
     return value;
   }
@@ -58,8 +62,13 @@ export const createRunNodeInstance = (value: unknown): RunNodeInstance => {
   const terminalFault = faultValue === null ? null : snapshotRunFault(faultValue);
   const createdAt = domainValidation.nonnegativeInteger(record['createdAt']);
   const updatedAt = domainValidation.nonnegativeInteger(record['updatedAt']);
-  const active = status === 'executing' || status === 'unknown';
-  const terminal = status === 'succeeded' || status === 'failed' || status === 'cancelled';
+  const active = status === 'executing' || status === 'unknown' || status === 'retiring';
+  const terminal =
+    status === 'succeeded' ||
+    status === 'failed' ||
+    status === 'cancelled' ||
+    status === 'skipped' ||
+    status === 'retired';
 
   if (active !== (activeAttemptId !== null)) {
     throw new TypeError('Run node active Attempt pointer is invalid.');

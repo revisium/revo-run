@@ -10,7 +10,7 @@ export type RunStoreDiscoveryCandidate =
       readonly handoffId: string;
     })
   | (RunStoreDiscoveryCandidateBase & {
-      readonly kind: 'expired_attempt' | 'renewable_attempt';
+      readonly kind: 'expired_attempt' | 'renewable_attempt' | 'retiring_attempt';
       readonly observedNode: RunStoreObservedNode;
       readonly observedAttempt: RunStoreObservedAttempt;
       readonly handoffId: null;

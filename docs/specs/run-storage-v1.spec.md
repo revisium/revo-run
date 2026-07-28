@@ -2,8 +2,8 @@
 
 - Status: Draft
 - Implementation: Package-private type contracts and logical fake conformance
-  implemented; atomic progression extension Accepted by ADR 0003 but
-  unimplemented; durable adapter and database concurrency proof not implemented
+  implemented, including the atomic progression extension; durable adapter and
+  database concurrency proof not implemented
 
 ## Normative language and versioning
 

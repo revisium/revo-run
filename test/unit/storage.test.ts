@@ -7,12 +7,14 @@ import type {
   RunStore,
   RunStoreCommitCommand,
   RunStoreIncumbentTransitionCommand,
+  RunStoreProgressionTransitionCommand,
 } from '../../src/storage/index.js';
 import {
   compareDiscoveryKeys,
   leasePolicyIsValid,
   LogicalRunStoreFake,
 } from '../support/logical-run-store-fake.js';
+import { attemptFixture, nodeFixture, runFixture } from '../support/store-fixtures.js';
 
 const createCommand = (
   runId: string,
@@ -25,6 +27,17 @@ const createCommand = (
     id: runId,
     input: null,
     planPin: { digest: 'digest', id: 'plan', revision: '1' },
+    progression: {
+      candidateVerdicts: [],
+      commandReceipts: [],
+      gateResolutions: [],
+      nodes: [],
+      occurrenceKey: 'occurrence-1',
+      phase: 'uninitialized',
+      schemaVersion: 1,
+      terminal: null,
+      values: [],
+    },
     revision: 0,
     status: 'running',
     terminalAt: null,
@@ -49,6 +62,87 @@ const createCommand = (
     request,
     result: { runId },
   },
+});
+
+const progressionCreateCommand = (request: {
+  readonly marker: string;
+}): RunStoreProgressionTransitionCommand => ({
+  expected: {
+    absentNodes: [],
+    absentOutputIds: [],
+    absentRunId: 'progression-run',
+    kind: 'create',
+  },
+  idempotency: {
+    identity: {
+      key: 'progression-request-1',
+      operation: 'initialize_progression',
+      runId: 'progression-run',
+      subjectId: 'progression-run',
+    },
+    request,
+    result: {
+      application: 'applied',
+      occurrenceKey: 'occurrence-1',
+      operation: 'initialize',
+      outcome: { kind: 'waiting' },
+      schemaVersion: 1,
+    },
+  },
+  kind: 'apply_progression_transition',
+  operation: 'initialize',
+  transition: {
+    attempts: [],
+    changed: true,
+    eventIntents: [],
+    nodes: [],
+    outputs: [],
+    run: createRun({
+      cancellationRequestedAt: null,
+      createdAt: 2_000,
+      id: 'progression-run',
+      input: null,
+      planPin: { digest: 'digest', id: 'plan', revision: '1' },
+      progression: {
+        candidateVerdicts: [],
+        commandReceipts: [
+          {
+            hostAttachment: { kind: 'none' },
+            identity: {
+              commandKey: 'initialize-command',
+              nodeKey: null,
+              operation: 'initialize',
+            },
+            result: {
+              application: 'applied',
+              occurrenceKey: 'occurrence-1',
+              operation: 'initialize',
+              outcome: { kind: 'waiting' },
+              schemaVersion: 1,
+            },
+            semanticRequest: {
+              kind: 'initialize',
+              occurrenceKey: 'occurrence-1',
+              values: [],
+            },
+          },
+        ],
+        gateResolutions: [],
+        nodes: [{ nodeKey: 'task', state: 'enabled' }],
+        occurrenceKey: 'occurrence-1',
+        phase: 'active',
+        schemaVersion: 1,
+        terminal: null,
+        values: [],
+      },
+      revision: 0,
+      status: 'running',
+      terminalAt: null,
+      terminalFault: null,
+      updatedAt: 2_000,
+    }),
+  },
+  trigger: { kind: 'run', runId: 'progression-run' },
 });
 
 describe('RunStore contract', () => {
@@ -124,6 +218,90 @@ describe('RunStore contract', () => {
       conflict: { code: 'IDEMPOTENCY_CONFLICT' },
     });
   });
+
+  it('atomically creates and replays one initialized progression occurrence', async () => {
+    const store = new LogicalRunStoreFake(2_000);
+    const command = progressionCreateCommand({ marker: 'stable' });
+
+    await expect(
+      store.transaction((transaction) => transaction.commit(command)),
+    ).resolves.toMatchObject({ kind: 'committed' });
+    await expect(
+      store.transaction((transaction) => transaction.commit(command)),
+    ).resolves.toMatchObject({ kind: 'replayed' });
+    await expect(
+      store.transaction((transaction) =>
+        transaction.commit(progressionCreateCommand({ marker: 'changed' })),
+      ),
+    ).resolves.toMatchObject({
+      conflict: { code: 'IDEMPOTENCY_CONFLICT' },
+      kind: 'conflict',
+    });
+    await expect(store.getRun('progression-run')).resolves.toMatchObject({
+      kind: 'found',
+      value: {
+        progression: { occurrenceKey: 'occurrence-1', phase: 'active' },
+      },
+    });
+  });
+
+  it('rejects a progression idempotency receipt that is not bound to the transition', async () => {
+    const store = new LogicalRunStoreFake(2_000);
+    const command = progressionCreateCommand({ marker: 'misbound' });
+
+    await expect(
+      store.transaction((transaction) =>
+        transaction.commit({
+          ...command,
+          idempotency: {
+            ...command.idempotency,
+            result: {
+              ...command.idempotency.result,
+              operation: 'task_outcome',
+            },
+          },
+        }),
+      ),
+    ).resolves.toMatchObject({ kind: 'invalid_input' });
+    await expect(store.getRun('progression-run')).resolves.toEqual({ kind: 'not_found' });
+  });
+
+  it('rejects an operation-incompatible progression trigger without writing', async () => {
+    const store = new LogicalRunStoreFake(2_000);
+    const command = progressionCreateCommand({ marker: 'trigger' });
+
+    await expect(
+      store.transaction((transaction) =>
+        transaction.commit({
+          ...command,
+          trigger: {
+            activationId: 'activation-1',
+            kind: 'activation',
+            nodeInstanceId: 'node-1',
+            runId: 'progression-run',
+          },
+        }),
+      ),
+    ).resolves.toMatchObject({ kind: 'invalid_input' });
+    await expect(store.getRun('progression-run')).resolves.toEqual({ kind: 'not_found' });
+  });
+
+  it.each(['run', 'nodes', 'outputs', 'events', 'idempotency'] as const)(
+    'rolls back progression initialization after an injected %s-stage failure',
+    async (stage) => {
+      const store = new LogicalRunStoreFake(2_000);
+      const command = progressionCreateCommand({ marker: stage });
+      store.failAfterNextStage(stage);
+
+      await expect(store.transaction((transaction) => transaction.commit(command))).rejects.toThrow(
+        `Injected logical provider failure after ${stage}.`,
+      );
+      await expect(store.getRun('progression-run')).resolves.toEqual({ kind: 'not_found' });
+      await expect(
+        store.transaction((transaction) => transaction.commit(command)),
+      ).resolves.toMatchObject({ kind: 'committed' });
+    },
+  );
 
   it('rolls back staged state when the callback rejects', async () => {
     const store = new LogicalRunStoreFake(1_000);
@@ -228,5 +406,66 @@ describe('RunStore contract', () => {
       { ...base, nodeInstanceId: 'node' },
       { ...base, kind: 'renewable_attempt' },
     ]);
+  });
+
+  it('discovers progression-closed active authority only as a retiring Attempt', async () => {
+    const store = new LogicalRunStoreFake(2_000);
+    store.seed({
+      attempts: [
+        attemptFixture({
+          progressionClosedAt: 1_900,
+          status: 'start_committed',
+          updatedAt: 1_900,
+        }),
+      ],
+      nodes: [
+        nodeFixture({
+          activeAttemptId: 'attempt-1',
+          status: 'retiring',
+          updatedAt: 1_900,
+        }),
+      ],
+      runs: [
+        runFixture({
+          progression: {
+            candidateVerdicts: [],
+            commandReceipts: [],
+            gateResolutions: [],
+            nodes: [],
+            occurrenceKey: 'occurrence-1',
+            phase: 'terminal',
+            schemaVersion: 1,
+            terminal: { nodeKey: 'terminal', outcome: 'success' },
+            values: [],
+          },
+          revision: 1,
+          status: 'succeeded',
+          terminalAt: 1_900,
+          updatedAt: 1_900,
+        }),
+      ],
+    });
+
+    await expect(
+      store.discover({
+        kinds: ['retiring_attempt'],
+        limit: 10,
+        renewal: null,
+        scan: { kind: 'start' },
+      }),
+    ).resolves.toMatchObject({
+      kind: 'page',
+      page: {
+        items: [
+          {
+            eligibleAt: 1_900,
+            kind: 'retiring_attempt',
+            observedAttempt: { attemptId: 'attempt-1' },
+            observedNode: { nodeInstanceId: 'node-1' },
+            observedRun: { runId: 'run-1' },
+          },
+        ],
+      },
+    });
   });
 });

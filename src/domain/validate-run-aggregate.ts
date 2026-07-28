@@ -8,13 +8,18 @@ type RunAggregate = {
   readonly attempts: readonly Attempt[];
 };
 
-const terminalNodeStatuses = new Set(['succeeded', 'failed', 'cancelled']);
+const terminalNodeStatuses = new Set(['succeeded', 'failed', 'cancelled', 'skipped', 'retired']);
 const activeAttemptStatuses = new Set(['claimed', 'start_committed', 'unknown', 'reconciling']);
+const progressionClosedAttemptStatuses = new Set(['start_committed', 'unknown', 'reconciling']);
 
 const compatible = (node: RunNodeInstance, attempt: Attempt): boolean =>
   (node.status === 'executing' &&
     (attempt.status === 'claimed' || attempt.status === 'start_committed')) ||
-  (node.status === 'unknown' && (attempt.status === 'unknown' || attempt.status === 'reconciling'));
+  (node.status === 'unknown' &&
+    (attempt.status === 'unknown' || attempt.status === 'reconciling')) ||
+  (node.status === 'retiring' &&
+    progressionClosedAttemptStatuses.has(attempt.status) &&
+    attempt.progressionClosedAt !== null);
 
 const indexAttempts = (aggregate: RunAggregate): ReadonlyMap<string, Attempt> => {
   const attempts = new Map<string, Attempt>();
@@ -52,17 +57,20 @@ const validateNodes = (
 ): ReadonlySet<string> => {
   const nodeIds = new Set<string>();
   const activationCoordinates = new Set<string>();
+  const logicalNodeKeys = new Set<string>();
   const referencedAttempts = new Set<string>();
   for (const node of aggregate.nodes) {
     const coordinate = `${node.runId}\u0000${node.forkScopeKey}\u0000${node.activationKey}`;
     if (
       node.runId !== aggregate.run.id ||
       nodeIds.has(node.id) ||
+      logicalNodeKeys.has(node.nodeKey) ||
       activationCoordinates.has(coordinate)
     ) {
       throw new TypeError('Run node aggregate identity is invalid.');
     }
     nodeIds.add(node.id);
+    logicalNodeKeys.add(node.nodeKey);
     activationCoordinates.add(coordinate);
 
     if (node.activeAttemptId === null) continue;
@@ -89,7 +97,7 @@ const validateTerminalRun = (run: Run, nodes: readonly RunNodeInstance[]): void 
     run.status === 'succeeded' || run.status === 'failed' || run.status === 'cancelled';
   if (
     terminal &&
-    nodes.some((node) => !terminalNodeStatuses.has(node.status) || node.activeAttemptId !== null)
+    nodes.some((node) => !terminalNodeStatuses.has(node.status) && node.status !== 'retiring')
   ) {
     throw new TypeError('Terminal Run contains non-terminal node authority.');
   }
@@ -100,4 +108,11 @@ export const validateRunAggregate = (aggregate: RunAggregate): void => {
   const referencedAttempts = validateNodes(aggregate, attempts);
   validateLiveAuthority(aggregate.attempts, referencedAttempts);
   validateTerminalRun(aggregate.run, aggregate.nodes);
+  const runTerminal =
+    aggregate.run.status === 'succeeded' ||
+    aggregate.run.status === 'failed' ||
+    aggregate.run.status === 'cancelled';
+  if (runTerminal !== (aggregate.run.progression.phase === 'terminal')) {
+    throw new TypeError('Run progression phase is inconsistent with Run status.');
+  }
 };

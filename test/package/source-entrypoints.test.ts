@@ -25,6 +25,7 @@ test('bootstrap entry point has no accidental public API', () => {
 test('policy has a curated source surface', () => {
   expect(Object.keys(policyEntry).sort()).toEqual([
     'canonicalizeJson',
+    'deriveRunProgressionIdentity',
     'digestCanonicalJson',
     'snapshotExecutionPlanPin',
     'snapshotExecutorAttemptReference',
@@ -40,8 +41,13 @@ test('policy has a curated source surface', () => {
     'snapshotRunArtifactReference',
     'snapshotRunExecutionPlanDocument',
     'snapshotRunExecutionPlanExecutorBinding',
+    'snapshotRunExecutionPlanTerminalBinding',
     'snapshotRunFaultMessage',
     'snapshotRunOutputPayload',
+    'snapshotRunProgressionAppliedReceipt',
+    'snapshotRunProgressionCommandReceipt',
+    'snapshotRunProgressionState',
+    'snapshotRunProgressionValueFacts',
     'snapshotTimeoutPolicy',
     'verifyExecutorBinding',
   ]);

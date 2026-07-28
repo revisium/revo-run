@@ -45,6 +45,7 @@ const discoveryRanks: Readonly<Record<RunStoreDiscoveryKind, number>> = {
   claimable_node: 3,
   cancellation_run: 4,
   progressable_run: 5,
+  retiring_attempt: 6,
 };
 
 const runStatusRanks = ['running', 'cancelling', 'succeeded', 'failed', 'cancelled'] as const;
@@ -58,6 +59,10 @@ const nodeStatusRanks = [
   'succeeded',
   'failed',
   'cancelled',
+  'selector_waiting',
+  'skipped',
+  'retiring',
+  'retired',
 ] as const;
 const attemptStatusRanks = [
   'claimed',
@@ -708,6 +713,21 @@ export class LogicalRunStoreFake implements RunStore {
           leaseExpiresAt: attempt.leaseExpiresAt,
           managerIncarnationId: attempt.managerIncarnationId,
         };
+        if (
+          query.kinds.includes('retiring_attempt') &&
+          node.status === 'retiring' &&
+          attempt.progressionClosedAt !== null
+        ) {
+          candidates.push({
+            eligibleAt: attempt.progressionClosedAt,
+            handoffId: null,
+            kind: 'retiring_attempt',
+            observedAttempt,
+            observedNode,
+            observedRun,
+          });
+          continue;
+        }
         const handoff = this.#state.handoffs.get(
           handoffKey({
             attemptId: attempt.id,

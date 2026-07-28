@@ -364,6 +364,7 @@ const claimInTransaction = async (
       nodeInstanceId: node.id,
       ordinal,
       ownerLabel: request.ownerLabel,
+      progressionClosedAt: null,
       revision: 0,
       runId: run.id,
       startCommittedAt: null,

@@ -20,4 +20,9 @@ export type RunStoreIdempotencyOperation =
   | 'reconciled_failure'
   | 'reconciled_cancellation'
   | 'write_handoff'
-  | 'acquire_attempt';
+  | 'acquire_attempt'
+  | 'initialize_progression'
+  | 'task_outcome_progression'
+  | 'consensus_verdict_progression'
+  | 'human_gate_resolution_progression'
+  | 'retired_attempt_observation';

@@ -56,6 +56,7 @@ export const createAttempt = (value: unknown): Attempt => {
     'nodeInstanceId',
     'ordinal',
     'ownerLabel',
+    'progressionClosedAt',
     'revision',
     'runId',
     'startCommittedAt',
@@ -72,6 +73,7 @@ export const createAttempt = (value: unknown): Attempt => {
   const leaseExpiresAt = domainValidation.nonnegativeInteger(record['leaseExpiresAt']);
   const startCommittedAt = nullableTimestamp(record['startCommittedAt']);
   const terminalAt = nullableTimestamp(record['terminalAt']);
+  const progressionClosedAt = nullableTimestamp(record['progressionClosedAt']);
   const terminal = status === 'succeeded' || status === 'failed' || status === 'cancelled';
 
   if (
@@ -83,6 +85,13 @@ export const createAttempt = (value: unknown): Attempt => {
       startCommittedAt === null)
   ) {
     throw new TypeError('Attempt Start time is invalid.');
+  }
+  if (
+    (status === 'claimed' && progressionClosedAt !== null) ||
+    (progressionClosedAt !== null &&
+      (startCommittedAt === null || progressionClosedAt < startCommittedAt))
+  ) {
+    throw new TypeError('Attempt progression close time is invalid.');
   }
   if (terminal !== (terminalAt !== null)) throw new TypeError('Attempt terminal time is invalid.');
   if (!faultMatchesStatus(status, fault)) {
@@ -97,7 +106,9 @@ export const createAttempt = (value: unknown): Attempt => {
     (terminalAt !== null &&
       (terminalAt < createdAt ||
         terminalAt > updatedAt ||
-        (startCommittedAt !== null && terminalAt < startCommittedAt)))
+        (startCommittedAt !== null && terminalAt < startCommittedAt))) ||
+    (progressionClosedAt !== null &&
+      (progressionClosedAt < createdAt || progressionClosedAt > updatedAt))
   ) {
     throw new TypeError('Attempt timestamps are inconsistent.');
   }
@@ -118,6 +129,7 @@ export const createAttempt = (value: unknown): Attempt => {
     nodeInstanceId: domainValidation.boundedString(record['nodeInstanceId']),
     ordinal: domainValidation.nonnegativeInteger(record['ordinal']),
     ownerLabel: snapshotRunFaultMessage(record['ownerLabel']),
+    progressionClosedAt,
     revision: domainValidation.nonnegativeInteger(record['revision']),
     runId: domainValidation.boundedString(record['runId']),
     startCommittedAt,

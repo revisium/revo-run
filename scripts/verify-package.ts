@@ -209,6 +209,7 @@ const document: RunExecutionPlanDocument = {
       },
     },
   ],
+  terminalBindings: [],
 };
 const fault: RunFault = { code: 'PLAN_MISMATCH', message: 'Plan mismatch.' };
 const conflict: RunConflict = {
@@ -270,6 +271,7 @@ const invalidCompiledPipeline: RunExecutionPlanDocument = {
   pin: { id: 'plan', revision: '1', digest: 'opaque' },
   compiledPipeline: () => undefined,
   executorBindings: [],
+  terminalBindings: [],
 };
 const missingNormalizedBinding: RunExecutionPlanExecutorBinding = {
   nodeKey: 'node',

@@ -45,21 +45,37 @@ const nodeStatuses = [
   'unknown',
   'gate_waiting',
   'join_waiting',
+  'selector_waiting',
   'succeeded',
   'failed',
   'cancelled',
+  'skipped',
+  'retiring',
+  'retired',
 ] as const satisfies readonly RunNodeStatus[];
 
 const nodeTargets: Readonly<Record<RunNodeStatus, readonly RunNodeStatus[]>> = {
-  ready: ['executing', 'cancelled'],
-  executing: ['succeeded', 'failed', 'retry_waiting', 'unknown', 'cancelled'],
-  retry_waiting: ['executing', 'cancelled'],
-  unknown: ['executing', 'succeeded', 'failed', 'retry_waiting', 'cancelled'],
-  gate_waiting: ['succeeded', 'cancelled'],
-  join_waiting: ['ready', 'succeeded', 'cancelled'],
+  ready: ['executing', 'cancelled', 'retired'],
+  executing: [
+    'succeeded',
+    'failed',
+    'retry_waiting',
+    'unknown',
+    'cancelled',
+    'retiring',
+    'retired',
+  ],
+  retry_waiting: ['executing', 'cancelled', 'retired'],
+  unknown: ['executing', 'succeeded', 'failed', 'retry_waiting', 'cancelled', 'retiring'],
+  gate_waiting: ['succeeded', 'cancelled', 'retired'],
+  join_waiting: ['ready', 'succeeded', 'cancelled', 'retired'],
+  selector_waiting: ['succeeded', 'cancelled', 'retired'],
   succeeded: [],
   failed: [],
   cancelled: [],
+  skipped: [],
+  retiring: ['retired'],
+  retired: [],
 };
 
 const attemptStatuses = [
@@ -182,6 +198,17 @@ const runInput = {
   input: { nested: ['value'] },
   metadata: { trace: 'trace-1' },
   planPin: { digest: 'plan-digest', id: 'plan-1', revision: 'revision-1' },
+  progression: {
+    candidateVerdicts: [],
+    commandReceipts: [],
+    gateResolutions: [],
+    nodes: [],
+    occurrenceKey: 'occurrence-1',
+    phase: 'uninitialized',
+    schemaVersion: 1,
+    terminal: null,
+    values: [],
+  },
   revision: 0,
   status: 'running',
   terminalAt: null,
@@ -192,31 +219,37 @@ const runInput = {
 const nodeInput = (
   status: RunNodeStatus,
   activeAttemptId: string | null = null,
-): Record<string, unknown> => ({
-  activationContext: { input: ['value'] },
-  activationId: 'activation-1',
-  activationKey: deriveActivationKey({
+): Record<string, unknown> => {
+  const effectiveActiveAttemptId =
+    status === 'retiring' && activeAttemptId === null ? 'attempt-1' : activeAttemptId;
+  const terminal = ['succeeded', 'failed', 'cancelled', 'skipped', 'retired'].includes(status);
+  return {
+    activationContext: { input: ['value'] },
+    activationId: 'activation-1',
+    activationKey: deriveActivationKey({
+      branchKey: null,
+      forkScopeKey: deriveRootForkScopeKey('run-1'),
+      iteration: 0,
+      nodeKey: 'node-a',
+    }),
+    activeAttemptId: effectiveActiveAttemptId,
     branchKey: null,
+    createdAt: 100,
     forkScopeKey: deriveRootForkScopeKey('run-1'),
+    id: 'node-instance-1',
     iteration: 0,
     nodeKey: 'node-a',
-  }),
-  activeAttemptId,
-  branchKey: null,
-  createdAt: 100,
-  forkScopeKey: deriveRootForkScopeKey('run-1'),
-  id: 'node-instance-1',
-  iteration: 0,
-  nodeKey: 'node-a',
-  parentActivationId: null,
-  retryAvailableAt: status === 'retry_waiting' ? 200 : null,
-  revision: 0,
-  runId: 'run-1',
-  status,
-  terminalAt: ['succeeded', 'failed', 'cancelled'].includes(status) ? 150 : null,
-  terminalFault: status === 'failed' ? { code: 'INVALID_STATE', message: 'Known failure.' } : null,
-  updatedAt: ['succeeded', 'failed', 'cancelled'].includes(status) ? 150 : 100,
-});
+    parentActivationId: null,
+    retryAvailableAt: status === 'retry_waiting' ? 200 : null,
+    revision: 0,
+    runId: 'run-1',
+    status,
+    terminalAt: terminal ? 150 : null,
+    terminalFault:
+      status === 'failed' ? { code: 'INVALID_STATE', message: 'Known failure.' } : null,
+    updatedAt: terminal ? 150 : 100,
+  };
+};
 
 const attemptInput = (status: AttemptStatus): Record<string, unknown> => ({
   createdAt: 100,
@@ -242,6 +275,7 @@ const attemptInput = (status: AttemptStatus): Record<string, unknown> => ({
   nodeInstanceId: 'node-instance-1',
   ordinal: 0,
   ownerLabel: 'same-label',
+  progressionClosedAt: null,
   revision: 0,
   runId: 'run-1',
   startCommittedAt: status === 'claimed' ? null : 110,
@@ -420,6 +454,39 @@ describe('active Attempt compatibility', () => {
     expect(() => validateRunAggregate({ attempts: [attempt], nodes: [node], run })).not.toThrow();
   });
 
+  test.each(['start_committed', 'unknown', 'reconciling'] as const)(
+    'accepts progression-closed %s authority only on a retiring node',
+    (attemptStatus) => {
+      const run = createRun(runInput);
+      const node = createRunNodeInstance({
+        ...nodeInput('retiring', 'attempt-1'),
+        updatedAt: 120,
+      });
+      const attempt = createAttempt({
+        ...attemptInput(attemptStatus),
+        progressionClosedAt: 120,
+        updatedAt: 120,
+      });
+
+      expect(() => validateRunAggregate({ attempts: [attempt], nodes: [node], run })).not.toThrow();
+    },
+  );
+
+  test('rejects a progression close on claimed or before start-commit authority', () => {
+    expect(() =>
+      createAttempt({
+        ...attemptInput('claimed'),
+        progressionClosedAt: 100,
+      }),
+    ).toThrow(TypeError);
+    expect(() =>
+      createAttempt({
+        ...attemptInput('start_committed'),
+        progressionClosedAt: 109,
+      }),
+    ).toThrow(TypeError);
+  });
+
   test.each(
     nodeStatuses
       .flatMap((nodeStatus) =>
@@ -443,19 +510,25 @@ describe('active Attempt compatibility', () => {
     expect(validate).toThrow(TypeError);
   });
 
-  test.each(nodeStatuses.filter((status) => status !== 'executing' && status !== 'unknown'))(
-    'requires no pointer for %s',
-    (status) => {
-      const run = createRun(runInput);
-      const node = createRunNodeInstance(nodeInput(status));
+  test.each(
+    nodeStatuses.filter(
+      (status) => status !== 'executing' && status !== 'unknown' && status !== 'retiring',
+    ),
+  )('requires no pointer for %s', (status) => {
+    const run = createRun(runInput);
+    const node = createRunNodeInstance(nodeInput(status));
 
-      expect(() => validateRunAggregate({ attempts: [], nodes: [node], run })).not.toThrow();
-    },
-  );
+    expect(() => validateRunAggregate({ attempts: [], nodes: [node], run })).not.toThrow();
+  });
 
   test('validates terminal Run structure without selecting terminal policy', () => {
     const terminalRun: Run = createRun({
       ...runInput,
+      progression: {
+        ...runInput.progression,
+        phase: 'terminal',
+        terminal: { nodeKey: 'terminal', outcome: 'success' },
+      },
       status: 'succeeded',
       terminalAt: 200,
       updatedAt: 200,
@@ -822,6 +895,7 @@ describe('exact combined operation matrix', () => {
             const validNode = createRunNodeInstance(nodeInput(nodeStatus, validPointer));
             const node = Object.freeze({ ...validNode, activeAttemptId: pointer });
             const run = createRun(runInput);
+            const before = JSON.stringify([run, node, attempt]);
             for (const revisionsMatch of [false, true]) {
               for (const incarnationMatches of [false, true]) {
                 for (const fenceMatches of [false, true]) {
@@ -853,7 +927,6 @@ describe('exact combined operation matrix', () => {
                       incarnationMatches &&
                       fenceMatches &&
                       transactionNow < attempt.leaseExpiresAt;
-                    const before = JSON.stringify([run, node, attempt]);
                     let rejected = false;
                     try {
                       applyDomainOperation(operation);
@@ -880,7 +953,7 @@ describe('exact combined operation matrix', () => {
     }
 
     expect(accepted).toBe(resultKinds.length);
-  }, 120_000);
+  }, 180_000);
 
   test.each([
     ['pre_start_failure', 'executing', 'claimed', 'failed', 'failed', 1, 1, 1],
@@ -1313,6 +1386,7 @@ describe('event-intent and package-private surface', () => {
     expect(Object.keys(rootSource)).toEqual([]);
     expect(Object.keys(domainEntry).sort()).toEqual([
       'applyDomainOperation',
+      'applyRunProgression',
       'createAttempt',
       'createRun',
       'createRunNodeInstance',

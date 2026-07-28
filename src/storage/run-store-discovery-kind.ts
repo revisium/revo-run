@@ -4,4 +4,5 @@ export type RunStoreDiscoveryKind =
   | 'renewable_attempt'
   | 'claimable_node'
   | 'cancellation_run'
-  | 'progressable_run';
+  | 'progressable_run'
+  | 'retiring_attempt';

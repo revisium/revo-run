@@ -1,4 +1,4 @@
-import { snapshotExecutionPlanPin } from '../policy/index.js';
+import { snapshotExecutionPlanPin, snapshotRunProgressionState } from '../policy/index.js';
 import type { JsonValue } from '../spec/index.js';
 import { domainValidation } from './domain-validation.js';
 import type { RunStatus } from './run-status.js';
@@ -31,6 +31,7 @@ export const createRun = (value: unknown): Run => {
       'id',
       'input',
       'planPin',
+      'progression',
       'revision',
       'status',
       'terminalAt',
@@ -76,6 +77,7 @@ export const createRun = (value: unknown): Run => {
     id: domainValidation.boundedString(record['id']),
     input: domainValidation.required(record, 'input'),
     planPin: snapshotExecutionPlanPin(domainValidation.required(record, 'planPin')),
+    progression: snapshotRunProgressionState(domainValidation.required(record, 'progression')),
     revision: domainValidation.nonnegativeInteger(record['revision']),
     status,
     terminalAt,
