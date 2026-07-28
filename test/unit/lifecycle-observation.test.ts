@@ -46,6 +46,7 @@ const planDocument = {
   compiledPipeline: { ignored: true },
   executorBindings: [binding],
   pin: planPin,
+  terminalBindings: [],
 };
 
 type Revisions = { readonly attempt: number; readonly node: number; readonly run: number };

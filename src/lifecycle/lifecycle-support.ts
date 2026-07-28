@@ -5,6 +5,8 @@ import type { JsonValue } from '../spec/index.js';
 import type {
   RunStoreCommitResult,
   RunStoreDiscoveryCandidate,
+  RunStoreDiscoveryCursor,
+  RunStoreDiscoveryKind,
   RunStoreIdempotencyIdentity,
   RunStoreIdempotencyRecord,
   RunStoreTransaction,
@@ -14,6 +16,7 @@ import type { LifecycleAcquireResult } from './lifecycle-acquire-result.js';
 import type { LifecycleAttemptAuthority } from './lifecycle-attempt-authority.js';
 import type { LifecycleDiscoveryCandidate } from './lifecycle-discovery-candidate.js';
 import type { LifecycleDiscoveryCursor } from './lifecycle-discovery-cursor.js';
+import type { LifecycleDiscoveryKind } from './lifecycle-discovery-kind.js';
 import type { LifecycleHandoffReceipt } from './lifecycle-handoff-receipt.js';
 import type { LifecycleWriteHandoffResult } from './lifecycle-write-handoff-result.js';
 
@@ -101,20 +104,22 @@ const validateReplayRecord = (
   }
 };
 
+const mapDiscoveryKind = (kind: RunStoreDiscoveryKind): LifecycleDiscoveryKind => {
+  if (kind === 'retiring_attempt') {
+    throw new TypeError('Retiring Attempt discovery is not a lifecycle v1 candidate.');
+  }
+  return kind;
+};
+
 const mapDiscoveryCursor = (
-  cursor: {
-    readonly kinds: readonly LifecycleDiscoveryCursor['kinds'][number][];
-    readonly renewal: LifecycleDiscoveryCursor['renewal'];
-    readonly highWatermark: number;
-    readonly last: LifecycleDiscoveryCursor['last'];
-  } | null,
+  cursor: RunStoreDiscoveryCursor | null,
 ): LifecycleDiscoveryCursor | null =>
   cursor === null
     ? null
     : Object.freeze({
         highWatermark: cursor.highWatermark,
-        kinds: Object.freeze([...cursor.kinds]),
-        last: Object.freeze({ ...cursor.last }),
+        kinds: Object.freeze(cursor.kinds.map(mapDiscoveryKind)),
+        last: Object.freeze({ ...cursor.last, kind: mapDiscoveryKind(cursor.last.kind) }),
         renewal:
           cursor.renewal === null
             ? null
@@ -212,6 +217,9 @@ const mapCandidate = (candidate: RunStoreDiscoveryCandidate): LifecycleDiscovery
       node: Object.freeze({ ...node, activeAttemptId: attempt.attemptId }),
       run,
     });
+  }
+  if (candidate.kind === 'retiring_attempt') {
+    throw new TypeError('Retiring Attempt discovery is not a lifecycle v1 candidate.');
   }
   return Object.freeze({
     attempt,

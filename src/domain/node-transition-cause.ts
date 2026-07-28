@@ -13,4 +13,7 @@ export type NodeTransitionCause =
   | 'reconciled_success'
   | 'reconciled_failure'
   | 'reconciled_cancellation'
-  | 'cancellation_requested';
+  | 'cancellation_requested'
+  | 'pipeline_progression'
+  | 'pipeline_retirement'
+  | 'retired_attempt_observation';

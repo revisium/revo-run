@@ -1,3 +1,4 @@
+import type { RunFault } from '../errors/index.js';
 import type { ActivationKey, ForkScopeKey } from '../spec/index.js';
 import type { AttemptCorrelation } from './attempt-correlation.js';
 import type { AttemptTransitionPayload } from './attempt-transition-payload.js';
@@ -7,6 +8,17 @@ import type { RunCorrelation } from './run-correlation.js';
 import type { RunNodeStatus } from './run-node-status.js';
 
 export type RunEventIntent =
+  | {
+      readonly runId: string;
+      readonly kind: 'run.terminalized';
+      readonly correlation: { readonly kind: 'run' };
+      readonly payload: {
+        readonly nodeKey: string;
+        readonly outcome: string;
+        readonly status: 'succeeded' | 'failed' | 'cancelled';
+        readonly fault: RunFault | null;
+      };
+    }
   | {
       readonly runId: string;
       readonly kind: 'run.transitioned';
@@ -23,7 +35,7 @@ export type RunEventIntent =
       readonly correlation: NodeCorrelation;
       readonly payload: {
         readonly nodeKey: string;
-        readonly status: 'ready' | 'gate_waiting' | 'join_waiting';
+        readonly status: 'ready' | 'gate_waiting' | 'join_waiting' | 'selector_waiting';
         readonly activationKey: ActivationKey;
         readonly forkScopeKey: ForkScopeKey;
         readonly branchKey: string | null;

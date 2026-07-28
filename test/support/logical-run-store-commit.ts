@@ -1,7 +1,10 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import type { Attempt, DomainTransition, Run, RunNodeInstance } from '../../src/domain/index.js';
-import { snapshotPortableJsonValue } from '../../src/policy/index.js';
+import {
+  snapshotPortableJsonValue,
+  snapshotRunProgressionAppliedReceipt,
+} from '../../src/policy/index.js';
 import type {
   AttemptHandoff,
   AttemptHandoffConsumption,
@@ -278,6 +281,33 @@ const commandIdentity = (
       write: suppliedWrite,
     };
   }
+  if (command.kind === 'apply_progression_transition') {
+    const operation =
+      command.operation === 'initialize'
+        ? 'initialize_progression'
+        : command.operation === 'task_outcome'
+          ? 'task_outcome_progression'
+          : command.operation === 'consensus_verdict'
+            ? 'consensus_verdict_progression'
+            : command.operation === 'human_gate_resolution'
+              ? 'human_gate_resolution_progression'
+              : 'retired_attempt_observation';
+    const target =
+      command.trigger.kind === 'run'
+        ? command.trigger.runId
+        : command.trigger.kind === 'activation'
+          ? command.trigger.activationId
+          : command.trigger.authority.attemptId;
+    return {
+      expected: {
+        key: suppliedKey,
+        operation,
+        runId: command.transition.run.id,
+        subjectId: target,
+      },
+      write: suppliedWrite,
+    };
+  }
   if (command.kind === 'write_handoff') {
     return {
       expected: {
@@ -470,6 +500,98 @@ const preflightCommand = (
       ? null
       : invalid('Claim structure or LeasePolicy is invalid.');
   }
+  if (command.kind === 'apply_progression_transition') {
+    if (command.idempotency === null) {
+      return invalid('Progression transition requires idempotency.');
+    }
+    const receipt = command.idempotency.result;
+    const terminal = receipt.outcome.kind === 'terminal' ? receipt.outcome.terminal : null;
+    const durableReceipt = command.transition.run.progression.commandReceipts.at(-1);
+    const triggerIsBound =
+      (command.operation === 'initialize' &&
+        command.trigger.kind === 'run' &&
+        command.trigger.runId === command.transition.run.id) ||
+      ((command.operation === 'task_outcome' ||
+        command.operation === 'retired_attempt_observation') &&
+        command.trigger.kind === 'incumbent_attempt') ||
+      ((command.operation === 'consensus_verdict' ||
+        command.operation === 'human_gate_resolution') &&
+        command.trigger.kind === 'activation' &&
+        command.trigger.runId === command.transition.run.id);
+    if (
+      !triggerIsBound ||
+      receipt.operation !== command.operation ||
+      receipt.occurrenceKey !== command.transition.run.progression.occurrenceKey ||
+      (command.operation !== 'retired_attempt_observation' &&
+        (durableReceipt?.identity.operation !== command.operation ||
+          !isDeepStrictEqual(durableReceipt.result, receipt))) ||
+      (terminal === null) !== (command.transition.run.progression.phase !== 'terminal') ||
+      (terminal !== null &&
+        (terminal.status !== command.transition.run.status ||
+          !isDeepStrictEqual(terminal.fault, command.transition.run.terminalFault)))
+    ) {
+      return invalid('Progression idempotency receipt is inconsistent.');
+    }
+    const terminalEvents = command.transition.eventIntents.filter(
+      (event) => event.kind === 'run.terminalized',
+    );
+    const cleanup = command.operation === 'retired_attempt_observation';
+    if (
+      cleanup || terminal === null
+        ? terminalEvents.length !== 0
+        : terminalEvents.length !== 1 ||
+          !isDeepStrictEqual(command.transition.eventIntents.at(-1), {
+            correlation: { kind: 'run' },
+            kind: 'run.terminalized',
+            payload: {
+              fault: terminal.fault,
+              nodeKey: terminal.nodeKey,
+              outcome: terminal.outcome,
+              status: terminal.status,
+            },
+            runId: command.transition.run.id,
+          })
+    ) {
+      return invalid('Progression terminal event is inconsistent.');
+    }
+    if (
+      command.operation === 'retired_attempt_observation' &&
+      (command.expected.kind !== 'transition' ||
+        command.transition.outputs.length !== 0 ||
+        command.transition.eventIntents.length !== 0 ||
+        command.transition.nodes.length !== 1 ||
+        command.transition.attempts.length !== 1)
+    ) {
+      return invalid('Retired Attempt observation transition is inconsistent.');
+    }
+    if (command.expected.kind === 'transition') {
+      return structurallyValidTransition(command.transition, command.expected.value) &&
+        validTransitionHandoffKeys(command.expected.value)
+        ? null
+        : invalid('Progression transition structure is invalid.');
+    }
+    return command.operation === 'initialize' &&
+      command.trigger.kind === 'run' &&
+      command.trigger.runId === command.expected.absentRunId &&
+      command.transition.run.id === command.expected.absentRunId &&
+      command.transition.run.revision === 0 &&
+      command.transition.run.createdAt === transactionNow &&
+      command.transition.run.updatedAt === transactionNow &&
+      command.transition.attempts.length === 0 &&
+      command.transition.nodes.every(
+        (node) =>
+          node.runId === command.transition.run.id &&
+          node.revision === 0 &&
+          node.createdAt === transactionNow &&
+          node.updatedAt === transactionNow,
+      ) &&
+      command.transition.outputs.every(
+        (output) =>
+          output.runId === command.transition.run.id && output.createdAt === transactionNow,
+      )
+      ? null
+      : invalid('Progression initialization structure is invalid.');
+  }
   if (command.kind === 'apply_incumbent_transition') {
     const next = command.transition.attempts[0];
     if (
@@ -597,7 +719,10 @@ const validateIdempotency = (
     snapshottedWrite = {
       identity: snapshotValue(identity),
       request: snapshotPortableJsonValue(binding.write.request),
-      result: snapshotPortableJsonValue(binding.write.result),
+      result:
+        command.kind === 'apply_progression_transition'
+          ? snapshotRunProgressionAppliedReceipt(binding.write.result)
+          : snapshotPortableJsonValue(binding.write.result),
     };
   } catch {
     return { kind: 'result', result: invalid('Idempotency JSON is invalid.') };
@@ -1085,6 +1210,84 @@ const applyTransition = (
   return committed(state, write, transactionNow, transition.run.id, events, null, failure);
 };
 
+const applyProgressionCreate = (
+  state: LogicalRunStoreState,
+  command: Extract<RunStoreCommitCommand, { readonly kind: 'apply_progression_transition' }>,
+  write: RunStoreIdempotencyWrite,
+  transactionNow: number,
+  failure: FailureHook,
+): RunStoreCommitResult => {
+  if (command.expected.kind !== 'create') {
+    return invalid('Progression creation expectations are invalid.');
+  }
+  const expected = command.expected;
+  const transition = command.transition;
+  const newNodeConflict = validateNewNodes(state, transition.nodes, expected.absentNodes);
+  if (newNodeConflict !== null) return newNodeConflict;
+  if (state.runs.has(expected.absentRunId)) {
+    return conflict('REVISION_CONFLICT', 'Run already exists.');
+  }
+  if (
+    transition.outputs.length !== expected.absentOutputIds.length ||
+    transition.outputs.some(
+      (output) => !expected.absentOutputIds.includes(output.id) || state.outputs.has(output.id),
+    )
+  ) {
+    return conflict('REVISION_CONFLICT', 'Progression output identity already exists.');
+  }
+  state.runs.set(transition.run.id, snapshotValue(transition.run));
+  failure('run');
+  for (const node of transition.nodes) state.nodes.set(node.id, snapshotValue(node));
+  failure('nodes');
+  for (const output of transition.outputs) state.outputs.set(output.id, snapshotValue(output));
+  failure('outputs');
+  const events = materializeEvents(
+    state,
+    transition.run.id,
+    transition.eventIntents,
+    transactionNow,
+  );
+  return committed(state, write, transactionNow, transition.run.id, events, null, failure);
+};
+
+const progressionSemanticReplay = (
+  state: LogicalRunStoreState,
+  command: Extract<RunStoreCommitCommand, { readonly kind: 'apply_progression_transition' }>,
+  write: RunStoreIdempotencyWrite,
+  transactionNow: number,
+): RunStoreCommitResult | null => {
+  if (command.operation === 'retired_attempt_observation') return null;
+  const current = state.runs.get(command.transition.run.id);
+  const incoming = command.transition.run.progression.commandReceipts.at(-1);
+  if (current === undefined || incoming === undefined) return null;
+  const existing = current.progression.commandReceipts.find(
+    (receipt) =>
+      receipt.identity.commandKey === incoming.identity.commandKey &&
+      receipt.identity.operation === incoming.identity.operation &&
+      receipt.identity.nodeKey === incoming.identity.nodeKey,
+  );
+  if (existing === undefined) return null;
+  if (
+    !isDeepStrictEqual(existing.semanticRequest, incoming.semanticRequest) ||
+    !isDeepStrictEqual(existing.hostAttachment, incoming.hostAttachment)
+  ) {
+    return invalid('Progression semantic command identity is already bound.');
+  }
+  return {
+    kind: 'replayed',
+    record: snapshotValue({
+      committedAt: transactionNow,
+      cursor: {
+        runId: current.id,
+        sequence: (state.events.get(current.id) ?? []).length,
+      },
+      identity: write.identity,
+      request: write.request,
+      result: existing.result,
+    }),
+  };
+};
+
 const applyHandoff = (
   state: LogicalRunStoreState,
   command: Extract<RunStoreCommitCommand, { readonly kind: 'write_handoff' }>,
@@ -1370,6 +1573,82 @@ export const applyLogicalRunStoreCommit = (
       state,
       command.transition,
       claimExpectations(command),
+      idempotency.write,
+      transactionNow,
+      failure,
+    );
+  }
+  if (command.kind === 'apply_progression_transition') {
+    if (idempotency.write === null) {
+      return invalid('Progression transition requires idempotency.');
+    }
+    const semanticReplay = progressionSemanticReplay(
+      state,
+      command,
+      idempotency.write,
+      transactionNow,
+    );
+    if (semanticReplay !== null) return semanticReplay;
+    if (command.trigger.kind === 'incumbent_attempt') {
+      const authorityFailure = validateAuthority(state, command.trigger.authority, transactionNow);
+      if (authorityFailure !== null) return authorityFailure;
+    }
+    if (command.trigger.kind === 'activation') {
+      const node = state.nodes.get(command.trigger.nodeInstanceId);
+      if (
+        node === undefined ||
+        node.runId !== command.trigger.runId ||
+        node.activationId !== command.trigger.activationId
+      ) {
+        return conflict('STALE_ACTIVATION', 'Progression activation is stale.');
+      }
+    }
+    const durableReceipt = command.transition.run.progression.commandReceipts.at(-1);
+    const semanticRequest = durableReceipt?.semanticRequest;
+    const semanticNodeKey =
+      semanticRequest !== undefined && 'nodeKey' in semanticRequest
+        ? semanticRequest.nodeKey
+        : null;
+    if (
+      command.operation !== 'retired_attempt_observation' &&
+      command.expected.kind === 'transition' &&
+      semanticNodeKey !== null
+    ) {
+      const expected = command.expected.value;
+      if (command.trigger.kind === 'activation') {
+        const node = state.nodes.get(command.trigger.nodeInstanceId);
+        if (
+          node?.nodeKey !== semanticNodeKey ||
+          !expected.nodes.some((item) => item.nodeInstanceId === node.id)
+        ) {
+          return invalid('Progression activation trigger target is inconsistent.');
+        }
+      }
+      if (command.trigger.kind === 'incumbent_attempt') {
+        const attempt = state.attempts.get(command.trigger.authority.attemptId);
+        const node = attempt === undefined ? undefined : state.nodes.get(attempt.nodeInstanceId);
+        if (
+          node?.nodeKey !== semanticNodeKey ||
+          !expected.nodes.some((item) => item.nodeInstanceId === node.id) ||
+          !expected.attempts.some((item) => item.attemptId === attempt?.id)
+        ) {
+          return invalid('Progression incumbent trigger target is inconsistent.');
+        }
+      }
+    }
+    if (
+      command.operation === 'retired_attempt_observation' &&
+      !isDeepStrictEqual(state.runs.get(command.transition.run.id), command.transition.run)
+    ) {
+      return invalid('Retired Attempt observation mutates Run state.');
+    }
+    if (command.expected.kind === 'create') {
+      return applyProgressionCreate(state, command, idempotency.write, transactionNow, failure);
+    }
+    return applyTransition(
+      state,
+      command.transition,
+      command.expected.value,
       idempotency.write,
       transactionNow,
       failure,

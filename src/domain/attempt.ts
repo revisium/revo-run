@@ -21,5 +21,6 @@ export interface Attempt {
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly startCommittedAt: number | null;
+  readonly progressionClosedAt: number | null;
   readonly terminalAt: number | null;
 }

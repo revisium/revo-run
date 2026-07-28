@@ -1,5 +1,6 @@
 export { canonicalizeJson } from './canonical-json/canonicalize-json.js';
 export { digestCanonicalJson } from './canonical-json/digest-canonical-json.js';
+export { deriveRunProgressionIdentity } from './derive-run-progression-identity.js';
 export { snapshotExecutionPlanPin } from './snapshot-execution-plan-pin.js';
 export { snapshotExecutorConfiguration } from './snapshot-executor-configuration.js';
 export { snapshotExecutorContractPin } from './snapshot-executor-contract-pin.js';
@@ -14,6 +15,11 @@ export { snapshotRetryPolicy } from './snapshot-retry-policy.js';
 export { snapshotRunArtifactReference } from './snapshot-run-artifact-reference.js';
 export { snapshotRunExecutionPlanDocument } from './snapshot-run-execution-plan-document.js';
 export { snapshotRunExecutionPlanExecutorBinding } from './snapshot-run-execution-plan-executor-binding.js';
+export { snapshotRunExecutionPlanTerminalBinding } from './snapshot-run-execution-plan-terminal-binding.js';
+export { snapshotRunProgressionAppliedReceipt } from './snapshot-run-progression-applied-receipt.js';
+export { snapshotRunProgressionCommandReceipt } from './snapshot-run-progression-command-receipt.js';
+export { snapshotRunProgressionState } from './snapshot-run-progression-state.js';
+export { snapshotRunProgressionValueFacts } from './snapshot-run-progression-value-facts.js';
 export { snapshotRunFaultMessage } from './snapshot-run-fault-message.js';
 export { snapshotRunOutputPayload } from './snapshot-run-output-payload.js';
 export { snapshotTimeoutPolicy } from './snapshot-timeout-policy.js';

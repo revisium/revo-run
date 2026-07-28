@@ -246,6 +246,7 @@ describe('execution plan document', () => {
         id: 'plan',
         revision: '1',
       },
+      terminalBindings: [],
     };
 
     const document = snapshotRunExecutionPlanDocument(input);
@@ -286,6 +287,7 @@ describe('execution plan document', () => {
         compiledPipeline: { nodes: ['node-a', 'node-b'] },
         executorBindings: sourceBindings,
         pin: { digest: 'opaque', id: 'plan', revision: '1' },
+        terminalBindings: [],
       });
     } finally {
       if (originalIteratorDescriptor) {
@@ -316,17 +318,19 @@ describe('execution plan document', () => {
         },
       ],
       pin: { digest: 'opaque', id: 'plan', revision: '1' },
+      terminalBindings: [],
     });
 
     expect(document.executorBindings[0]?.idempotentExecution).toBe(false);
   });
 
   test('accounts normalized defaults at the exact shared member boundary', () => {
-    const exactCompiledPipeline = Array.from({ length: 65_512 }, () => null);
+    const exactCompiledPipeline = Array.from({ length: 65_511 }, () => null);
     const exact = snapshotRunExecutionPlanDocument({
       compiledPipeline: exactCompiledPipeline,
       executorBindings: [bindingFor('node')],
       pin: { digest: 'opaque', id: 'plan', revision: '1' },
+      terminalBindings: [],
     });
 
     expect(exact.executorBindings[0]?.idempotentExecution).toBe(false);
@@ -335,6 +339,7 @@ describe('execution plan document', () => {
         compiledPipeline: [...exactCompiledPipeline, null],
         executorBindings: [bindingFor('node')],
         pin: { digest: 'opaque', id: 'plan', revision: '1' },
+        terminalBindings: [],
       }),
     ).toThrowError(
       new RangeError('Canonical JSON input exceeds the maximum member count of 65536.'),
@@ -347,6 +352,7 @@ describe('execution plan document', () => {
       compiledPipeline: { padding: '' },
       executorBindings,
       pin: { digest: 'opaque-plan-digest', id: 'plan', revision: '1' },
+      terminalBindings: [],
     };
     const normalizedForSizing = {
       ...input,
@@ -389,6 +395,7 @@ describe('execution plan document', () => {
       compiledPipeline: {},
       executorBindings,
       pin: { digest: 'opaque', id: 'plan', revision: '1' },
+      terminalBindings: [],
     });
 
     expect(() => snapshotRunExecutionPlanDocument(document([binding, binding]))).toThrow(TypeError);
@@ -409,6 +416,7 @@ describe('execution plan document', () => {
         compiledPipeline: { value: Symbol('secret') },
         executorBindings: [],
         pin: { digest: 'opaque', id: 'plan', revision: '1' },
+        terminalBindings: [],
       }),
     ).toThrow(TypeError);
   });
@@ -483,6 +491,7 @@ describe('closed output payloads', () => {
       compiledPipeline: [1, 2],
       executorBindings: [],
       pin: { digest: 'opaque', id: 'plan', revision: '1' },
+      terminalBindings: [],
     });
     const output = snapshotRunOutputPayload({ kind: 'json', value: [1, 2] });
 

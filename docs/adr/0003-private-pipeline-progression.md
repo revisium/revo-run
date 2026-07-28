@@ -2,7 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-07-28
-- Implementation: Not implemented
+- Implementation: Dependency-free domain and abstract Store foundation
+  implemented; pipeline adapter, lifecycle coordination, and manager not
+  implemented
 
 ## Context
 
@@ -48,6 +50,35 @@ The private seam decodes that value once per transaction attempt with
 `reducePipeline` exactly once, and exhaustively maps the complete ordered
 effect batch to one package-owned intent. It never compiles, repairs, replaces
 or caches the persisted compiled plan.
+
+Intent application folds the batch over an evolving in-memory aggregate.
+Later effects observe entities created or updated by earlier effects. Repeated
+updates of one identity produce one final Store delta while their intermediate
+events retain reducer order. Only the first effect is the command-origin effect
+bound to the durable receipt; following effects are reducer-produced secondary
+progression effects.
+
+Initialization treats its uninitialized Run as an unpersisted draft: the
+created Run and every created entity persist at revision zero even when the
+fold updates them internally. Existing identities persist at exactly their
+prior revision plus one. The batch grammar permits exactly one command-origin
+effect at index zero; only activation, selector-completion, join-completion and
+terminalization effects may follow.
+
+Retired-attempt cleanup receipts carry one bounded terminal observation
+(`attemptId`, `nodeKey`, status, normalized fault and terminal time). Cleanup
+may replace unknown evidence only when the final Attempt matches that exact
+observation; same-status retirement preserves its fault byte-for-byte.
+Failed cleanup observations accept only the normalized executor-failure fault
+taxonomy; uncertainty and cancellation codes are not failures.
+
+Secondary effects are also closed and ordered: selector and join completion
+identities are unique, every existing-node delta follows the legal status
+matrix, and at most one terminalization effect may appear as the final effect
+in the batch. Join completion is the progression equivalent of
+`join_succeeded`: it requires exact evolving `join_waiting` authority and
+completes the join before any same-batch successor activation. `join_ready`
+remains the separate operational transition to `ready`.
 
 No new package export is introduced. The package root remains runtime-empty.
 
@@ -213,9 +244,10 @@ seed; initialization also supplies a fresh occurrence key. One external
 idempotency key remains stable. Cancellation is checked before each plan load
 and attempt. Exhaustion returns fixed `REVISION_CONFLICT`.
 
-This ADR does not claim that coordinator, the private pipeline seam, lifecycle
-progression, domain progression foundation or Store progression operation is
-implemented.
+This slice implements the dependency-free domain progression foundation and
+abstract Store progression operation. It does not claim the private pipeline
+seam, one-attempt lifecycle integration, registry dependency, or deferred
+RunManager coordinator.
 
 ## Dependency and delivery gates
 

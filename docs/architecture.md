@@ -20,7 +20,8 @@ Package-private exact plan-source, purpose-specific manager identifier, local
 clock/scheduler, and read-only owned-authority hydration contracts are also
 implemented. The private decode/reduce progression contract is Accepted by
 [ADR 0003](adr/0003-private-pipeline-progression.md), but its domain/Store
-foundation, dependency, adapter and lifecycle behavior are not implemented.
+foundation is implemented without a pipeline dependency. The dependency,
+adapter and lifecycle behavior are not implemented.
 Retry selection, cancellation invocation, terminal graph progression,
 manager/composition, and all RunManager behavioral APIs remain Draft and
 unimplemented.

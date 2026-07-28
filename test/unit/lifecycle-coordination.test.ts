@@ -66,6 +66,7 @@ const planDocument = {
   compiledPipeline: { ignored: true },
   executorBindings: [planBinding],
   pin: planPin,
+  terminalBindings: [],
 };
 
 const planWithMaximumAttempts = (maximumAttempts: number) => ({
@@ -2289,6 +2290,7 @@ describe('lifecycle coordination', () => {
           nodeInstanceId: node.id,
           ordinal: 0,
           ownerLabel: 'owner',
+          progressionClosedAt: null,
           revision: 0,
           runId: run.id,
           startCommittedAt: null,
