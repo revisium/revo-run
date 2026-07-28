@@ -32,10 +32,9 @@ export const validateRunProgressionRetirement = (input: {
     return;
   }
 
-  const priorAttempt =
-    priorNode.activeAttemptId === null
-      ? undefined
-      : input.projection.attempts.find((attempt) => attempt.id === priorNode.activeAttemptId);
+  const priorAttempt = input.projection.attempts.find(
+    (attempt) => attempt.id === priorNode.activeAttemptId,
+  );
   if (
     priorAttempt === undefined ||
     input.attempt === null ||

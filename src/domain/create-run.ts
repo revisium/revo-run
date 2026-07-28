@@ -1,5 +1,4 @@
-import { snapshotExecutionPlanPin } from '../policy/index.js';
-import { snapshotRunProgressionState } from '../policy/index.js';
+import { snapshotExecutionPlanPin, snapshotRunProgressionState } from '../policy/index.js';
 import type { JsonValue } from '../spec/index.js';
 import { domainValidation } from './domain-validation.js';
 import type { RunStatus } from './run-status.js';

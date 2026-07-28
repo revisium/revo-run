@@ -167,6 +167,29 @@ const semanticRequest = (value: JsonValue): SemanticRequest => {
   throw new TypeError('Run progression semantic request is invalid.');
 };
 
+const hostAttachment = (value: JsonValue) => {
+  const attachment = contractValidation.record(value, ['kind'], ['answerOutput', 'outputs']);
+  if (attachment['kind'] === 'none') {
+    contractValidation.record(attachment, ['kind']);
+    return Object.freeze({ kind: 'none' as const });
+  }
+  if (attachment['kind'] === 'task_outputs') {
+    const exact = contractValidation.record(attachment, ['kind', 'outputs']);
+    return Object.freeze({
+      kind: 'task_outputs' as const,
+      outputs: snapshotExecutorOutputs(exact['outputs']),
+    });
+  }
+  if (attachment['kind'] === 'gate_answer_output') {
+    const exact = contractValidation.record(attachment, ['answerOutput', 'kind']);
+    return Object.freeze({
+      answerOutput: snapshotRunOutputPayload(exact['answerOutput']),
+      kind: 'gate_answer_output' as const,
+    });
+  }
+  throw new TypeError('Run progression host attachment is invalid.');
+};
+
 export const snapshotRunProgressionCommandReceipt = (value: unknown) => {
   const record = contractValidation.snapshotRecord(value, [
     'hostAttachment',
@@ -174,33 +197,9 @@ export const snapshotRunProgressionCommandReceipt = (value: unknown) => {
     'result',
     'semanticRequest',
   ]);
-  const attachment = contractValidation.record(
+  const parsedHostAttachment = hostAttachment(
     contractValidation.requiredValue(record, 'hostAttachment'),
-    ['kind'],
-    ['answerOutput', 'outputs'],
   );
-  const hostAttachment =
-    attachment['kind'] === 'none'
-      ? (contractValidation.record(attachment, ['kind']), Object.freeze({ kind: 'none' }))
-      : attachment['kind'] === 'task_outputs'
-        ? (() => {
-            const exact = contractValidation.record(attachment, ['kind', 'outputs']);
-            return Object.freeze({
-              kind: 'task_outputs',
-              outputs: snapshotExecutorOutputs(exact['outputs']),
-            });
-          })()
-        : attachment['kind'] === 'gate_answer_output'
-          ? (() => {
-              const exact = contractValidation.record(attachment, ['answerOutput', 'kind']);
-              return Object.freeze({
-                answerOutput: snapshotRunOutputPayload(exact['answerOutput']),
-                kind: 'gate_answer_output',
-              });
-            })()
-          : (() => {
-              throw new TypeError('Run progression host attachment is invalid.');
-            })();
   const parsedIdentity = identity(contractValidation.requiredValue(record, 'identity'));
   const parsedRequest = semanticRequest(
     contractValidation.requiredValue(record, 'semanticRequest'),
@@ -210,13 +209,13 @@ export const snapshotRunProgressionCommandReceipt = (value: unknown) => {
   const validAttachment =
     (parsedRequest.kind === 'task_outcome' &&
       parsedRequest.outcome.kind === 'succeeded' &&
-      hostAttachment.kind === 'task_outputs') ||
+      parsedHostAttachment.kind === 'task_outputs') ||
     (parsedRequest.kind === 'human_gate_resolution' &&
-      hostAttachment.kind === 'gate_answer_output') ||
+      parsedHostAttachment.kind === 'gate_answer_output') ||
     ((parsedRequest.kind === 'initialize' ||
       parsedRequest.kind === 'consensus_verdict' ||
       (parsedRequest.kind === 'task_outcome' && parsedRequest.outcome.kind !== 'succeeded')) &&
-      hostAttachment.kind === 'none');
+      parsedHostAttachment.kind === 'none');
   if (
     parsedIdentity.operation !== parsedRequest.kind ||
     parsedIdentity.nodeKey !== requestNodeKey ||
@@ -227,7 +226,7 @@ export const snapshotRunProgressionCommandReceipt = (value: unknown) => {
     throw new TypeError('Run progression command receipt binding is invalid.');
   }
   return Object.freeze({
-    hostAttachment,
+    hostAttachment: parsedHostAttachment,
     identity: parsedIdentity,
     result,
     semanticRequest: parsedRequest,

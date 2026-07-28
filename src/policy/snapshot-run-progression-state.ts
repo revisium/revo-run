@@ -19,6 +19,10 @@ type CandidateVerdict = {
 };
 type GateResolution = { readonly nodeKey: string; readonly resolution: string };
 type CommandReceipt = ReturnType<typeof snapshotRunProgressionCommandReceipt>;
+type NodeState =
+  | { readonly nodeKey: string; readonly state: 'enabled' }
+  | { readonly nodeKey: string; readonly state: 'terminal'; readonly outcome: string }
+  | { readonly nodeKey: string; readonly state: 'retired'; readonly terminal: Terminal };
 
 const terminal = (value: JsonValue): Terminal => {
   const record = contractValidation.record(value, ['nodeKey', 'outcome']);
@@ -26,6 +30,21 @@ const terminal = (value: JsonValue): Terminal => {
     nodeKey: contractValidation.boundedString(record['nodeKey'], 256),
     outcome: contractValidation.boundedString(record['outcome'], 256),
   });
+};
+
+const valueSource = (value: JsonValue) => {
+  const record = contractValidation.record(value, ['kind'], ['nodeKey']);
+  if (record['kind'] === 'init') {
+    contractValidation.record(record, ['kind']);
+    return Object.freeze({ kind: 'init' as const });
+  }
+  if (record['kind'] === 'task_outcome' || record['kind'] === 'human_gate_resolution') {
+    return Object.freeze({
+      kind: record['kind'],
+      nodeKey: contractValidation.boundedString(record['nodeKey'], 256),
+    });
+  }
+  throw new TypeError('Run progression value source is invalid.');
 };
 
 const valueRecords = (value: JsonValue | undefined): readonly ValueRecord[] => {
@@ -36,23 +55,7 @@ const valueRecords = (value: JsonValue | undefined): readonly ValueRecord[] => {
     const record = contractValidation.record(candidate, ['key', 'source', 'value']);
     const key = contractValidation.boundedString(record['key'], 256);
     const factValue = record['value'];
-    const sourceRecord = contractValidation.record(
-      contractValidation.requiredValue(record, 'source'),
-      ['kind'],
-      ['nodeKey'],
-    );
-    const factSource =
-      sourceRecord['kind'] === 'init'
-        ? (contractValidation.record(sourceRecord, ['kind']), Object.freeze({ kind: 'init' }))
-        : sourceRecord['kind'] === 'task_outcome' ||
-            sourceRecord['kind'] === 'human_gate_resolution'
-          ? Object.freeze({
-              kind: sourceRecord['kind'],
-              nodeKey: contractValidation.boundedString(sourceRecord['nodeKey'], 256),
-            })
-          : (() => {
-              throw new TypeError('Run progression value source is invalid.');
-            })();
+    const factSource = valueSource(contractValidation.requiredValue(record, 'source'));
     if (
       !(
         factValue === null ||
@@ -132,6 +135,50 @@ const receipts = (value: JsonValue | undefined): readonly CommandReceipt[] => {
   return Object.freeze(result);
 };
 
+const nodes = (source: readonly JsonValue[]): readonly NodeState[] => {
+  const result: NodeState[] = [];
+  const nodeKeys = new Set<string>();
+  forEachArrayValue(source, (candidate) => {
+    const node = contractValidation.record(
+      candidate,
+      ['nodeKey', 'state'],
+      ['outcome', 'terminal'],
+    );
+    const nodeKey = contractValidation.boundedString(node['nodeKey'], 256);
+    if (nodeKeys.has(nodeKey)) throw new TypeError('Run progression node is duplicated.');
+    nodeKeys.add(nodeKey);
+    if (node['state'] === 'enabled') {
+      contractValidation.record(node, ['nodeKey', 'state']);
+      result.push(Object.freeze({ nodeKey, state: 'enabled' }));
+      return;
+    }
+    if (node['state'] === 'terminal') {
+      contractValidation.record(node, ['nodeKey', 'outcome', 'state']);
+      result.push(
+        Object.freeze({
+          nodeKey,
+          outcome: contractValidation.boundedString(node['outcome'], 256),
+          state: 'terminal',
+        }),
+      );
+      return;
+    }
+    if (node['state'] === 'retired') {
+      contractValidation.record(node, ['nodeKey', 'state', 'terminal']);
+      result.push(
+        Object.freeze({
+          nodeKey,
+          state: 'retired',
+          terminal: terminal(contractValidation.requiredValue(node, 'terminal')),
+        }),
+      );
+      return;
+    }
+    throw new TypeError('Run progression node state is invalid.');
+  });
+  return Object.freeze(result);
+};
+
 export const snapshotRunProgressionState = (value: unknown) => {
   const record = contractValidation.snapshotRecord(value, [
     'candidateVerdicts',
@@ -173,68 +220,25 @@ export const snapshotRunProgressionState = (value: unknown) => {
       values: empty,
     });
   }
-  const nodes: (
-    | { readonly nodeKey: string; readonly state: 'enabled' }
-    | { readonly nodeKey: string; readonly state: 'terminal'; readonly outcome: string }
-    | {
-        readonly nodeKey: string;
-        readonly state: 'retired';
-        readonly terminal: Terminal;
-      }
-  )[] = [];
-  const nodeKeys = new Set<string>();
-  forEachArrayValue(sourceNodes, (candidate) => {
-    const node = contractValidation.record(
-      candidate,
-      ['nodeKey', 'state'],
-      ['outcome', 'terminal'],
-    );
-    const nodeKey = contractValidation.boundedString(node['nodeKey'], 256);
-    if (nodeKeys.has(nodeKey)) throw new TypeError('Run progression node is duplicated.');
-    nodeKeys.add(nodeKey);
-    if (node['state'] === 'enabled') {
-      contractValidation.record(node, ['nodeKey', 'state']);
-      nodes.push(Object.freeze({ nodeKey, state: 'enabled' }));
-    } else if (node['state'] === 'terminal') {
-      contractValidation.record(node, ['nodeKey', 'outcome', 'state']);
-      nodes.push(
-        Object.freeze({
-          nodeKey,
-          outcome: contractValidation.boundedString(node['outcome'], 256),
-          state: 'terminal',
-        }),
-      );
-    } else if (node['state'] === 'retired') {
-      contractValidation.record(node, ['nodeKey', 'state', 'terminal']);
-      nodes.push(
-        Object.freeze({
-          nodeKey,
-          state: 'retired',
-          terminal: terminal(contractValidation.requiredValue(node, 'terminal')),
-        }),
-      );
-    } else {
-      throw new TypeError('Run progression node state is invalid.');
-    }
-  });
+  const parsedNodes = nodes(sourceNodes);
   const common = {
     candidateVerdicts: verdicts(record['candidateVerdicts']),
     commandReceipts: receipts(record['commandReceipts']),
     gateResolutions: gateResolutions(record['gateResolutions']),
-    nodes: Object.freeze(nodes),
+    nodes: parsedNodes,
     occurrenceKey,
     schemaVersion: 1,
     values: valueRecords(record['values']),
   };
   if (record['phase'] === 'active' && record['terminal'] === null) {
-    if (nodes.some((node) => node.state === 'retired')) {
+    if (parsedNodes.some((node) => node.state === 'retired')) {
       throw new TypeError('Active Run progression state is invalid.');
     }
     const activeNodes: (
       | { readonly nodeKey: string; readonly state: 'enabled' }
       | { readonly nodeKey: string; readonly state: 'terminal'; readonly outcome: string }
     )[] = [];
-    for (const node of nodes) {
+    for (const node of parsedNodes) {
       if (node.state === 'enabled' || node.state === 'terminal') activeNodes.push(node);
     }
     return Object.freeze({
@@ -246,7 +250,7 @@ export const snapshotRunProgressionState = (value: unknown) => {
     });
   }
   if (record['phase'] === 'terminal' && record['terminal'] !== null) {
-    if (nodes.some((node) => node.state === 'enabled')) {
+    if (parsedNodes.some((node) => node.state === 'enabled')) {
       throw new TypeError('Terminal Run progression state is invalid.');
     }
     const terminalNodes: (
@@ -257,7 +261,7 @@ export const snapshotRunProgressionState = (value: unknown) => {
           readonly terminal: Terminal;
         }
     )[] = [];
-    for (const node of nodes) {
+    for (const node of parsedNodes) {
       if (node.state === 'terminal' || node.state === 'retired') terminalNodes.push(node);
     }
     return Object.freeze({

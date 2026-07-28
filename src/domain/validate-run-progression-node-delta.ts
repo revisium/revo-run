@@ -1,3 +1,4 @@
+import { canonicalizeJson } from '../policy/index.js';
 import { isRunNodeStatusTransitionAllowed } from './is-run-node-status-transition-allowed.js';
 import type { RunNodeInstance } from './run-node-instance.js';
 import type { RunProgressionProjection } from './run-progression-projection.js';
@@ -10,8 +11,7 @@ export const validateRunProgressionNodeDelta = (input: {
 }): void => {
   const prior = input.projection.nodes.find((candidate) => candidate.nodeKey === input.nodeKey);
   if (
-    prior === undefined ||
-    input.node.id !== prior.id ||
+    input.node.id !== prior?.id ||
     input.node.runId !== prior.runId ||
     input.node.nodeKey !== input.nodeKey ||
     input.node.activationId !== prior.activationId ||
@@ -29,4 +29,3 @@ export const validateRunProgressionNodeDelta = (input: {
     throw new TypeError('Run progression node delta is invalid.');
   }
 };
-import { canonicalizeJson } from '../policy/index.js';

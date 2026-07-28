@@ -1740,6 +1740,25 @@ describe('Run progression application', () => {
     expect(() =>
       applyRunProgression({
         intent: {
+          nextState: {
+            ...state,
+            nodes: [state.nodes[0], { nodeKey: 'retiring', outcome: 'forged', state: 'terminal' }],
+          },
+          receipt,
+          steps: [cleanupStep],
+        },
+        projection: {
+          attempts: [priorAttempt],
+          nodes: [selected, priorNode],
+          outputs: [],
+          run,
+        },
+        transactionNow: progressionTransactionNow,
+      }),
+    ).toThrowError('Run progression node history is invalid.');
+    expect(() =>
+      applyRunProgression({
+        intent: {
           nextState: state,
           receipt,
           steps: [cleanupStep, cleanupStep],

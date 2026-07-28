@@ -7,14 +7,12 @@ import type { RunProgressionProjection } from './run-progression-projection.js';
 
 const requiredNodeStatus = (
   kind: Extract<RunProgressionIntentStep, { readonly kind: 'activate_node' }>['nodeKind'],
-): RunNodeInstance['status'] =>
-  kind === 'task'
-    ? 'ready'
-    : kind === 'human_gate'
-      ? 'gate_waiting'
-      : kind === 'join'
-        ? 'join_waiting'
-        : 'selector_waiting';
+): RunNodeInstance['status'] => {
+  if (kind === 'task') return 'ready';
+  if (kind === 'human_gate') return 'gate_waiting';
+  if (kind === 'join') return 'join_waiting';
+  return 'selector_waiting';
+};
 
 export const validateRunProgressionActivation = (input: {
   readonly step: Extract<RunProgressionIntentStep, { readonly kind: 'activate_node' }>;
@@ -56,7 +54,7 @@ export const validateRunProgressionActivation = (input: {
       candidate.nodeKey === cause.predecessorNodeKey &&
       candidate.activationId === cause.predecessorActivationId,
   );
-  if (predecessor === undefined || node.parentActivationId !== predecessor.activationId) {
+  if (node.parentActivationId !== predecessor?.activationId) {
     throw new TypeError('Run progression predecessor activation cause is invalid.');
   }
   if (cause.kind === 'successor') {
