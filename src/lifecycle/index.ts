@@ -58,3 +58,4 @@ export type { LifecycleVerifyAndStartRequest } from './lifecycle-verify-and-star
 export type { LifecycleVerifyAndStartResult } from './lifecycle-verify-and-start-result.js';
 export type { LifecycleUnknownExecutionAuthority } from './lifecycle-unknown-execution-authority.js';
 export type { RunLifecycle } from './run-lifecycle.js';
+export { executorObservationNormalization } from './normalize-executor-observation.js';
