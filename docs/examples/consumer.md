@@ -8,48 +8,81 @@ observation lifecycle; there is no host `RunWorker`.
 
 ## Exact plan document
 
-The public plan source returns package-owned JSON-compatible data:
+The host loader returns JSON-compatible data. A future package-private
+`ExecutionPlanSource` adapter snapshots it into the package-owned exact plan
+document; that private port is intentionally not imported from the public root:
 
 ```ts
-import type { ExecutionPlanSource } from '@revisium/revo-run';
-
-const plans: ExecutionPlanSource = {
-  async loadExact(pin) {
-    const document = await planRepository.findExact(pin);
-    if (!document) {
-      return {
-        kind: 'fault',
-        fault: { code: 'NOT_FOUND', message: 'Exact execution plan was not found.' },
-      };
-    }
-
+const loadExactPlanDocument = async (pin: HostPlanPin) => {
+  const document = await planRepository.findExact(pin);
+  if (!document) {
     return {
-      kind: 'loaded',
-      planDocument: snapshotImmutablePlanDocument({
-        pin: document.pin,
-        compiledPipeline: document.compiledPipeline,
-        executorBindings: document.nodes.map((node) => ({
-          nodeKey: node.key,
-          executor: {
-            adapterId: node.executor.adapterId,
-            revision: node.executor.revision,
-            digest: node.executor.contractDigest,
-          },
-          configuration: node.executor.configuration,
-          configurationDigest: node.executor.configurationDigest,
-          idempotentExecution: node.executor.idempotentExecution,
-          retryPolicy: node.retryPolicy,
-          timeoutPolicy: node.timeoutPolicy,
-        })),
-      }),
+      kind: 'fault' as const,
+      fault: { code: 'NOT_FOUND' as const, message: 'Exact execution plan was not found.' },
     };
+  }
+
+  return {
+    kind: 'loaded' as const,
+    planDocument: {
+      pin: document.pin,
+      compiledPipeline: structuredClone(document.compiledPipeline),
+      terminalBindings: document.terminals.map((terminal) => ({
+        nodeKey: terminal.nodeKey,
+        outcome: terminal.outcome,
+        status: terminal.status,
+        ...(terminal.status === 'failed'
+          ? {
+              fault: {
+                code: 'PIPELINE_TERMINAL' as const,
+                message: terminal.failureMessage,
+              },
+            }
+          : {}),
+      })),
+      executorBindings: document.nodes.map((node) => ({
+        nodeKey: node.key,
+        executor: {
+          adapterId: node.executor.adapterId,
+          revision: node.executor.revision,
+          digest: node.executor.contractDigest,
+        },
+        configuration: structuredClone(node.executor.configuration),
+        configurationDigest: node.executor.configurationDigest,
+        idempotentExecution: node.executor.idempotentExecution,
+        retryPolicy: node.retryPolicy,
+        timeoutPolicy: node.timeoutPolicy,
+      })),
+    },
+  };
+};
+```
+
+The future private adapter applies the package's bounded immutable snapshot
+validation to this result:
+
+```ts
+const plans = {
+  async loadExact(pin: HostPlanPin) {
+    const loaded = await loadExactPlanDocument(pin);
+    return loaded.kind === 'fault'
+      ? loaded
+      : {
+          kind: 'loaded' as const,
+          planDocument: snapshotPackageOwnedPlanDocument({
+            ...loaded.planDocument,
+            // The private adapter validates terminal bindings as part of the
+            // exact package-owned document before lifecycle reduction.
+            terminalBindings: loaded.planDocument.terminalBindings,
+          }),
+        };
   },
 };
 ```
 
 `compiledPipeline` is `JsonValue`. The source does not import pipeline types or
 cast JSON to a compiled pipeline. Only private package
-`lifecycle/pipeline/**` modules use the future public pipeline decoder; the
+`lifecycle/pipeline/**` modules use the public pipeline decoder/reducer; the
 public lifecycle facade stays pipeline-free.
 
 ## Exact executor resolution
@@ -74,29 +107,20 @@ persist the exact contract pin and configuration digest for restart recovery.
 
 ## Compose one manager
 
-```ts
-import { createRunManager } from '@revisium/revo-run';
+The final public composition/options shape is deferred. The host will provide a
+concrete Store adapter, the exact plan loader illustrated above, executor
+resolution, and purpose-specific identifier callbacks. Package-private
+composition will adapt the host loader to `ExecutionPlanSource`; consumers will
+not import that private type.
 
-const runs = createRunManager({
-  store: postgresRunStore,
-  plans,
-  executors,
-  ids: {
-    nextId: () => crypto.randomUUID(),
-  },
-  clock: localClock,
-  coordination: {
-    ownerLabel: process.env.INSTANCE_NAME ?? 'local',
-    maxConcurrentExecutions: 8,
-    pollIntervalMs: 250,
-    heartbeatIntervalMs: 10_000,
-    leaseDurationMs: 30_000,
-    drainTimeoutMs: 30_000,
-  },
-});
-```
+The currently implemented `ManagerIdSource` contract has exactly five
+purpose-specific methods: `nextManagerIncarnationId`, `nextAttemptId`,
+`nextHandoffId`, `nextOutputId`, and `nextLifecycleIdempotencyKey`. Future
+progression coordination may require additional caller-supplied allocation
+values, but their public composition API is not defined by this contracts
+slice.
 
-`ownerLabel` is diagnostic. Each `start()` creates a unique package-owned
+`ownerLabel` remains diagnostic. Each `start()` creates a unique package-owned
 manager incarnation, persisted on claimed Attempts. `clock` schedules local
 wakeups only; the store supplies authoritative transaction time.
 
@@ -184,9 +208,9 @@ await runs.answerGate({
   runId: inboxItem.runId,
   activationId: inboxItem.activationId,
   resolution: request.resolution,
-  answer: {
-    name: 'human-answer',
-    type: 'application/json',
+  values: request.progressionValues,
+  answerOutput: {
+    kind: 'json',
     value: structuredClone(request.answer),
   },
   actor: {
@@ -197,7 +221,9 @@ await runs.answerGate({
 });
 ```
 
-The answer targets one runtime activation and commits with gate progression.
+The answer targets one runtime activation. Its normalized resolution and
+explicit scalar progression values are distinct from the arbitrary immutable
+answer output; all commit atomically with gate progression.
 
 ## Executor protocol
 
@@ -221,8 +247,10 @@ const paymentExecutor = {
       outputs: [
         {
           name: 'receipt',
-          type: 'application/json',
-          value: response.receipt,
+          payload: {
+            kind: 'json',
+            value: response.receipt,
+          },
         },
       ],
     };

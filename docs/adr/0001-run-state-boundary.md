@@ -29,22 +29,19 @@ State updates, outputs, events, and successor activations commit atomically.
 and updates `RunNodeInstance.activeAttemptId` atomically. Gates have no Attempt
 and resume by CAS.
 
-Every accepted node transition CASes monotonic `Run.revision`. A conflict
-reloads sibling state and recomputes the domain prospective change, pipeline
-facts/decision, and combined intent, providing join liveness. Unique
-`(runId, activationKey)` separately prevents duplicate join activation; no
+Every accepted node transition CASes monotonic `Run.revision`. Unique scoped
+activation identity separately prevents duplicate join activation; no
 JoinArrival exists.
 
-The host supplies its verified immutable execution plan and `CompiledPipeline`
-with every lifecycle command. `Run` stores only plan identity/digest pins.
-Lifecycle is the only pipeline seam. Domain first validates expected
-state/fence/gate revision and computes a package-owned prospective state/output
-change without commit. Lifecycle builds `PipelineFacts` from authoritative
-siblings plus the prospective outcome/answer, calls the public pipeline API,
-and maps `PipelineDecision` to package-owned successor/join/wait intents. Domain
-validates the combined intent/invariants; storage CASes expected
-Run/node/Attempt revisions and atomically commits prospective state, outputs,
-events, and activations. Pipeline types do not enter spec or domain.
+ADR 0003 supersedes this ADR's original facts/decision integration sketch. The
+host supplies an exact package-owned plan document containing bounded compiled
+JSON. Lifecycle is the sole pipeline seam: its private subtree decodes once,
+reduces package-owned progression state plus one command once, and maps the
+whole ordered effect batch to one package-owned atomic transition. Lifecycle
+performs one transaction attempt; a future manager reloads and fully
+recomputes after retryable contention. Pipeline types do not enter spec,
+domain, Store, ports, the public lifecycle facade, manager, composition or
+root.
 
 The host polls eligible work, executes tasks, and owns every API and
 infrastructure adapter. `@revisium/revo-pipeline` is the only planned production

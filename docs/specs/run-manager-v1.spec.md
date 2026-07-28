@@ -1,7 +1,8 @@
 # RunManager v1
 
 - Status: Draft
-- Implementation: Not implemented
+- Implementation: Not implemented; bounded progression coordination contract
+  Accepted by ADR 0003
 
 ## Normative language and versioning
 
@@ -143,8 +144,10 @@ return a conflict.
 ### `answerGate`
 
 `answerGate()` MUST target `runId` plus the stable runtime gate activation id.
-It MUST accept one normalized resolution and one bounded immutable answer
-output. It MUST load the exact persisted plan automatically.
+It MUST accept one normalized resolution, explicit bounded scalar progression
+values and one bounded immutable answer output. Resolution and values MUST NOT
+be inferred from the arbitrary answer payload. It MUST load the exact persisted
+plan automatically.
 
 Answer acceptance, output insertion, gate completion, audit events, and
 pipeline progression MUST be one fenced/CAS transaction. A duplicate identical
@@ -208,6 +211,25 @@ MUST be expressed independently of durable correctness.
 
 Claims, retries, leases, and fences MUST use store transaction time. Local clock
 skew between managers MUST NOT permit duplicate authoritative ownership.
+
+### Accepted progression coordination
+
+The private lifecycle progression method owns exactly one transaction attempt
+and returns a fixed retryable `REVISION_CONFLICT` only after complete rollback
+of an approved revision/absence conflict. It MUST NOT reload, decode, reduce or
+open a second transaction.
+
+The future manager coordinator owns at most four attempts: one initial attempt
+and three contention retries. One external idempotency key remains stable.
+Before each retry it MUST reload the exact plan and complete authoritative
+aggregate, obtain fresh transaction time, recompute projection/command/reduction
+and expectations, and supply a fresh allocation seed. Initialization also uses
+a fresh occurrence key for each abandoned attempt. Cancellation is checked
+before each plan load and lifecycle attempt. Exhaustion returns a fixed bounded
+revision-conflict fault.
+
+This coordination contract is Accepted by ADR 0003 and remains unimplemented;
+this specification does not claim end-to-end retry proof.
 
 Every claimed Attempt MUST persist the current `managerIncarnationId`. A
 recovery manager MAY acquire ownership only when transaction time is at or

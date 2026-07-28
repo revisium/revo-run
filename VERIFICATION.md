@@ -85,6 +85,27 @@ verification contract must use real PostgreSQL and cover:
 
 An in-memory fake is not sufficient evidence for those properties.
 
+## Conditional private pipeline seam gate
+
+When the accepted ADR 0003 seam is implemented, verification MUST additionally
+prove:
+
+- the only production importer is `src/lifecycle/pipeline/**`, with positive
+  and exact negative source and reachable-declaration probes;
+- exact compiled JSON is decoded once and reduced once per transaction attempt,
+  without compilation, repair or a correctness cache;
+- every reducer command, effect and fault family maps exhaustively, and compound
+  ordered batches commit atomically or roll back completely;
+- terminal-binding bijection, human-gate resolution/output separation,
+  command/host-attachment replay and logical-terminal cleanup;
+- a revision/absence conflict makes no second Store, decode or reducer call;
+- exact registry dependency/lock integrity and one exact tarball install in an
+  isolated consumer with no sibling checkout.
+
+PR9 contract-only and dependency-free foundation slices MUST NOT claim these
+implementation proofs. Publication, tag and release remain separate human
+gates.
+
 The package-private lifecycle coordination suite uses the logical Store fake
 only as orchestration-contract evidence. It does not satisfy this conditional
 PostgreSQL gate or establish database isolation, transaction-time, or

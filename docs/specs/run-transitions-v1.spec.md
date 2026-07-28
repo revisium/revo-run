@@ -4,7 +4,8 @@
 - Implementation: Pure domain validation/reducers, Store contracts, and
   pipeline-free lifecycle coordination through direct-unknown and
   reconciled-running/unknown commits implemented; terminal pipeline decisions
-  and atomic graph progression not implemented
+  and atomic graph progression not implemented; their decode/reduce and
+  one-attempt atomic protocol is Accepted by ADR 0003
 
 ## Normative language and versioning
 
@@ -20,21 +21,23 @@ Attempt, recovery, and progression transitions are package-internal.
 
 ## Common transition protocol
 
-Every mutating transition MUST:
+Every progression transition MUST:
 
-1. load the authoritative aggregate and exact persisted plan;
-2. begin a store transaction and obtain authoritative database time;
-3. validate idempotency, expected run/node/attempt or gate activation state;
-4. compute a domain prospective change without committing it;
-5. when progression is needed, combine fresh sibling state and the prospective
-   outcome/answer into pipeline facts;
-6. map the pure pipeline decision to package-owned intents;
-7. validate the combined aggregate invariants;
-8. CAS expected revisions/fence and atomically commit state, attempts, outputs,
-   events, and activations.
+1. normalize and bound the complete package-owned request before I/O;
+2. open exactly one Store transaction and obtain authoritative time;
+3. check complete external idempotency;
+4. load the complete authoritative aggregate and validate authority/plan pin;
+5. decode exact compiled JSON once and project package-owned state/command;
+6. call the pure reducer exactly once;
+7. map the complete ordered effect batch to one package-owned intent;
+8. validate one combined domain transition;
+9. CAS every revision/fence/absence expectation and atomically commit state,
+   attempts, outputs, events, activations, receipts and idempotency result.
 
-On aggregate conflict, lifecycle MUST reload authoritative state and recompute.
-It MUST NOT reuse stale sibling facts or pipeline decisions.
+An approved revision/absence conflict MUST roll back the complete attempt and
+return package-owned retryable `REVISION_CONFLICT`. Lifecycle MUST NOT reload or
+retry. A future RunManager coordinator reloads exact plan and authority and
+recomputes everything on a later bounded attempt.
 
 ## Publicly initiated transitions
 
@@ -99,9 +102,9 @@ extension. It MUST reject when `transactionNow >= leaseExpiresAt`.
 
 ### Complete
 
-Completion MUST validate and copy bounded outputs, compute the prospective
-success, obtain a fresh pipeline decision, and atomically accept the result and
-progress the run.
+Completion MUST validate and copy bounded outputs, construct the explicit task
+outcome command, reduce against fresh authoritative progression state, and
+atomically accept the result plus the complete ordered progression batch.
 
 Completion MUST reject stale incarnation/fence and
 `transactionNow >= leaseExpiresAt`. The same boundary applies to reconciled and
@@ -148,8 +151,15 @@ observation, owner label, and local time are not takeover evidence.
 Only private `lifecycle/pipeline/**` modules may use
 `@revisium/revo-pipeline`. The public lifecycle index MUST expose explicit
 pipeline-free facade contracts. The private seam MUST translate package-owned
-run/node/output facts to the public pipeline API and translate the decision
-back to package-owned intents.
+progression state and one command to the public decoder/reducer API and
+translate the whole ordered effect batch back to one package-owned intent. It
+MUST NOT compile, repair, replace or correctness-cache the exact compiled plan.
+
+Task success may carry explicit scalar progression facts separately from
+ordinary outputs. Failed, cancelled and skipped commands reject a `values`
+member even when empty. Human-gate normalized resolution and explicit facts
+remain separate from arbitrary answer output; none is inferred from another.
+All accepted gate data and progression effects commit atomically.
 
 Fork successors MUST carry causal scope derived from node-instance activation
 identity. Join facts, readiness, activation key, and uniqueness MUST use only

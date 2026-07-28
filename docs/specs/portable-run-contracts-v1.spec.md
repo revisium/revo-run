@@ -80,6 +80,18 @@ from the digest it computes with the Stable canonical JSON v1 algorithm.
 - `compiledPipeline` as bounded `JsonValue`;
 - zero to 4,096 immutable executor bindings.
 
+ADR 0003 accepts a later versioned extension with zero to 4,096 immutable
+package-owned terminal bindings. That extension is not part of the currently
+implemented Stable snapshot until its source, validation, types, declarations
+and packed proof ship together. Each accepted binding maps one exact
+`nodeKey`/`outcome` pair to:
+
+- `succeeded` or `cancelled` with no fault; or
+- `failed` with exact bounded `PIPELINE_TERMINAL` fault.
+
+The future private seam validates a bijection against decoded compiled
+terminals. No pipeline-owned type enters this portable contract.
+
 The whole document also remains inside the common canonical JSON depth, member,
 and UTF-8 limits. `compiledPipeline` is not decoded and is not presented as a
 pipeline-package type.
