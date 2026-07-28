@@ -101,6 +101,7 @@ const acquisitionObservationIsStale = (
     run.id !== candidate.run.runId ||
     !samePin(run.planPin, candidate.run.planPin) ||
     node.id !== candidate.node.nodeInstanceId ||
+    node.nodeKey !== candidate.node.nodeKey ||
     node.runId !== run.id ||
     attempt.id !== candidate.attempt.attemptId ||
     attempt.runId !== run.id ||

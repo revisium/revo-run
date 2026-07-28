@@ -115,6 +115,10 @@ The package-private type-only `storage` layer defines the closed transactional
 Store commands, DB-time/CAS expectations, idempotency identities, fence-scoped
 handoff history, ownership acquisition results, materialized events, discovery
 candidates, and bounded cursor pages. It is not a root or package export.
+Every node-bearing discovery candidate carries both its unique runtime node
+instance id and its bounded logical `nodeKey`. The key is contextual to the
+candidate's exact Run plan pin; lifecycle rechecks it against authoritative
+state before claim or recovery replay.
 
 The repository test harness exercises the logical contract, including atomic
 rollback, transaction terminality, command families, lease/fence boundaries,
