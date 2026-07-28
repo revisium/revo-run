@@ -37,8 +37,7 @@ export const validateRunProgressionRetirement = (input: {
   );
   if (
     priorAttempt === undefined ||
-    input.attempt === null ||
-    input.attempt.id !== priorAttempt.id ||
+    input.attempt?.id !== priorAttempt.id ||
     input.attempt.revision !== priorAttempt.revision + 1 ||
     input.attempt.updatedAt !== input.transactionNow
   ) {

@@ -23,6 +23,16 @@ type NodeState =
   | { readonly nodeKey: string; readonly state: 'enabled' }
   | { readonly nodeKey: string; readonly state: 'terminal'; readonly outcome: string }
   | { readonly nodeKey: string; readonly state: 'retired'; readonly terminal: Terminal };
+type SnapshotRecord = ReturnType<typeof contractValidation.snapshotRecord>;
+type CommonState = {
+  readonly candidateVerdicts: readonly CandidateVerdict[];
+  readonly commandReceipts: readonly CommandReceipt[];
+  readonly gateResolutions: readonly GateResolution[];
+  readonly nodes: readonly NodeState[];
+  readonly occurrenceKey: string;
+  readonly schemaVersion: 1;
+  readonly values: readonly ValueRecord[];
+};
 
 const terminal = (value: JsonValue): Terminal => {
   const record = contractValidation.record(value, ['nodeKey', 'outcome']);
@@ -179,6 +189,79 @@ const nodes = (source: readonly JsonValue[]): readonly NodeState[] => {
   return Object.freeze(result);
 };
 
+const uninitializedState = (
+  record: SnapshotRecord,
+  occurrenceKey: string,
+  sourceNodes: readonly JsonValue[],
+) => {
+  if (
+    sourceNodes.length !== 0 ||
+    contractValidation.array(record['values'], 0).length !== 0 ||
+    contractValidation.array(record['candidateVerdicts'], 0).length !== 0 ||
+    contractValidation.array(record['gateResolutions'], 0).length !== 0 ||
+    contractValidation.array(record['commandReceipts'], 0).length !== 0 ||
+    record['terminal'] !== null
+  ) {
+    throw new TypeError('Uninitialized Run progression state is invalid.');
+  }
+  const empty: readonly [] = Object.freeze([]);
+  return Object.freeze({
+    candidateVerdicts: empty,
+    commandReceipts: empty,
+    gateResolutions: empty,
+    nodes: empty,
+    occurrenceKey,
+    phase: 'uninitialized' as const,
+    schemaVersion: 1 as const,
+    terminal: null,
+    values: empty,
+  });
+};
+
+const activeState = (common: CommonState) => {
+  if (common.nodes.some((node) => node.state === 'retired')) {
+    throw new TypeError('Active Run progression state is invalid.');
+  }
+  const activeNodes: (
+    | { readonly nodeKey: string; readonly state: 'enabled' }
+    | { readonly nodeKey: string; readonly state: 'terminal'; readonly outcome: string }
+  )[] = [];
+  for (const node of common.nodes) {
+    if (node.state === 'enabled' || node.state === 'terminal') activeNodes.push(node);
+  }
+  return Object.freeze({
+    ...common,
+    nodes: Object.freeze(activeNodes),
+    phase: 'active' as const,
+    schemaVersion: 1 as const,
+    terminal: null,
+  });
+};
+
+const terminalState = (common: CommonState, record: SnapshotRecord) => {
+  if (common.nodes.some((node) => node.state === 'enabled')) {
+    throw new TypeError('Terminal Run progression state is invalid.');
+  }
+  const terminalNodes: (
+    | { readonly nodeKey: string; readonly state: 'terminal'; readonly outcome: string }
+    | {
+        readonly nodeKey: string;
+        readonly state: 'retired';
+        readonly terminal: Terminal;
+      }
+  )[] = [];
+  for (const node of common.nodes) {
+    if (node.state === 'terminal' || node.state === 'retired') terminalNodes.push(node);
+  }
+  return Object.freeze({
+    ...common,
+    nodes: Object.freeze(terminalNodes),
+    phase: 'terminal' as const,
+    schemaVersion: 1 as const,
+    terminal: terminal(contractValidation.requiredValue(record, 'terminal')),
+  });
+};
+
 export const snapshotRunProgressionState = (value: unknown) => {
   const record = contractValidation.snapshotRecord(value, [
     'candidateVerdicts',
@@ -197,28 +280,7 @@ export const snapshotRunProgressionState = (value: unknown) => {
   const occurrenceKey = snapshotRunProgressionOccurrenceKey(record['occurrenceKey']);
   const sourceNodes = contractValidation.array(record['nodes'], 4_096);
   if (record['phase'] === 'uninitialized') {
-    if (
-      sourceNodes.length !== 0 ||
-      contractValidation.array(record['values'], 0).length !== 0 ||
-      contractValidation.array(record['candidateVerdicts'], 0).length !== 0 ||
-      contractValidation.array(record['gateResolutions'], 0).length !== 0 ||
-      contractValidation.array(record['commandReceipts'], 0).length !== 0 ||
-      record['terminal'] !== null
-    ) {
-      throw new TypeError('Uninitialized Run progression state is invalid.');
-    }
-    const empty: readonly [] = Object.freeze([]);
-    return Object.freeze({
-      candidateVerdicts: empty,
-      commandReceipts: empty,
-      gateResolutions: empty,
-      nodes: empty,
-      occurrenceKey,
-      phase: 'uninitialized',
-      schemaVersion: 1,
-      terminal: null,
-      values: empty,
-    });
+    return uninitializedState(record, occurrenceKey, sourceNodes);
   }
   const parsedNodes = nodes(sourceNodes);
   const common = {
@@ -227,50 +289,14 @@ export const snapshotRunProgressionState = (value: unknown) => {
     gateResolutions: gateResolutions(record['gateResolutions']),
     nodes: parsedNodes,
     occurrenceKey,
-    schemaVersion: 1,
+    schemaVersion: 1 as const,
     values: valueRecords(record['values']),
   };
   if (record['phase'] === 'active' && record['terminal'] === null) {
-    if (parsedNodes.some((node) => node.state === 'retired')) {
-      throw new TypeError('Active Run progression state is invalid.');
-    }
-    const activeNodes: (
-      | { readonly nodeKey: string; readonly state: 'enabled' }
-      | { readonly nodeKey: string; readonly state: 'terminal'; readonly outcome: string }
-    )[] = [];
-    for (const node of parsedNodes) {
-      if (node.state === 'enabled' || node.state === 'terminal') activeNodes.push(node);
-    }
-    return Object.freeze({
-      ...common,
-      nodes: Object.freeze(activeNodes),
-      phase: 'active',
-      schemaVersion: 1,
-      terminal: null,
-    });
+    return activeState(common);
   }
   if (record['phase'] === 'terminal' && record['terminal'] !== null) {
-    if (parsedNodes.some((node) => node.state === 'enabled')) {
-      throw new TypeError('Terminal Run progression state is invalid.');
-    }
-    const terminalNodes: (
-      | { readonly nodeKey: string; readonly state: 'terminal'; readonly outcome: string }
-      | {
-          readonly nodeKey: string;
-          readonly state: 'retired';
-          readonly terminal: Terminal;
-        }
-    )[] = [];
-    for (const node of parsedNodes) {
-      if (node.state === 'terminal' || node.state === 'retired') terminalNodes.push(node);
-    }
-    return Object.freeze({
-      ...common,
-      nodes: Object.freeze(terminalNodes),
-      phase: 'terminal',
-      schemaVersion: 1,
-      terminal: terminal(contractValidation.requiredValue(record, 'terminal')),
-    });
+    return terminalState(common, record);
   }
   throw new TypeError('Run progression phase is invalid.');
 };

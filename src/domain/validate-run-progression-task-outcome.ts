@@ -16,11 +16,7 @@ const isTaskOutcomeValid = (
   if (semantic.outcome.kind === 'skipped') {
     return attempt === null && node.status === 'skipped' && node.terminalFault === null;
   }
-  if (
-    attempt === null ||
-    attempt.status !== semantic.outcome.kind ||
-    node.status !== semantic.outcome.kind
-  ) {
+  if (attempt?.status !== semantic.outcome.kind || node.status !== semantic.outcome.kind) {
     return false;
   }
   if (semantic.outcome.kind !== 'failed') {
