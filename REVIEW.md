@@ -20,13 +20,27 @@ Block a change when:
 - a Draft product contract is presented as implemented behavior;
 - the package requires a host `RunWorker` or exposes low-level attempt commands;
 - full plans are persisted or later commands can replace the plan pin;
-- `ExecutionPlanSource` returns pipeline-owned types rather than package-owned
-  `RunExecutionPlanDocument` with bounded `JsonValue`;
+- package-private `ExecutionPlanSource` returns pipeline-owned types rather than
+  package-owned `RunExecutionPlanDocument` with bounded `JsonValue`, or that
+  private port enters public manager options/root declarations;
 - pipeline types or casts leak into ports, manager, composition, root, or
   emitted declarations;
 - compiled-pipeline JSON is decoded outside private
   `lifecycle/pipeline/**`, the public lifecycle facade references pipeline, or
-  decoding does not use the future public pipeline decoder;
+  decoding does not use the public pipeline decoder;
+- the private seam compiles, repairs, replaces or correctness-caches the exact
+  compiled JSON, reduces more than once per transaction attempt, or maps only a
+  prefix of the ordered effect batch;
+- progression semantics are inferred from generic outputs/events instead of a
+  typed package-owned state with explicit value provenance, verdicts and gate
+  resolutions;
+- human-gate control flow is inferred from its answer payload, or answer
+  output/resolution/value facts do not commit atomically;
+- lifecycle allocates occurrence/allocation identities, retries a progression
+  transaction internally, or classifies stale fence/activation as revision
+  contention;
+- logical terminal closure discards live/unknown Attempt evidence or permits a
+  later physical observation to reopen progression;
 - executor binding/recovery lacks exact `ExecutorContractPin`, immutable
   configuration digest, or `resolveExact()` with no fallback;
 - profiles, prompts, models, agents, scripts, workspaces, credentials, API/auth,
@@ -82,6 +96,9 @@ Block a change when:
 - code uses `any`, `@ts-ignore`, unchecked casts, or silent error swallowing;
 - public changes lack behavior/type/declaration/packed/export/docs proof;
 - release or quality gates are suppressed or weakened.
+- a committed pipeline dependency is not exact registry `0.0.0`, or workspace,
+  link, file, git, archive, vendored, alias or hidden-checkout wiring appears in
+  a commit, PR, package or verification evidence.
 
 ## Expected evidence
 

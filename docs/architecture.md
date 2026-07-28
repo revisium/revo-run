@@ -18,9 +18,12 @@ reconciled-running/unknown commits are also implemented. Known terminal
 observations are prepared but are not committed without pipeline progression.
 Package-private exact plan-source, purpose-specific manager identifier, local
 clock/scheduler, and read-only owned-authority hydration contracts are also
-implemented. Retry selection, cancellation invocation, terminal graph
-progression, manager/composition, and all RunManager behavioral APIs remain
-Draft and unimplemented.
+implemented. The private decode/reduce progression contract is Accepted by
+[ADR 0003](adr/0003-private-pipeline-progression.md), but its domain/Store
+foundation, dependency, adapter and lifecycle behavior are not implemented.
+Retry selection, cancellation invocation, terminal graph progression,
+manager/composition, and all RunManager behavioral APIs remain Draft and
+unimplemented.
 
 ## Purpose
 
@@ -66,12 +69,13 @@ The implemented canonical JSON foundation provides a bounded, descriptor-safe
 canonicalizer dependency and `node:crypto` are each isolated to one exact
 policy leaf and enforced by architecture and Oxc probes.
 
-`ExecutionPlanSource.loadExact(planPin)` returns a package-owned immutable
-`RunExecutionPlanDocument`. Its pipeline field is bounded `JsonValue`; it is not
-a `CompiledPipeline` or any other pipeline-package type.
+The package-private `ExecutionPlanSource.loadExact(planPin)` returns a
+package-owned immutable `RunExecutionPlanDocument`. The port does not enter
+public manager options or root declarations. Its pipeline field is bounded
+`JsonValue`; it is not a `CompiledPipeline` or any other pipeline-package type.
 
 Only private `lifecycle/pipeline/**` modules may pass that JSON value to the
-future public `@revisium/revo-pipeline` decoder. The public
+public `@revisium/revo-pipeline` decoder. The public
 `lifecycle/index.ts` facade is pipeline-free. Decode failures are stable
 plan-integrity faults. Ports, manager, composition, root exports, and emitted
 declarations may contain neither pipeline types nor casts that pretend JSON is
@@ -95,7 +99,7 @@ fallback.
 host
   |
   +-- RunStore ---------------- durable transactions and DB time
-  +-- ExecutionPlanSource ----- exact JSON plan document by persisted pin
+  +-- exact plan loader ------- host capability; adapted to private source
   +-- ExecutorResolver -------- resolveExact plus execute/reconcile/cancel
   +-- ManagerIdSource --------- purpose-specific durable, handoff, and incarnation ids
   +-- LocalClock -------------- local waits/testing only
@@ -109,7 +113,9 @@ host
           `--> manager   (loops and public facade)
 ```
 
-The composition layer constructs lifecycle with storage and ports, then
+The future public shape by which the host supplies exact plan loading is
+deliberately deferred. Package-private composition adapts that capability to
+`ExecutionPlanSource`, constructs lifecycle with storage and ports, then
 constructs manager against lifecycle and safe read/port contracts. Manager
 never imports domain or storage directly. It imports lifecycle only through
 `lifecycle/index.ts` and consumes explicit facade types; it cannot infer the
@@ -221,31 +227,16 @@ The package does not promise physical exactly-once execution.
 ## Lifecycle and pipeline seam
 
 ```text
-manager asks lifecycle to advance
-    |
-    v
-lifecycle facade loads the exact JSON plan document
-and delegates pipeline work to private lifecycle/pipeline modules
-    |
-    v
-domain validates expected state/fence/gate revision
-and computes a prospective change without committing
-    |
-    v
-lifecycle combines fresh scoped sibling state with prospective outcome/answer
-and calls the public pipeline decision API
-    |
-    v
-lifecycle maps PipelineDecision to package-owned intents
-    |
-    v
-domain validates combined invariants
-    |
-    v
-store transaction CASes expected revisions/fence and atomically commits
-state + attempts + outputs + events + scoped activations
-    |
-    `-- conflict -> reload and recompute
+package-owned exact plan document + command
+  -> lifecycle opens one Store transaction attempt
+  -> loads complete authoritative Run aggregate
+  -> private lifecycle/pipeline decodes compiled JSON once
+  -> projects package-owned progression snapshot and command
+  -> calls reducePipeline once
+  -> exhaustively maps the complete ordered effect batch
+  -> domain validates one package-owned transition
+  -> Store CASes complete revision/absence expectations and commits atomically
+  `-> approved conflict: total rollback + package-owned retryable result
 ```
 
 Lifecycle is the sole writable path to domain/storage. Only its private
@@ -253,9 +244,21 @@ Lifecycle is the sole writable path to domain/storage. Only its private
 only explicit package-owned facade contracts. Manager orchestrates calls
 through that index and cannot mutate the store directly.
 
-Every accepted node transition increments and CASes `Run.revision`. On conflict,
-lifecycle reloads scoped siblings and recomputes the prospective change and
-pipeline decision.
+The compiled plan remains bounded `JsonValue` outside the private subtree.
+Private code never compiles, repairs, replaces or correctness-caches it. Run
+progression is a typed versioned package-owned logical state, not a pipeline
+snapshot or inference from generic rows.
+
+Lifecycle never retries internally. The separately implemented RunManager
+coordinator will bound retries to four total attempts and must reload the exact
+plan and complete authority, obtain fresh transaction time and recompute every
+projection, reduction, ID and expectation after each retryable conflict.
+
+Human-gate control data is explicit: normalized resolution and scalar facts are
+separate from the arbitrary immutable answer output and commit in the same
+transition. Logical terminal closure may retain a `retiring` node with a live or
+unknown Attempt fenced by `progressionClosedAt`; later physical settlement
+cannot reopen the Run or emit a post-terminal public event.
 
 ## Causal fork scope
 
@@ -380,9 +383,11 @@ remain outside the construction closure.
 
 ## External boundaries
 
-Only private `lifecycle/pipeline/**` modules may eventually depend on
+Only private `lifecycle/pipeline/**` modules may depend on
 `@revisium/revo-pipeline`; the package is not installed until implementation
-needs its public JSON decoder and decision API. Core excludes Prisma, NestJS,
+needs its public JSON decoder and reducer API. Its final source is exact npm
+registry `0.0.0` after a separate publication/provenance gate; local, workspace,
+file and git substitutes are forbidden in committed evidence. Core excludes Prisma, NestJS,
 GraphQL, MCP, DBOS, queues, orchestrator, agent-runtime, and scripts
 dependencies.
 

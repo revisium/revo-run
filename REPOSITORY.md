@@ -51,10 +51,13 @@ and observability wiring.
 
 ## Exact plan and executor authority
 
-`Run` persists plan id/revision/digest. `ExecutionPlanSource.loadExact()` returns
-an immutable package-owned `RunExecutionPlanDocument`. Its `compiledPipeline`
+`Run` persists plan id/revision/digest. The package-private
+`ExecutionPlanSource.loadExact()` returns an immutable package-owned
+`RunExecutionPlanDocument`; the port MUST NOT enter public manager options or
+root declarations. Its `compiledPipeline`
 field is bounded `JsonValue`; only private `lifecycle/pipeline/**` decodes it
-with the future public pipeline decoder. The public lifecycle index is
+with the public pipeline decoder under accepted
+[ADR 0003](docs/adr/0003-private-pipeline-progression.md). The public lifecycle index is
 pipeline-free.
 
 Ports, manager, composition, root exports, and declarations may not contain
@@ -99,6 +102,19 @@ storage, domain, pipeline, or private lifecycle leaves: it imports
 `lifecycle/index.ts` and consumes explicit contracts without
 `Parameters<>`/`ReturnType<>` inference. Composition wires injected store/ports
 to lifecycle and manager. Root uses curated composition/public barrels.
+
+The accepted progression seam decodes exact persisted JSON once per transaction
+attempt, projects package-owned state and command values, calls the pure reducer
+once and maps the complete ordered effect batch to one package-owned atomic
+transition. It never compiles, repairs or correctness-caches the plan.
+Lifecycle performs one attempt only. A future RunManager coordinator owns
+bounded plan/aggregate reload and complete recomputation after a retryable
+revision conflict.
+
+The dependency direction is only `revo-run -> revo-pipeline`. No pipeline-owned
+type enters Run, Store, ports, manager, composition, root or the public
+lifecycle facade. The exact dependency is not installed until the private seam
+slice and must then be registry `0.0.0` after a separate publication gate.
 
 `spec`, `errors`, `storage`, and `ports` are type-only. Unknown source layers
 fail closed.

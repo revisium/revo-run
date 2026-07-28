@@ -8,6 +8,11 @@ semantic subpath is Stable and implemented. The package-private pure domain
 foundation is implemented and tested; storage/lifecycle/manager proof below
 remains required before Draft APIs become implemented or Stable.
 
+ADR 0003's private progression protocol is Accepted but unimplemented. The
+contract-only slice therefore proves documentation consistency and existing
+gates; it does not claim decoder/reducer, progression Store, lifecycle or
+manager behavior.
+
 ### Canonical JSON foundation
 
 Tests prove RFC 8785 byte/digest fixtures, descriptor-safe snapshots, hostile
@@ -68,11 +73,24 @@ Tests MUST prove:
 - causal fork-scope isolation for repeated/nested activations;
 - exact plan document lookup and mismatch rejection;
 - JSON pipeline decoding only through private `lifecycle/pipeline/**`;
-- prospective change -> scoped facts -> pipeline decision -> package intent ->
-  combined validation order;
-- conflict reload/recompute and scoped join uniqueness;
+- package-owned progression projection/command -> one pure reduction ->
+  complete ordered package intent -> combined validation order;
+- lifecycle returns after one fully rolled-back retryable conflict; the future
+  manager reloads/recomputes from fresh authority and plan;
 - pipeline-free lifecycle index and no pipeline type/cast leak through any
   public/transitive declaration.
+
+When the private progression seam ships, focused proof MUST additionally cover:
+
+- decoder and exact terminal-binding bijection failures;
+- every reducer command/effect/fault family and compound ordered batches;
+- explicit task/gate value provenance and gate answer-output separation;
+- exact semantic plus host-attachment replay/conflict behavior;
+- logical terminal closure with executing/unknown Attempt reconciliation;
+- decode/reduce exactly once per transaction attempt and no correctness cache;
+- complete rollback after every mapped-effect failure;
+- strict rejection of `values` on failed/cancelled/skipped commands;
+- no second Store/decode/reducer call on revision/absence contention.
 
 ### Manager
 
@@ -152,7 +170,9 @@ Before `RunManager` ships, declaration and one-exact-tarball tests MUST prove:
 
 - only the approved facade is public;
 - internal attempt/recovery operations are absent;
-- `ExecutionPlanSource` returns `RunExecutionPlanDocument`;
+- package-private `ExecutionPlanSource` returns
+  `RunExecutionPlanDocument` and is absent from public manager/root
+  declarations;
 - exact plan loading has only complete-pin loaded-or-bounded-fault outcomes;
 - manager identifier methods are semantic rather than a generic next-string
   source;
@@ -188,6 +208,13 @@ private-lifecycle and cross-boundary inference, lifecycle index -> private
 pipeline seam, ports -> pipeline, runtime value in ports, each exact
 composition -> policy/domain/pipeline edge, executor runtime, scripts, and
 unknown custom layer.
+
+The implemented seam must add a real positive importer beneath
+`src/lifecycle/pipeline/**`, exact negative probes for every other production
+layer and source/declaration/package reachability checks. It must also prove an
+exact registry `0.0.0` dependency with lock integrity and isolated one-tarball
+installation without a sibling checkout. These are conditional implementation
+gates, not evidence supplied by the contract-only PR.
 
 ## Scenario matrix
 

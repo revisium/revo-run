@@ -2,6 +2,7 @@
 
 - Status: Draft
 - Implementation: Package-private pure domain foundation implemented;
+  progression-state extension Accepted by ADR 0003 but unimplemented;
   persistence, lifecycle graph progression, and public snapshots not implemented
 
 ## Normative language and versioning
@@ -151,6 +152,31 @@ does not parse arbitrary output data as control flow.
 
 There is no authoritative `Gate` entity.
 
+## Accepted progression-state extension
+
+ADR 0003 accepts one typed, versioned package-owned logical
+`RunProgressionState` per Run. Version 1 has exactly one immutable occurrence
+key and one node instance per compiled logical node key. The state is semantic
+authority for ordered scalar values with explicit provenance, selector
+outcomes, consensus verdicts, normalized gate resolutions, bounded command
+receipts and the chosen terminal pair. It is not a pipeline snapshot or an
+untyped inference from outputs/events, and it uses `Run.revision` rather than a
+second revision.
+
+The accepted operational extensions are `selector_waiting`, `skipped`,
+`retiring` and `retired`. `Attempt.progressionClosedAt` fences logical closure
+while live/unknown physical work remains reconcilable. A later cleanup
+observation cannot change Run progression or terminal outcome.
+
+Each durable semantic receipt retains exact package-owned request content,
+complete stable task-output or gate-answer attachment and one bounded
+nonrecursive applied-result summary. It cannot nest progression state,
+transitions, reducer effects, pipeline values, events, materialized outputs or
+unbounded collections.
+
+These extensions are architecture contracts only in this slice. Existing
+source status tables and aggregate validators do not implement them yet.
+
 ## Join and consensus model
 
 Join readiness MUST be derived from the exact immutable plan and authoritative
@@ -164,7 +190,8 @@ model selection or a provider-specific consensus runtime.
 
 ## Aggregate invariants
 
-- Every accepted node transition MUST CAS and increment `Run.revision`.
+- Every accepted node transition MUST CAS and increment `Run.revision`, except
+  the cleanup-only retired-attempt observation accepted by ADR 0003.
 - An active executable node MUST reference exactly one active Attempt.
 - A terminal, retry-waiting, gate-waiting, or join-waiting node MUST NOT retain
   live Attempt authority.
@@ -190,12 +217,19 @@ model selection or a provider-specific consensus runtime.
 - External payloads and faults MUST be bounded and copied before persistence or
   publication.
 
+After logical terminal closure, a retired-attempt observation may settle only
+the physical node and Attempt. It increments only their revisions and MUST NOT
+mutate Run, `Run.revision`, `Run.updatedAt`, progression state, terminal
+selection, outputs or activations, and MUST NOT emit a public Run event.
+
 The pure implementation prepares revision deltas but does not claim CAS:
 one accepted aggregate transition increments Run once, each affected existing
 node and Attempt once, and a new Attempt begins at revision zero. Start,
 heartbeat/lease renewal, and reconciliation phase-only changes increment only
-Attempt. Rejection and idempotent no-op increment nothing. Overflow rejects
-before producing a prospective change.
+Attempt. The accepted retired-attempt observation similarly increments only its
+physical node and Attempt after progression closure. Rejection and idempotent
+no-op increment nothing. Overflow rejects before producing a prospective
+change.
 
 ## Cancellation
 

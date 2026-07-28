@@ -3,7 +3,8 @@
 - Status: Draft
 - Implementation: Stable pins/document/policy values and package-private exact
   source port implemented; manager loading and pipeline lifecycle behavior not
-  implemented
+  implemented; terminal-binding and private decode/reduce extensions Accepted
+  by ADR 0003 but unimplemented
 
 ## Normative language and versioning
 
@@ -14,8 +15,9 @@ new `vN`, while this Draft may still change.
 ## Scope
 
 This specification defines the immutable plan pin persisted by `revo-run`, the
-exact plan source injected into `RunManager`, and the package-owned
-`RunExecutionPlanDocument` returned through the public port.
+package-private exact plan source used by lifecycle/manager coordination, and
+the package-owned `RunExecutionPlanDocument` returned through that private
+port. The eventual public host-loader/composition shape is not defined here.
 
 The value shapes and their boundary rules are already Stable in
 [Portable run contracts v1](portable-run-contracts-v1.spec.md). Exact source
@@ -46,7 +48,7 @@ persisted pin. A later command MUST NOT supply a replacement plan.
 
 ### Exact plan source
 
-The injected `ExecutionPlanSource` MUST expose `loadExact()` by the complete
+The package-private `ExecutionPlanSource` MUST expose `loadExact()` by the complete
 pin. It MUST return either:
 
 - one immutable package-owned `RunExecutionPlanDocument` whose id, revision,
@@ -71,6 +73,9 @@ needed to execute and progress a run:
 - bounded retry, timeout, cancellation, and output policies needed by
   `revo-run`;
 - stable activation inputs required to derive successor and join activations.
+- a bounded package-owned terminal-binding array mapping every compiled
+  terminal node/outcome pair to Run success, cancellation, or a bounded
+  `PIPELINE_TERMINAL` failure.
 
 An executor binding MUST carry:
 
@@ -107,9 +112,9 @@ recompute the digest with a package-specific canonicalization.
 
 ### Pipeline isolation and decoding
 
-`compiledPipeline` remains `JsonValue` through the public plan source, ports,
-manager, composition, and root surface. Only private
-`lifecycle/pipeline/**` modules MAY decode it with the future public
+`compiledPipeline` remains `JsonValue` through the package-private plan source
+and every manager, composition, lifecycle-facade and root boundary. Only private
+`lifecycle/pipeline/**` modules MAY decode it with the public
 `@revisium/revo-pipeline` decoder. The public lifecycle index MUST remain
 pipeline-free.
 
@@ -119,6 +124,11 @@ composition, root exports, or emitted declarations.
 
 Decoder rejection is a stable plan-integrity fault. The manager MUST NOT
 dispatch work for a plan whose pipeline JSON has not been decoded and validated.
+
+The private seam MUST decode the exact document once per transaction attempt,
+MUST NOT compile, repair, replace or correctness-cache it, and MUST prove an
+exact bijection between decoded terminal pairs and package-owned bindings.
+Duplicate, missing, extra or mismatched bindings are `PLAN_INVALID`.
 
 ## Failure behavior
 
@@ -150,7 +160,10 @@ Before the public manager form of this contract ships, declaration and
 one-exact-tarball consumer tests
 MUST prove:
 
-- `ExecutionPlanSource` returns `RunExecutionPlanDocument`;
+- the package-private `ExecutionPlanSource` returns
+  `RunExecutionPlanDocument`;
+- no declaration reachable from public manager options or root exposes
+  `ExecutionPlanSource`;
 - `compiledPipeline` is `JsonValue`;
 - declarations reachable through lifecycle facade/manager/composition/root
   contain no pipeline import/type;

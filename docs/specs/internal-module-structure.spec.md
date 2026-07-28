@@ -71,14 +71,22 @@ be imported only by
 only by `src/policy/canonical-json/digest-canonical-json.ts`.
 
 `@revisium/revo-pipeline` is the only planned product integration package and
-only private `src/lifecycle/pipeline/**` modules may eventually import it. Public
+only private `src/lifecycle/pipeline/**` modules may import it. Public
 `src/lifecycle/index.ts` and the facade it exports MUST be pipeline-free.
 Pipeline-owned types MUST NOT be re-exported or appear in other layer
 contracts/declarations. The public plan document exposes only bounded
 `JsonValue`; the private lifecycle seam uses the public decoder without casts.
 
 The pipeline dependency is not installed until real lifecycle implementation
-requires it.
+requires it. Its accepted final source is exact npm registry version `0.0.0`
+after a separate publication/provenance gate. Workspace, link, file, git,
+archive, vendored, alias and hidden-checkout substitutes are forbidden in
+committed source, package and verification evidence.
+
+The private subtree decodes exact compiled JSON and reduces once per transaction
+attempt. It returns only package-owned values at its outer edge. Compilation,
+repair, replacement, correctness caching, partial-batch mapping and pipeline
+types outside that subtree are forbidden.
 
 ## Import rules
 

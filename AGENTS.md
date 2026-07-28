@@ -53,21 +53,22 @@ Before editing, inspect:
   `Run`. The injected plan source loads that exact plan automatically after
   `startRun`; never accept a replacement plan on later commands or snapshot the
   full plan in run storage.
-- `ExecutionPlanSource` returns package-owned `RunExecutionPlanDocument`.
+- The package-private `ExecutionPlanSource` returns package-owned
+  `RunExecutionPlanDocument`; it MUST NOT enter public manager options or root
+  declarations.
   `compiledPipeline` is bounded `JsonValue`; only private
-  `lifecycle/pipeline/**` decodes it through the future public pipeline decoder.
+  `lifecycle/pipeline/**` decodes it through the public pipeline decoder.
   The public lifecycle index is pipeline-free. Pipeline types and casts never
   enter ports, manager, composition, root exports, or declarations.
-- Keep the pipeline seam in lifecycle. Domain first validates the command's
-  expected state/fence/gate revision and computes a package-owned prospective
-  state/output change without committing. After loading the exact pinned plan,
-  lifecycle combines authoritative sibling state with that prospective
-  outcome/answer into `PipelineFacts`, calls the public pipeline decision API,
-  and maps `PipelineDecision` to package-owned successor/join/wait intents.
-  Domain validates the combined intent/invariants; storage then CASes expected
-  Run/node/Attempt revisions and atomically commits prospective state, outputs,
-  events, and activations. Pipeline imports and types never enter spec, domain,
-  storage, ports, manager, composition, root, or declarations.
+- Keep the pipeline seam in lifecycle. The accepted contract is
+  [ADR 0003](docs/adr/0003-private-pipeline-progression.md): private lifecycle
+  decodes the exact compiled JSON, projects one package-owned progression
+  snapshot and command, calls the pure reducer once, and exhaustively maps the
+  whole ordered effect batch to one package-owned intent. Domain validates one
+  combined transition; storage CASes complete Run/node/Attempt and absence
+  expectations and atomically commits state, outputs, events and activations.
+  Pipeline imports and types never enter spec, domain, storage, ports, manager,
+  composition, root, public lifecycle index, or reachable declarations.
 - Treat current run rows as authoritative mutable state. `RunEvent` is an
   append-only audit and subscription feed, not an event-sourced replacement for
   current state.
@@ -76,9 +77,11 @@ Before editing, inspect:
   changing fencing tokens, scoped activation keys, and idempotency keys.
   Start/heartbeat/direct/reconciled/cancel results require transaction time
   strictly before lease expiry.
-- Every accepted node transition CASes monotonic `Run.revision`. On conflict,
-  reload authoritative sibling state and recompute pipeline facts/decision;
-  never reuse a stale join decision.
+- A progression lifecycle call performs exactly one transaction attempt. On an
+  approved revision/absence conflict it rolls back fully and returns the fixed
+  package-owned retryable result. The future RunManager coordinator owns
+  bounded reload and complete decode/reduction recomputation; neither lifecycle
+  nor Store retries internally.
 - `Attempt` is the authoritative live owner, lease, and fence record.
   `RunNodeInstance` stores status plus `activeAttemptId` and, only if required, a
   monotonic claim epoch. Create the attempt and active pointer atomically.
@@ -125,6 +128,9 @@ Start CAS -> start_committed -> execute`. Recovery takeover requires
   contracts. `src/lifecycle/index.ts` stays pipeline-free, and manager imports
   only that index with explicit contracts, never `Parameters<>`/`ReturnType<>`
   inference. It is not installed until real lifecycle code needs it.
+- The final dependency source MUST be exact npm registry `0.0.0`. Publication,
+  tag and release require their own human gate. Workspace, link, file, git,
+  archive, vendored and alias substitutes are forbidden in committed evidence.
 - Preserve strict types. Do not use `any`, `@ts-ignore`, unchecked assertions,
   or weaker public types to bypass a gate.
 - Keep external payloads bounded and copied into package-owned immutable values.

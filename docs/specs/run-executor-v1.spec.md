@@ -62,7 +62,7 @@ snapshots and include only the bounded execution data, attempt identity,
 idempotency identity, and cancellation signal needed by the adapter.
 
 The manager owns lease heartbeat. Executor code MUST NOT receive a store,
-transaction, fencing mutation primitive, manager, or pipeline decision API.
+transaction, fencing mutation primitive, manager, or pipeline reducer API.
 
 ## Dispatch protocol
 

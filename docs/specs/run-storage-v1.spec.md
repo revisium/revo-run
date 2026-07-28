@@ -2,7 +2,8 @@
 
 - Status: Draft
 - Implementation: Package-private type contracts and logical fake conformance
-  implemented; durable adapter and database concurrency proof not implemented
+  implemented; atomic progression extension Accepted by ADR 0003 but
+  unimplemented; durable adapter and database concurrency proof not implemented
 
 ## Normative language and versioning
 
@@ -51,7 +52,8 @@ One accepted transition MUST atomically:
 
 - verify idempotency and exact plan pin assumptions;
 - CAS expected run, node, attempt, gate activation, and fence state;
-- increment monotonic `Run.revision` for an accepted node transition;
+- increment monotonic `Run.revision` for an accepted node transition, except
+  the cleanup-only retired-attempt observation defined below;
 - update current state and active-attempt relationships;
 - insert immutable outputs and ordered events;
 - create deterministic successor/join activations at most once;
@@ -60,7 +62,11 @@ One accepted transition MUST atomically:
 Partial commit MUST be impossible.
 
 The store MUST expose structured conflicts rather than silently overwriting
-newer state. Lifecycle owns reload and recomputation after conflict.
+newer state. For ordinary implemented lifecycle operations, conflict ownership
+follows their owning contract. For accepted pipeline progression specifically,
+lifecycle performs exactly one transaction attempt and MUST NOT reload or
+recompute after conflict. The future RunManager coordinator owns bounded
+complete plan/aggregate reload and full recomputation.
 
 ## Claim and attempt authority
 
@@ -140,6 +146,34 @@ Store mutation contracts MAY verify a caller-supplied expected pin loaded
 internally by lifecycle, but pipeline-owned types MUST NOT enter storage
 contracts.
 
+## Accepted atomic progression operation
+
+ADR 0003 accepts one framework-neutral
+`apply_progression_transition` Store command family. It contains only a
+package-owned domain transition, trigger, complete revision/absence
+expectations and an idempotency write. It MUST NOT contain a decoded plan,
+pipeline type, ORM value, provider handle or transaction callback.
+
+The operation atomically verifies exact plan pin, Run/node/Attempt revisions,
+active Attempt authority, incarnation/fence/lease/handoff state, scoped
+activation identity, semantic command receipt and absence of every derived
+immutable ID. It persists the complete ordered transition, progression state,
+nodes, Attempts, outputs, events, activations, receipt and idempotency result,
+or none of them.
+
+The logical progression state is a typed package-owned Store contract, not a
+mandated physical JSON column or table layout. Logical-fake conformance is not
+evidence of database transactions, isolation, locking, rollback, contention,
+reconnect behavior or cross-process correctness. A concrete adapter requires
+real shared-database proof. This operation remains unimplemented in the
+contract-only slice.
+
+A `retired_attempt_observation` is the only accepted cleanup-only exception to
+the ordinary aggregate revision/event rule. After logical terminal closure it
+may update only the physical node and Attempt revisions/state. It MUST NOT
+change Run state, `Run.revision`, `Run.updatedAt`, progression state, terminal
+selection, outputs, activations or the final public Run-event stream.
+
 ## Activations
 
 The store MUST enforce scoped activation uniqueness using run id, causal fork
@@ -204,7 +238,8 @@ A conforming durable adapter MUST prove:
   fenced handoff;
 - exact executor pin/config digest survives recovery;
 - stale incarnation/fence rejects heartbeat and results;
-- aggregate conflicts reload and recompute join progression;
+- progression conflicts fully roll back; a future RunManager attempt reloads
+  the complete exact plan/aggregate and recomputes all progression inputs;
 - causal-scope activation uniqueness prevents cross-fork joins;
 - gate answer races accept one immutable answer;
 - unknown non-idempotent outcomes are not redispatched;
