@@ -11,6 +11,7 @@ const requiredNodeStatus = (
   if (kind === 'task') return 'ready';
   if (kind === 'human_gate') return 'gate_waiting';
   if (kind === 'join') return 'join_waiting';
+  if (kind === 'terminal') return 'succeeded';
   return 'selector_waiting';
 };
 
@@ -37,6 +38,11 @@ export const validateRunProgressionActivation = (input: {
     node.updatedAt !== transactionNow
   ) {
     throw new TypeError('Run progression activation materialization is invalid.');
+  }
+  if (
+    step.nodeKind === 'terminal' ? node.terminalAt !== transactionNow : node.terminalAt !== null
+  ) {
+    throw new TypeError('Run progression activation terminal time is invalid.');
   }
   if (step.cause.kind === 'entry') {
     if (

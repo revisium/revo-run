@@ -35,7 +35,12 @@ export type RunEventIntent =
       readonly correlation: NodeCorrelation;
       readonly payload: {
         readonly nodeKey: string;
-        readonly status: 'ready' | 'gate_waiting' | 'join_waiting' | 'selector_waiting';
+        readonly status:
+          | 'ready'
+          | 'gate_waiting'
+          | 'join_waiting'
+          | 'selector_waiting'
+          | 'succeeded';
         readonly activationKey: ActivationKey;
         readonly forkScopeKey: ForkScopeKey;
         readonly branchKey: string | null;

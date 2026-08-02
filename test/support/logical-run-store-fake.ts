@@ -146,13 +146,20 @@ const identityKey = (identity: RunStoreIdempotencyIdentity): string =>
 
 export class LogicalRunStoreFake implements RunStore {
   #state = createLogicalRunStoreState();
-  readonly #transactionNow: number;
+  #transactionNow: number;
   #transactionTail: Promise<void> = Promise.resolve();
   #failureStage: LogicalFailureStage | null = null;
 
   constructor(transactionNow: number) {
     if (!Number.isSafeInteger(transactionNow) || transactionNow < 0) {
       throw new TypeError('Logical Store transaction time must be a nonnegative safe integer.');
+    }
+    this.#transactionNow = transactionNow;
+  }
+
+  advanceTransactionNow(transactionNow: number): void {
+    if (!Number.isSafeInteger(transactionNow) || transactionNow <= this.#transactionNow) {
+      throw new TypeError('Logical Store transaction time must advance monotonically.');
     }
     this.#transactionNow = transactionNow;
   }

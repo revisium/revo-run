@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 
 import type { Attempt, DomainTransition, Run, RunNodeInstance } from '../../src/domain/index.js';
 import {
+  canonicalizeJson,
   snapshotPortableJsonValue,
   snapshotRunProgressionAppliedReceipt,
 } from '../../src/policy/index.js';
@@ -837,13 +838,13 @@ const validateNewNodes = (
 };
 
 const validRunDelta = (prior: Run, next: Run, transactionNow: number): boolean => {
-  if (next.revision === prior.revision) return isDeepStrictEqual(next, prior);
+  if (next.revision === prior.revision) return canonicalizeJson(next) === canonicalizeJson(prior);
   return (
     next.revision === prior.revision + 1 &&
     next.updatedAt === transactionNow &&
     next.id === prior.id &&
     isDeepStrictEqual(next.planPin, prior.planPin) &&
-    isDeepStrictEqual(next.input, prior.input) &&
+    semanticJsonEquals(next.input, prior.input) &&
     isDeepStrictEqual(next.metadata, prior.metadata) &&
     next.createdAt === prior.createdAt
   );
@@ -867,7 +868,7 @@ const validNodeDelta = (
     next.forkScopeKey === prior.forkScopeKey &&
     next.branchKey === prior.branchKey &&
     next.iteration === prior.iteration &&
-    isDeepStrictEqual(next.activationContext, prior.activationContext) &&
+    semanticJsonEquals(next.activationContext, prior.activationContext) &&
     next.createdAt === prior.createdAt
   );
 };

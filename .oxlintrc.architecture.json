@@ -274,6 +274,31 @@
       }
     },
     {
+      "files": [
+        "**/src/lifecycle/create-manager-lifecycle-facade.ts",
+        "**/src/lifecycle/manager-lifecycle-facade-dependencies.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "../ports/index.js",
+                "allowImportNames": [
+                  "ExecutionPlanSource",
+                  "ExecutorResolver",
+                  "ManagerIdSource",
+                  "ManagerLifecycleIdempotencyPurpose"
+                ],
+                "message": "The private manager lifecycle composition may consume only its named package ports."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["**/src/lifecycle/index.ts", "**/src/lifecycle/run-lifecycle.ts"],
       "rules": {
         "no-restricted-imports": [

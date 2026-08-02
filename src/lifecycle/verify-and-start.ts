@@ -481,6 +481,7 @@ export const verifyAndStart = async (
   store: RunStore,
   executors: ExecutorResolver,
   input: LifecycleVerifyAndStartRequest,
+  signal?: AbortSignal,
 ): Promise<LifecycleVerifyAndStartResult> => {
   let request: LifecycleVerifyAndStartRequest;
   let plan;
@@ -537,6 +538,9 @@ export const verifyAndStart = async (
   }
   if (verified.kind === 'mismatch') {
     return fault('EXECUTOR_MISMATCH', 'Exact executor binding does not match the Attempt.');
+  }
+  if (signal?.aborted === true) {
+    return conflict({ code: 'INVALID_STATE', message: 'Start was aborted before commit.' });
   }
   return commitStart(store, request, identity, semanticRequest, expected, resolution, verified);
 };

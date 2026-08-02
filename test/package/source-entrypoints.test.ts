@@ -19,7 +19,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 test('bootstrap entry point has no accidental public API', () => {
-  expect(Object.keys(packageEntry)).toEqual([]);
+  expect(Object.keys(packageEntry)).toEqual(['createRunManager']);
 });
 
 test('policy has a curated source surface', () => {
@@ -58,10 +58,10 @@ test('package-private executor ports are type-only', () => {
   expect(Object.keys(portsEntry)).toEqual([]);
 });
 
-test('source root is type-only and does not promise a manager implementation', async () => {
+test('source root exposes only the public manager factory as a runtime value', async () => {
   const source = await readFile(new URL('../../src/index.ts', import.meta.url), 'utf8');
   expect(source).toContain('export type {');
-  expect(source).not.toContain('createRunManager');
+  expect(source).toContain('createRunManager');
   expect(source).not.toMatch(/export\s+(?:const|function|class)\s/);
 });
 
@@ -102,7 +102,7 @@ test('package metadata declares the intended package and explicit root export', 
     description: 'Reusable durable multi-run manager for Revo.',
     homepage: 'https://github.com/revisium/revo-run#readme',
     type: 'module',
-    dependencies: { canonicalize: '3.0.0' },
+    dependencies: { '@revisium/revo-pipeline': '0.0.0', canonicalize: '3.0.0' },
     exports: {
       '.': {
         types: './dist/index.d.ts',

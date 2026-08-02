@@ -1,8 +1,8 @@
 # RunManager v1
 
 - Status: Draft
-- Implementation: Not implemented; bounded progression coordination contract
-  Accepted by ADR 0003
+- Implementation: Narrow one-task-to-terminal MVP implemented over the logical
+  Store contract; broader v1 operations and database proof remain unimplemented
 
 ## Normative language and versioning
 
@@ -32,7 +32,7 @@ createRunManager({
 });
 ```
 
-Required ports:
+Required public adapters (each source is validated before private adaptation):
 
 - `store`: durable transaction, query, eligibility, event, and
   database-authoritative time contract;
@@ -58,17 +58,15 @@ MUST NOT change a running manager implicitly.
 
 ## Public facade
 
-The public `RunManager` MUST provide only:
+The implemented MVP `RunManager` provides only:
 
 - `start()`;
 - `stop(options?)`;
 - `startRun(command)`;
-- `answerGate(command)`;
-- `cancelRun(command)`;
 - `getRun(runId)`;
-- `listRuns(query?)`;
-- `subscribe(query)` returning `Promise<RunSubscription>`;
-- `waitForTerminal(query)`.
+
+`answerGate`, `cancelRun`, `listRuns`, `subscribe`, and `waitForTerminal` remain
+Draft v1 targets and are not root exports.
 
 Claim, attempt start, heartbeat, completion, failure, lease expiry, recovery,
 reconciliation, and pipeline-progression operations MUST remain internal.
@@ -228,8 +226,9 @@ a fresh occurrence key for each abandoned attempt. Cancellation is checked
 before each plan load and lifecycle attempt. Exhaustion returns a fixed bounded
 revision-conflict fault.
 
-This coordination contract is Accepted by ADR 0003 and remains unimplemented;
-this specification does not claim end-to-end retry proof.
+This coordination contract is Accepted by ADR 0003. The MVP implements one
+transaction attempt; bounded manager contention retries remain unimplemented,
+so this specification does not claim end-to-end retry proof.
 
 Every claimed Attempt MUST persist the current `managerIncarnationId`. A
 recovery manager MAY acquire ownership only when transaction time is at or

@@ -2,9 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-07-28
-- Implementation: Dependency-free domain and abstract Store foundation
-  implemented; pipeline adapter, lifecycle coordination, and manager not
-  implemented
+- Implementation: Domain/Store foundation and the private one-task-to-terminal
+  adapter/lifecycle/manager slice implemented; broader graph progression and
+  durable-database proof remain unimplemented
 
 ## Context
 
@@ -80,7 +80,9 @@ in the batch. Join completion is the progression equivalent of
 completes the join before any same-batch successor activation. `join_ready`
 remains the separate operational transition to `ready`.
 
-No new package export is introduced. The package root remains runtime-empty.
+The pipeline seam itself introduces no pipeline-owned export. The separately
+approved manager slice adds only the narrow package-owned facade and keeps all
+pipeline types private.
 
 ### Durable semantic authority
 

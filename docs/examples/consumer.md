@@ -107,18 +107,15 @@ persist the exact contract pin and configuration digest for restart recovery.
 
 ## Compose one manager
 
-The final public composition/options shape is deferred. The host will provide a
-concrete Store adapter, the exact plan loader illustrated above, executor
-resolution, and purpose-specific identifier callbacks. Package-private
-composition will adapt the host loader to `ExecutionPlanSource`; consumers will
-not import that private type.
+Public composition accepts package-owned persistence, plans, executors, and
+identifiers adapters. Each carries a host source object that composition
+runtime-validates before adapting it to private ports; consumers do not import
+those private types.
 
-The currently implemented `ManagerIdSource` contract has exactly five
-purpose-specific methods: `nextManagerIncarnationId`, `nextAttemptId`,
-`nextHandoffId`, `nextOutputId`, and `nextLifecycleIdempotencyKey`. Future
-progression coordination may require additional caller-supplied allocation
-values, but their public composition API is not defined by this contracts
-slice.
+The private `ManagerIdSource` contract has exactly eight purpose-specific
+methods, including Run, progression occurrence/allocation, manager, Attempt,
+handoff, output, and lifecycle-idempotency generation. Public construction
+supplies it through the package-owned identifiers adapter.
 
 `ownerLabel` remains diagnostic. Each `start()` creates a unique package-owned
 manager incarnation, persisted on claimed Attempts. `clock` schedules local

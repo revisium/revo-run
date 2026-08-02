@@ -60,7 +60,7 @@ export type RunProgressionIntentStep =
   | {
       readonly kind: 'activate_node';
       readonly nodeKey: string;
-      readonly nodeKind: 'task' | 'human_gate' | 'join' | 'selector';
+      readonly nodeKind: 'task' | 'human_gate' | 'join' | 'selector' | 'terminal';
       readonly cause: ActivationCause;
       readonly node: RunNodeInstance;
     }

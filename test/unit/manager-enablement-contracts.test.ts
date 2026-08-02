@@ -1,6 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
-import type { ExecutionPlanSourceFault } from '../../src/errors/index.js';
 import { createRunLifecycle } from '../../src/lifecycle/construction.js';
 import type {
   LifecycleHydrateOwnedAuthorityRequest,
@@ -68,9 +67,9 @@ describe('manager enablement ports', () => {
     expectTypeOf<
       Extract<ExecutionPlanSourceResult, { readonly kind: 'loaded' }>['planDocument']['pin']
     >().toEqualTypeOf<Parameters<ExecutionPlanSource['loadExact']>[0]>();
-    expectTypeOf<ExecutionPlanSourceFault['code']>().toEqualTypeOf<
-      'NOT_FOUND' | 'PLAN_MISMATCH' | 'PLAN_UNAVAILABLE'
-    >();
+    expectTypeOf<
+      Extract<ExecutionPlanSourceResult, { readonly kind: 'fault' }>['fault']['code']
+    >().toEqualTypeOf<'NOT_FOUND' | 'PLAN_MISMATCH' | 'PLAN_UNAVAILABLE'>();
   });
 
   it('uses purpose-specific manager identifiers and local-only scheduling', () => {
@@ -80,6 +79,9 @@ describe('manager enablement ports', () => {
       | 'nextLifecycleIdempotencyKey'
       | 'nextManagerIncarnationId'
       | 'nextOutputId'
+      | 'nextRunId'
+      | 'nextProgressionOccurrenceKey'
+      | 'nextProgressionAllocationSeed'
     >();
     expectTypeOf<ManagerLifecycleIdempotencyPurpose>().toEqualTypeOf<
       | 'acquire'
@@ -87,6 +89,7 @@ describe('manager enablement ports', () => {
       | 'prepare_reconciliation'
       | 'process_execute_observation'
       | 'process_reconcile_observation'
+      | 'progress_task_outcome'
       | 'verify_and_start'
       | 'write_handoff'
     >();
@@ -109,6 +112,9 @@ describe('manager enablement ports', () => {
       },
       nextManagerIncarnationId: () => 'manager',
       nextOutputId: () => 'output',
+      nextRunId: () => 'run',
+      nextProgressionOccurrenceKey: () => 'occurrence',
+      nextProgressionAllocationSeed: () => 'allocation',
     };
 
     const claimIdempotencyKey = ids.nextLifecycleIdempotencyKey('claim');

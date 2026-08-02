@@ -124,7 +124,10 @@ const sourceLayer = (path: string): Layer | undefined => {
 
 const isRoot = (path: string): boolean => path === 'src/index.ts';
 
-const isCuratedEntrypoint = (path: string): boolean => path === 'src/lifecycle/construction.ts';
+const isCuratedEntrypoint = (path: string): boolean =>
+  path === 'src/lifecycle/construction.ts' ||
+  path === 'src/lifecycle/manager-construction.ts' ||
+  path === 'src/manager/construction.ts';
 
 const isBarrel = (path: string): boolean =>
   !isRoot(path) &&
@@ -317,7 +320,12 @@ const isForbiddenProductionTarget = (target: string): boolean =>
 
 const validateTestReference = (path: string, target: string, targetLayer?: Layer): void => {
   if (!target.startsWith('src/') || target === 'src/index.ts') return;
-  if (targetLayer && (target === `src/${targetLayer}/index.ts` || isCuratedEntrypoint(target)))
+  if (
+    targetLayer &&
+    (target === `src/${targetLayer}/index.ts` ||
+      isCuratedEntrypoint(target) ||
+      target === 'src/lifecycle/progression-construction.ts')
+  )
     return;
   fail('test-private-import', path, target);
 };
@@ -337,7 +345,9 @@ const validateCrossLayerReference = (
   fromLayer: Layer,
   targetLayer: Layer,
 ): void => {
-  if (target !== `src/${targetLayer}/index.ts`) fail('private-import', path, target);
+  if (target !== `src/${targetLayer}/index.ts` && !isCuratedEntrypoint(target)) {
+    fail('private-import', path, target);
+  }
   if (!allowedDependencies[fromLayer].includes(targetLayer)) {
     fail('forbidden-layer-import', path, `${fromLayer} -> ${targetLayer}`);
   }
@@ -358,6 +368,7 @@ const validateRelativeReference = (path: string, target: string): void => {
     }
     return;
   }
+  if (isRoot(path) && targetLayer === 'errors' && target.startsWith('src/errors/run-')) return;
   const fromLayer = sourceLayer(path) ?? fail('private-import', path, target);
   const resolvedTarget = targetLayer ?? fail('private-import', path, target);
   if (fromLayer === 'composition' && target === 'src/lifecycle/construction.ts') return;
@@ -518,6 +529,9 @@ const validateOperationalDeclarations = (
     if (!source) continue;
     for (const reference of referencesByPath.get(path) ?? []) {
       const target = reference.target;
+      const privatePipelineBridge =
+        path === 'src/lifecycle/single-task-progression.ts' &&
+        target?.startsWith('src/lifecycle/pipeline/');
       if (
         target === 'src/ports/index.ts' ||
         target === 'src/lifecycle/construction.ts' ||
@@ -525,7 +539,7 @@ const validateOperationalDeclarations = (
         target === 'src/lifecycle/run-lifecycle-dependencies.ts' ||
         target?.startsWith('src/storage/') ||
         target?.startsWith('src/domain/') ||
-        target?.startsWith('src/lifecycle/pipeline/') ||
+        (target?.startsWith('src/lifecycle/pipeline/') && !privatePipelineBridge) ||
         target?.startsWith('src/provider/')
       ) {
         fail('lifecycle-port-boundary', path, 'reachable operational boundary leak');
@@ -1178,7 +1192,10 @@ const importEqualsCast = (node: Node) => {
 };
 
 const validateStoreBoundaryReference = (path: string, sourceFile: SourceFile): void => {
-  if (path !== 'src/lifecycle/run-lifecycle-dependencies.ts') {
+  if (
+    path !== 'src/lifecycle/run-lifecycle-dependencies.ts' &&
+    path !== 'src/lifecycle/manager-lifecycle-facade-dependencies.ts'
+  ) {
     fail('lifecycle-port-boundary', path, 'construction declaration storage leak');
   }
   new StoreBoundaryValidator(path).validate(sourceFile);
@@ -1190,10 +1207,15 @@ const queueConstructionTarget = (
   target: string,
   pending: string[],
 ): void => {
-  if (target === 'src/ports/index.ts') return validateResolverOnlyReferences(path, source);
+  if (target === 'src/ports/index.ts') {
+    if (path === 'src/lifecycle/manager-lifecycle-facade-dependencies.ts') return;
+    return validateResolverOnlyReferences(path, source);
+  }
   if (target.startsWith('src/storage/')) validateStoreBoundaryReference(path, source);
   const forbidden =
-    (target.startsWith('src/storage/') && path !== 'src/lifecycle/run-lifecycle-dependencies.ts') ||
+    (target.startsWith('src/storage/') &&
+      path !== 'src/lifecycle/run-lifecycle-dependencies.ts' &&
+      path !== 'src/lifecycle/manager-lifecycle-facade-dependencies.ts') ||
     ['domain', 'lifecycle/pipeline', 'provider', 'manager', 'composition'].some((segment) =>
       target.startsWith(`src/${segment}/`),
     );

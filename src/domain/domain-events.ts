@@ -29,7 +29,8 @@ const activated = (node: RunNodeInstance): RunEventIntent => {
     node.status !== 'ready' &&
     node.status !== 'gate_waiting' &&
     node.status !== 'join_waiting' &&
-    node.status !== 'selector_waiting'
+    node.status !== 'selector_waiting' &&
+    node.status !== 'succeeded'
   ) {
     throw new TypeError('Only waiting or ready nodes can be activated.');
   }

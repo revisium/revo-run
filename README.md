@@ -12,24 +12,24 @@
 </div>
 
 > [!IMPORTANT]
-> This repository is in bootstrap and the npm package is not published. Its root runtime namespace is intentionally empty
-> and currently exports only Stable portable contract types. `@revisium/revo-run/canonical-json` is implemented; the
+> This repository is in bootstrap and the npm package is not published. Its root runtime namespace exports the narrow
+> `createRunManager` MVP plus Stable portable contract types. `@revisium/revo-run/canonical-json` is implemented; the
 > package-private pure Run domain and progression foundations plus type-only Store contracts are implemented. Store behavior currently has
 > logical fake conformance only, not durable-database proof. Package-private executor snapshots, pure binding verification,
 > fault refinements, and type-only ports are implemented. Package-private lifecycle discovery, claim, lease renewal,
 > durable handoff, ownership acquisition, and exact resolver/Start preparation are also implemented. Lifecycle now
 > normalizes executor observations, prepares reconciliation under a fresh fenced CAS, records direct unknown and
-> reconciled running/unknown outcomes, and prepares known terminal observations without committing their later pipeline
-> progression. Package-private exact plan-source, purpose-specific manager identifier (including handoff ids), local
-> clock/scheduler, and
-> read-only owned-authority hydration contracts now enable the later supervisor without introducing manager behavior.
-> Retry/terminal progression, cancellation invocation, manager/composition, and the RunManager APIs below remain Draft
-> target specifications.
+> reconciled running/unknown outcomes, and commits known single-task terminal observations with pipeline progression.
+> Package-private exact plan-source, purpose-specific manager identifiers, and owned-authority hydration support the
+> implemented supervisor, recovery barrier, heartbeat renewal, and graceful handoff behavior.
+> One-task-to-terminal progression and the manager/composition facade (`start`, `stop`, `startRun`, and `getRun`) are
+> implemented against the logical Store contract. Retry, gates, cancellation invocation, subscriptions, and broader
+> scheduling remain Draft target specifications.
 > Architecture enforcement is active in repository validation.
 > The private progression architecture is Accepted in
 > [ADR 0003](./docs/adr/0003-private-pipeline-progression.md). Its
-> dependency-free domain/Store foundation is implemented; the seam and pipeline
-> dependency remain unimplemented.
+> domain/Store foundation and private single-task seam are implemented. The exact registry dependency is declared;
+> publication of `@revisium/revo-pipeline@0.0.0` is still required for a clean install.
 
 ## About
 
@@ -65,7 +65,7 @@ cycles, non-finite numbers, and invalid Unicode. Fixed limits are depth 64,
 65,536 total members, and 1 MiB of canonical UTF-8 bytes. It follows RFC 8785
 and hashes exactly the returned UTF-8 text.
 
-The root remains runtime-empty. A canonical digest is a general value digest;
+A canonical digest is a general value digest;
 it is not an execution-plan or executor-contract pin.
 
 ## Implemented portable contract types
@@ -110,10 +110,9 @@ result preparation. It also owns immutable versioned progression state,
 closed command receipts, terminal bindings, selector/skipped/retiring/retired
 node states, and the `progressionClosedAt` logical-closure fence.
 
-This is intentionally not a package export or a working manager. It performs no
-storage write, polling, executor call, clock read, pipeline decode/reduce, or
-terminal-policy selection. The private pipeline adapter and lifecycle
-coordination remain Draft.
+These domain leaves remain package-private and pure: storage writes, polling,
+executor calls, pipeline reduction, and terminal-policy selection are owned by
+lifecycle and manager composition rather than the domain layer.
 
 ## Implemented internal Store contracts
 
@@ -146,10 +145,9 @@ executor/resolver ports. Missing binding idempotence defaults to `false`.
 Lifecycle captures execute/reconcile capabilities only after exact resolution,
 normalizes their untrusted results into bounded package-owned observations, and
 uses fresh database-time authority for the implemented unknown/running
-transitions. Known terminal observations stop at a frozen
-`requires_progression` result because retry and graph progression require the
-later pipeline slice. Adapter cancellation invocation remains unimplemented.
-No manager, composition, registry, or provider adapter is implemented.
+transitions. Known single-task terminal observations cross the private pipeline
+seam and commit atomically. Adapter cancellation invocation, retry policy, and
+provider adapters remain unimplemented; manager composition is implemented.
 
 ## Implemented internal manager-enablement contracts
 
@@ -161,10 +159,11 @@ partial, compatible, or default fallback. Local time and scheduling are only
 process-local coordination inputs and never authorize a durable lease, fence,
 retry, or takeover decision.
 
-The implemented package-private `ManagerIdSource` has exactly five
-purpose-specific methods: `nextManagerIncarnationId`, `nextAttemptId`,
-`nextHandoffId`, `nextOutputId`, and `nextLifecycleIdempotencyKey`. This
-contracts slice does not invent public progression-allocation callbacks.
+The private `ManagerIdSource` has exactly eight purpose-specific methods:
+`nextRunId`, `nextProgressionOccurrenceKey`, `nextProgressionAllocationSeed`,
+`nextManagerIncarnationId`, `nextAttemptId`, `nextHandoffId`, `nextOutputId`,
+and `nextLifecycleIdempotencyKey`. It is hidden behind the public identifiers
+adapter and is not reachable from root declarations.
 
 Lifecycle can read-only hydrate authority already owned by one manager
 incarnation. A fresh Store transaction verifies the correlated Run, node and
@@ -182,7 +181,7 @@ idempotency semantics, and audit events.
 ## Accepted private pipeline progression contract
 
 `revo-pipeline` remains an independent pure package and knows nothing about
-`revo-run`. The accepted one-way integration lives only in future private
+`revo-run`. The implemented one-way integration lives only in private
 `src/lifecycle/pipeline/**` files:
 
 ```text
@@ -200,26 +199,26 @@ together. Logical terminal closure retains live/unknown Attempt evidence for
 physical reconciliation.
 
 The lifecycle boundary makes exactly one transaction attempt. A rolled-back
-revision conflict returns a package-owned retryable result; bounded reload and
-full recomputation belong to a separately implemented RunManager coordinator.
-No Prisma schema, concrete adapter or manager behavior is accepted by this
-contract.
+revision conflict returns a package-owned retryable result. No Prisma schema or
+concrete database adapter is accepted by this contract.
 
-The dependency-free domain and abstract Store foundation is implemented. The
-exact registry dependency is added only when the private seam is implemented
-and after a separate publication/provenance gate. This slice adds no runtime
-dependency, source API or root export.
+The domain, abstract Store foundation, and private single-task seam are
+implemented. The exact registry dependency is declared at `0.0.0`; no workspace override,
+tarball, link, or sibling package is accepted as package proof.
 
-## Draft RunManager quick start
+## Implemented RunManager MVP
 
-The target behavioral API is intentionally small. Construction and dependency
-injection shapes are deliberately omitted until the manager/composition slice;
-in particular, the implemented package-private `ExecutionPlanSource` is not a
-public consumer type. All names below remain **Draft and unimplemented**.
+The shipped MVP accepts named `store`, exact `plans`, `executors`, `ids`, and
+optional coordination policy. It supports one task followed by one terminal
+node and fails closed for every other topology.
 
 ```ts
-// `runs` is supplied by the future public composition boundary.
-// Its exact construction options are intentionally not specified yet.
+const runs = createRunManager({
+  store: { kind: 'run_manager_persistence', source: store },
+  plans: { kind: 'run_manager_plans', source: plans },
+  executors: { kind: 'run_manager_executors', source: executors },
+  ids: { kind: 'run_manager_identifiers', source: ids },
+});
 
 await runs.start();
 
@@ -233,33 +232,7 @@ const run = await runs.startRun({
   input: request.input,
 });
 
-const subscription = await runs.subscribe({
-  runId: run.id,
-  after: request.lastSeenCursor,
-});
-
-await publishRunProjection(subscription.initial.snapshot, subscription.initial.cursor);
-
-let cursor = subscription.initial.cursor;
-let latest = subscription.initial.snapshot;
-
-if (!latest.terminal) {
-  for await (const item of subscription) {
-    await publishRunProjection(item.snapshot, item.cursor);
-    cursor = item.cursor;
-    latest = item.snapshot;
-  }
-}
-
-const terminal = latest.terminal
-  ? latest
-  : await runs.waitForTerminal({
-      runId: run.id,
-      after: cursor,
-      signal: request.signal,
-    });
-
-await subscription.close();
+const latest = await runs.getRun(run.id);
 await runs.stop({ drain: true });
 ```
 
@@ -270,10 +243,9 @@ silently move to a newer revision.
 `start()` recovers owned work and starts manager loops. `stop()` stops new claims and can drain in-flight executions.
 Neither method owns the host process or network server.
 
-## Draft public API
+## Public MVP API
 
-Names and exact shapes remain **Draft and unimplemented**; the normative behavior is defined by the
-[Draft specifications](./docs/README.md).
+The implemented facade is intentionally narrow:
 
 ```ts
 export interface RunManager {
@@ -281,28 +253,14 @@ export interface RunManager {
   stop(options?: StopRunManagerOptions): Promise<void>;
 
   startRun(command: StartRunCommand): Promise<RunSnapshot>;
-  answerGate(command: AnswerGateCommand): Promise<RunSnapshot>;
-  cancelRun(command: CancelRunCommand): Promise<RunSnapshot>;
-
   getRun(runId: string): Promise<RunSnapshot | undefined>;
-  listRuns(query?: ListRunsQuery): Promise<RunPage>;
-  subscribe(query: SubscribeRunQuery): Promise<RunSubscription>;
-  waitForTerminal(query: WaitForTerminalQuery): Promise<RunSnapshot>;
-}
-
-export interface RunSubscription extends AsyncIterable<RunSubscriptionItem> {
-  readonly initial: {
-    readonly snapshot: RunSnapshot;
-    readonly cursor: RunEventCursor;
-  };
-  close(): Promise<void>;
 }
 ```
 
-The host remains responsible for exact plan loading. Future composition adapts
-that host capability to the implemented package-private `ExecutionPlanSource`,
-which returns a package-owned `RunExecutionPlanDocument`; the private port does
-not appear in the public manager options or root declarations.
+The host remains responsible for exact plan loading. Public composition accepts
+package-owned persistence, plans, executors, and identifiers adapters and
+runtime-validates their sources before adapting them to private ports. Those
+private port and Store types do not appear in root declarations.
 `compiledPipeline` is bounded `JsonValue`, not a pipeline-package type. Only
 private `lifecycle/pipeline/**` modules decode it with the shipped public
 `@revisium/revo-pipeline` decoder. The public lifecycle facade is pipeline-free.
@@ -419,9 +377,9 @@ wires store, ports, lifecycle, and manager into `createRunManager`.
 The architecture and its enforcement are Accepted and active. Canonical JSON v1
 and portable run contracts v1 are Stable and implemented. The internal pure
 domain foundation is implemented while its product specification remains Draft.
-The package-private executor contract slice is implemented, but executor
-runtime behavior and every RunManager behavioral API remain **Draft and
-unimplemented**.
+The package-private executor contract slice and narrow RunManager MVP are
+implemented. Gates, cancellation invocation, retries, subscriptions, and
+broader graph scheduling remain **Draft and unimplemented**.
 
 ## Requirements
 

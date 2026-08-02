@@ -3,7 +3,7 @@
 ## Status
 
 This architecture is **Accepted** and its module rules are actively enforced by
-repository validation. The package root remains runtime-empty while exporting
+repository validation. The package root exports the narrow RunManager MVP and
 Stable portable contract types. The semantic
 `@revisium/revo-run/canonical-json` subpath, package-private pure domain
 foundation, and package-private type-only Store contracts are implemented.
@@ -20,10 +20,10 @@ Package-private exact plan-source, purpose-specific manager identifier, local
 clock/scheduler, and read-only owned-authority hydration contracts are also
 implemented. The private decode/reduce progression contract is Accepted by
 [ADR 0003](adr/0003-private-pipeline-progression.md), but its domain/Store
-foundation is implemented without a pipeline dependency. The dependency,
-adapter and lifecycle behavior are not implemented.
-Retry selection, cancellation invocation, terminal graph progression,
-manager/composition, and all RunManager behavioral APIs remain Draft and
+foundation, private decoder/reducer adapter, one-task terminal progression, and
+narrow manager/composition facade are implemented over the logical Store
+contract. Retry selection, gates, cancellation invocation, broader graph
+progression, subscriptions, and durable-database proof remain Draft and
 unimplemented.
 
 ## Purpose
@@ -114,9 +114,9 @@ host
           `--> manager   (loops and public facade)
 ```
 
-The future public shape by which the host supplies exact plan loading is
-deliberately deferred. Package-private composition adapts that capability to
-`ExecutionPlanSource`, constructs lifecycle with storage and ports, then
+Public composition accepts package-owned persistence, plans, executors, and
+identifiers adapters. It validates and adapts those sources to private ports,
+constructs lifecycle with storage and ports, then
 constructs manager against lifecycle and safe read/port contracts. Manager
 never imports domain or storage directly. It imports lifecycle only through
 `lifecycle/index.ts` and consumes explicit facade types; it cannot infer the
