@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": ["coverage/**", "dist/**", "node_modules/**"],
+  "ignorePatterns": [".revisium-actions/**", "coverage/**", "dist/**", "node_modules/**"],
   "printWidth": 100,
   "singleQuote": true,
   "sortImports": true,
