@@ -1,26 +1,12 @@
-export type {
-  ExecutionPlanPin,
-  ExecutorConfigurationDigest,
-  ExecutorContractPin,
-  JsonValue,
-  LeasePolicy,
-  ProcessLocalConcurrencyPolicy,
-  RetryPolicy,
-  RunArtifactReference,
-  RunExecutionPlanDocument,
-  RunExecutionPlanExecutorBinding,
-  RunOutputPayload,
-  TimeoutPolicy,
-} from './spec/index.js';
-export type { RunConflict, RunConflictCode, RunFault, RunFaultCode } from './errors/index.js';
-export { createRunManager } from './composition/index.js';
+export { createRunManager } from './manager.js';
 export type {
   CreateRunManagerOptions,
+  ExecutionPlanPin,
+  JsonValue,
   RunExecutor,
-  RunIdSource,
   RunManager,
-  RunManagerSnapshot,
-  RunManagerStatus,
   RunPlanSource,
+  RunSnapshot,
   RunSnapshotStore,
-} from './composition/index.js';
+  RunStatus,
+} from './types.js';
