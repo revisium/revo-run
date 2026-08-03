@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+.revisium-actions/
 .architecture-probe-*/
 .cache/
 .sonar/
