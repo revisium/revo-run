@@ -24,10 +24,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./canonical-json": {
-      "types": "./dist/policy/canonical-json/index.d.ts",
-      "import": "./dist/policy/canonical-json/index.js"
     }
   },
   "publishConfig": {
@@ -42,14 +38,13 @@
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "test:unit": "vitest run test/unit",
-    "test:package": "vitest run test/package",
-    "test:architecture": "node --import tsx scripts/verify-architecture.ts",
-    "test": "pnpm run test:unit && pnpm run test:package",
+    "test:integration": "vitest run test/integration",
+    "test:integration:required": "node --import tsx scripts/test-integration.ts",
+    "test": "pnpm run test:unit && pnpm run test:integration",
     "test:cov": "vitest run --coverage",
-    "verify:architecture": "pnpm run test:architecture",
     "verify:package": "pnpm run build && publint && node --import tsx scripts/verify-package.ts",
     "verify:shell": "bash -n scripts/*.sh",
-    "verify": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run test:cov && pnpm run verify:architecture && pnpm run verify:package && pnpm run verify:shell",
+    "verify": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run test:unit && pnpm run test:integration:required && pnpm run test:cov && pnpm run verify:package && pnpm run verify:shell",
     "sonar:local": "bash scripts/sonar-local.sh",
     "sonar:issues:local": "bash scripts/sonar-issues-local.sh",
     "ci:local:sonar": "bash scripts/ci-local-sonar.sh",
@@ -57,8 +52,7 @@
   },
   "dependencies": {
     "@dbos-inc/dbos-sdk": "4.25.14",
-    "@revisium/revo-pipeline": "0.1.0-alpha.0",
-    "canonicalize": "3.0.0"
+    "@revisium/revo-pipeline": "0.1.0-alpha.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
