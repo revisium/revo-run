@@ -56,6 +56,8 @@
     "prepack": "pnpm run build"
   },
   "dependencies": {
+    "@dbos-inc/dbos-sdk": "4.25.14",
+    "@revisium/revo-pipeline": "0.1.0-alpha.0",
     "canonicalize": "3.0.0"
   },
   "devDependencies": {

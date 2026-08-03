@@ -124,7 +124,8 @@ const sourceLayer = (path: string): Layer | undefined => {
 
 const isRoot = (path: string): boolean => path === 'src/index.ts';
 
-const isCuratedEntrypoint = (path: string): boolean => path === 'src/lifecycle/construction.ts';
+const isCuratedEntrypoint = (path: string): boolean =>
+  path === 'src/lifecycle/construction.ts' || path === 'src/lifecycle/pipeline-construction.ts';
 
 const isBarrel = (path: string): boolean =>
   !isRoot(path) &&
@@ -308,6 +309,9 @@ const validateExternalReference = (path: string, specifier: string): void => {
   if (path.startsWith('src/lifecycle/pipeline/') && specifier === '@revisium/revo-pipeline') {
     return;
   }
+  if (path.startsWith('src/composition/workflow/') && specifier === '@dbos-inc/dbos-sdk') {
+    return;
+  }
   fail('external-import', path, specifier);
 };
 
@@ -360,7 +364,12 @@ const validateRelativeReference = (path: string, target: string): void => {
   }
   const fromLayer = sourceLayer(path) ?? fail('private-import', path, target);
   const resolvedTarget = targetLayer ?? fail('private-import', path, target);
-  if (fromLayer === 'composition' && target === 'src/lifecycle/construction.ts') return;
+  if (
+    fromLayer === 'composition' &&
+    (target === 'src/lifecycle/construction.ts' ||
+      target === 'src/lifecycle/pipeline-construction.ts')
+  )
+    return;
   if (fromLayer === resolvedTarget) return validateSameLayerReference(path, target, fromLayer);
   validateCrossLayerReference(path, target, fromLayer, resolvedTarget);
 };

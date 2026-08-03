@@ -274,6 +274,30 @@
       }
     },
     {
+      "files": ["**/src/composition/workflow/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "(?:^|/)(?:test|scripts|dist|coverage|\\.architecture-probe-[^/]*)(?:/|$)",
+                "message": "Production source must not depend on tests, repository tooling, generated output, or architecture probes."
+              },
+              {
+                "regex": "^(?:@prisma/|prisma$|@nestjs/|graphql$|@apollo/|pg-boss$|graphile-worker$)",
+                "message": "Only the bounded DBOS workflow adapter may own its workflow runtime."
+              },
+              {
+                "regex": "^@revisium/revo-pipeline(?:/|$)",
+                "message": "Only private revo-run lifecycle/pipeline modules may import the public pipeline package."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["**/src/lifecycle/index.ts", "**/src/lifecycle/run-lifecycle.ts"],
       "rules": {
         "no-restricted-imports": [

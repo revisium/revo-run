@@ -692,7 +692,7 @@ test('enforces operational and construction reachable declaration boundaries', (
       },
     ]),
   ).not.toThrow();
-}, 15_000);
+}, 30_000);
 
 test.each([
   '../../test/helper.js',

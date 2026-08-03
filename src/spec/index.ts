@@ -15,6 +15,8 @@ export type { JsonValue } from './json-value.js';
 export type { LeasePolicy } from './lease-policy.js';
 export type { ProcessLocalConcurrencyPolicy } from './process-local-concurrency-policy.js';
 export type { RetryPolicy } from './retry-policy.js';
+export type { RunManagerSnapshot } from './run-manager-snapshot.js';
+export type { RunManagerStatus } from './run-manager-status.js';
 export type { RunArtifactReference } from './run-artifact-reference.js';
 export type { RunExecutionPlanDocument } from './run-execution-plan-document.js';
 export type { RunExecutionPlanExecutorBinding } from './run-execution-plan-executor-binding.js';

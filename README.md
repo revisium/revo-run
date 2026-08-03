@@ -12,8 +12,10 @@
 </div>
 
 > [!IMPORTANT]
-> This repository is in bootstrap and the npm package is not published. Its root runtime namespace is intentionally empty
-> and currently exports only Stable portable contract types. `@revisium/revo-run/canonical-json` is implemented; the
+> This repository is in bootstrap and the npm package is not published. The root now exports an experimental
+> `createRunManager` DBOS runner facade plus portable contract types. This local `0.0.0` MVP is the narrow, expiring
+> exception recorded by [ADR 0004](./docs/adr/0004-provisional-dbos-runner-facade.md); it is not the accepted durable
+> `RunManager` or a general recovery implementation. `@revisium/revo-run/canonical-json` is implemented; the
 > package-private pure Run domain and progression foundations plus type-only Store contracts are implemented. Store behavior currently has
 > logical fake conformance only, not durable-database proof. Package-private executor snapshots, pure binding verification,
 > fault refinements, and type-only ports are implemented. Package-private lifecycle discovery, claim, lease renewal,
@@ -23,13 +25,12 @@
 > progression. Package-private exact plan-source, purpose-specific manager identifier (including handoff ids), local
 > clock/scheduler, and
 > read-only owned-authority hydration contracts now enable the later supervisor without introducing manager behavior.
-> Retry/terminal progression, cancellation invocation, manager/composition, and the RunManager APIs below remain Draft
-> target specifications.
+> The broader durable manager lifecycle, retry/recovery, cancellation, and observation APIs below remain Draft target specifications.
 > Architecture enforcement is active in repository validation.
 > The private progression architecture is Accepted in
 > [ADR 0003](./docs/adr/0003-private-pipeline-progression.md). Its
 > dependency-free domain/Store foundation is implemented; the seam and pipeline
-> dependency remain unimplemented.
+> durable integration remain unimplemented; the MVP uses the private pipeline seam only for local execution.
 
 ## About
 
@@ -65,8 +66,9 @@ cycles, non-finite numbers, and invalid Unicode. Fixed limits are depth 64,
 65,536 total members, and 1 MiB of canonical UTF-8 bytes. It follows RFC 8785
 and hashes exactly the returned UTF-8 text.
 
-The root remains runtime-empty. A canonical digest is a general value digest;
-it is not an execution-plan or executor-contract pin.
+The root runtime export is the provisional `createRunManager` facade. A
+canonical digest is a general value digest; it is not an execution-plan or
+executor-contract pin.
 
 ## Implemented portable contract types
 
@@ -205,75 +207,53 @@ full recomputation belong to a separately implemented RunManager coordinator.
 No Prisma schema, concrete adapter or manager behavior is accepted by this
 contract.
 
-The dependency-free domain and abstract Store foundation is implemented. The
-exact registry dependency is added only when the private seam is implemented
-and after a separate publication/provenance gate. This slice adds no runtime
-dependency, source API or root export.
+The domain and abstract Store foundation is implemented. The provisional MVP
+also installs DBOS and the pipeline package behind the private boundaries
+described in ADR 0004; neither dependency establishes durable Store proof.
 
-## Draft RunManager quick start
+## Experimental local MVP API
 
-The target behavioral API is intentionally small. Construction and dependency
-injection shapes are deliberately omitted until the manager/composition slice;
-in particular, the implemented package-private `ExecutionPlanSource` is not a
-public consumer type. All names below remain **Draft and unimplemented**.
+The root exports `createRunManager()` for unpublished local evaluation. Its
+options are `applicationName`, temporary `systemDatabaseUrl`, `executor`,
+`ids`, exact `plans`, and `snapshots: RunSnapshotStore`.
 
 ```ts
-// `runs` is supplied by the future public composition boundary.
-// Its exact construction options are intentionally not specified yet.
+import { createRunManager } from '@revisium/revo-run';
+
+const runs = createRunManager({
+  applicationName: 'example',
+  systemDatabaseUrl: process.env.DBOS_SYSTEM_DATABASE_URL!,
+  executor,
+  ids,
+  plans,
+  snapshots,
+});
 
 await runs.start();
 
 const run = await runs.startRun({
-  plan: {
+  planPin: {
     id: request.planId,
     revision: request.planRevision,
     digest: request.planDigest,
   },
-  idempotencyKey: request.id,
   input: request.input,
 });
 
-const subscription = await runs.subscribe({
-  runId: run.id,
-  after: request.lastSeenCursor,
-});
-
-await publishRunProjection(subscription.initial.snapshot, subscription.initial.cursor);
-
-let cursor = subscription.initial.cursor;
-let latest = subscription.initial.snapshot;
-
-if (!latest.terminal) {
-  for await (const item of subscription) {
-    await publishRunProjection(item.snapshot, item.cursor);
-    cursor = item.cursor;
-    latest = item.snapshot;
-  }
-}
-
-const terminal = latest.terminal
-  ? latest
-  : await runs.waitForTerminal({
-      runId: run.id,
-      after: cursor,
-      signal: request.signal,
-    });
-
-await subscription.close();
-await runs.stop({ drain: true });
+const latest = await runs.getRun(run.id);
+await runs.stop();
 ```
 
-`startRun()` persists only the exact plan pin (`id`, `revision`, and `digest`). The manager uses its injected plan source to
-load that exact immutable plan for every later operation, so callers do not repeatedly supply plans and a run cannot
-silently move to a newer revision.
+The facade serializes one process-local manager lifecycle. `startRun()` admits
+an immutable copy of the exact plan pin and submits its workflow; `getRun()`
+reads the injected snapshot seam. This MVP does not provide accepted durable
+recovery, fencing, cancellation, subscriptions, or graceful drain.
 
-`start()` recovers owned work and starts manager loops. `stop()` stops new claims and can drain in-flight executions.
-Neither method owns the host process or network server.
+## Accepted durable target API
 
-## Draft public API
-
-Names and exact shapes remain **Draft and unimplemented**; the normative behavior is defined by the
-[Draft specifications](./docs/README.md).
+The following names and shapes describe the larger durable target; the
+provisional facade does not provide them. Normative target behavior is defined
+by the [Draft specifications](./docs/README.md).
 
 ```ts
 export interface RunManager {
@@ -374,9 +354,10 @@ authoritative node instances in the same causal fork scope. A gate answer target
 `RunOutput` stores durable payloads or artifact references; `RunEvent` is an audit timeline and durable subscription feed,
 not current-state authority.
 
-Core contracts contain no Prisma, NestJS, GraphQL, MCP, DBOS, queue, agent-runtime, or scripts dependency.
-`@revisium/revo-pipeline` is the only planned runtime dependency and is used only by private
-`lifecycle/pipeline/**` modules for pure graph progression. It is not installed until implementation needs its public API.
+Accepted core contracts remain provider-neutral. The provisional local MVP uses DBOS only behind private
+composition/workflow modules and `@revisium/revo-pipeline` only behind private lifecycle modules, as bounded by
+[ADR 0004](./docs/adr/0004-provisional-dbos-runner-facade.md). `systemDatabaseUrl` is temporary and must not survive
+publication or deployment without a replacement architecture decision.
 
 ## Architecture
 
@@ -419,9 +400,9 @@ wires store, ports, lifecycle, and manager into `createRunManager`.
 The architecture and its enforcement are Accepted and active. Canonical JSON v1
 and portable run contracts v1 are Stable and implemented. The internal pure
 domain foundation is implemented while its product specification remains Draft.
-The package-private executor contract slice is implemented, but executor
-runtime behavior and every RunManager behavioral API remain **Draft and
-unimplemented**.
+The package-private executor contract slice and experimental runner facade are
+implemented. The larger durable RunManager contract remains an accepted target
+whose recovery and coordination guarantees are not supplied by this MVP.
 
 ## Requirements
 

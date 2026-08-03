@@ -3,6 +3,7 @@
 ## Current architecture
 
 - [Architecture](architecture.md)
+- [Provisional local DBOS runner facade ADR](adr/0004-provisional-dbos-runner-facade.md)
 - [Accepted private pipeline progression ADR](adr/0003-private-pipeline-progression.md)
 - [Accepted RunManager boundary ADR](adr/0002-run-manager-boundary.md)
 - [Superseded run-state boundary ADR](adr/0001-run-state-boundary.md)
