@@ -1,5 +1,6 @@
-import { readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 
 import { compilePipeline, definePipeline } from '@revisium/revo-pipeline';
 
@@ -17,6 +18,16 @@ if (
   throw new Error('worker arguments are invalid');
 
 const path = (name: string): string => join(directory, name);
+const writeJson = async (file: string, value: unknown): Promise<void> => {
+  const temporaryFile = join(dirname(file), `.${basename(file)}.${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporaryFile, JSON.stringify(value));
+    await rename(temporaryFile, file);
+  } catch (error: unknown) {
+    await rm(temporaryFile, { force: true }).catch(() => undefined);
+    throw error;
+  }
+};
 const compilation = compilePipeline(
   definePipeline({
     schemaVersion: 1,
@@ -44,7 +55,7 @@ const readSnapshot = async (): Promise<RunSnapshot | undefined> => {
   }
 };
 const persist = async (snapshot: RunSnapshot): Promise<void> => {
-  await writeFile(path('snapshot.json'), JSON.stringify(snapshot));
+  await writeJson(path('snapshot.json'), snapshot);
 };
 const manager = createRunManager({
   database: { url: databaseUrl },
@@ -90,7 +101,7 @@ if (mode === 'first') {
     planPin: { id: 'plan', revision: '1', digest: 'digest' },
     input: { value: 'input' },
   });
-  await writeFile(path('accepted.json'), JSON.stringify(accepted));
+  await writeJson(path('accepted.json'), accepted);
 }
 await waitForTerminal();
 await manager.stop();
