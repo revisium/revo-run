@@ -2,11 +2,11 @@
 
 ## Status
 
-This architecture is **Accepted** and its module rules are actively enforced by
-repository validation. The package root remains runtime-empty while exporting
-Stable portable contract types. The semantic
+The durable architecture described below is **Accepted** and its module rules
+are actively enforced by repository validation. The semantic
 `@revisium/revo-run/canonical-json` subpath, package-private pure domain
-foundation, and package-private type-only Store contracts are implemented.
+foundation, package-private type-only Store contracts, and parts of lifecycle
+coordination are implemented.
 Store behavior has a logical conformance fake only; no durable adapter or
 database concurrency proof exists. Package-private executor snapshots, pure
 binding verification, fault refinements, and type-only executor ports are also
@@ -19,12 +19,15 @@ observations are prepared but are not committed without pipeline progression.
 Package-private exact plan-source, purpose-specific manager identifier, local
 clock/scheduler, and read-only owned-authority hydration contracts are also
 implemented. The private decode/reduce progression contract is Accepted by
-[ADR 0003](adr/0003-private-pipeline-progression.md), but its domain/Store
-foundation is implemented without a pipeline dependency. The dependency,
-adapter and lifecycle behavior are not implemented.
-Retry selection, cancellation invocation, terminal graph progression,
-manager/composition, and all RunManager behavioral APIs remain Draft and
-unimplemented.
+[ADR 0003](adr/0003-private-pipeline-progression.md), and the provisional MVP
+uses a private pipeline adapter for local execution.
+
+Separately, the package root implements the experimental four-method DBOS
+runner facade described by [ADR 0004](adr/0004-provisional-dbos-runner-facade.md).
+It is limited to unpublished local evaluation and provides none of the accepted
+Store, fencing, multi-manager, durable recovery, cancellation, subscription, or
+graceful-drain guarantees. Those larger manager capabilities remain the target
+architecture, not claims about the provisional MVP.
 
 ## Purpose
 
@@ -149,9 +152,9 @@ starting-cycle failure. `manager_progression_unavailable` preserves authority
 that cannot yet cross the real pipeline bridge, and `manager_recovery_failure`
 preserves authority when supervisor recovery cannot continue safely.
 
-## Public and internal surfaces
+## Accepted target public and internal surfaces
 
-The Draft public facade contains only:
+The accepted durable target contains:
 
 ```text
 createRunManager
@@ -168,6 +171,9 @@ createRunManager
 
 Claim, Start CAS, heartbeat, completion, failure, lease expiry, recovery,
 reconciliation, and pipeline progression are internal.
+
+The implemented provisional MVP exposes only `createRunManager()` and manager
+methods `start()`, `stop()`, `startRun()`, and `getRun()`.
 
 ## Claim, start, and execute
 
@@ -384,13 +390,11 @@ remain outside the construction closure.
 
 ## External boundaries
 
-Only private `lifecycle/pipeline/**` modules may depend on
-`@revisium/revo-pipeline`; the package is not installed until implementation
-needs its public JSON decoder and reducer API. Its final source is exact npm
-registry `0.0.0` after a separate publication/provenance gate; local, workspace,
-file and git substitutes are forbidden in committed evidence. Core excludes Prisma, NestJS,
-GraphQL, MCP, DBOS, queues, orchestrator, agent-runtime, and scripts
-dependencies.
+Only private `lifecycle/pipeline/**` modules may depend on `@revisium/revo-pipeline`. DBOS is confined to private
+composition/workflow modules. Both dependencies are present only for the provisional local MVP under ADR 0004;
+`systemDatabaseUrl` is temporary. Before publication or deployment they must be removed, converged onto the accepted
+architecture with its required evidence, or covered by a replacement accepted decision. Core remains independent of
+Prisma, NestJS, GraphQL, MCP, queues, orchestrator, agent-runtime, and scripts dependencies.
 
 Packed-package and declaration tests must compile positive and intentionally
 leaking transitive declaration graphs, then scan declarations reachable from

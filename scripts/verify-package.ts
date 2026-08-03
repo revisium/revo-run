@@ -130,7 +130,7 @@ import assert from 'node:assert/strict';
 import * as packageEntry from '@revisium/revo-run';
 import { canonicalizeJson, digestCanonicalJson } from '@revisium/revo-run/canonical-json';
 
-assert.deepEqual(Object.keys(packageEntry), []);
+assert.deepEqual(Object.keys(packageEntry), ['createRunManager']);
 assert.equal('RunConflict' in packageEntry, false);
 assert.equal(canonicalizeJson({ b: 1, a: 'value' }), '{"a":"value","b":1}');
 assert.equal(
@@ -391,7 +391,10 @@ try {
   assert.match(rootDeclaration, /RunArtifactReference/);
   assert.match(rootDeclaration, /RunConflict/);
   assert.match(rootDeclaration, /RunFault/);
-  assert.doesNotMatch(rootDeclaration, /createRunManager|RunManager/);
+  assert.match(rootDeclaration, /createRunManager/);
+  assert.match(rootDeclaration, /RunManager/);
+  assert.match(rootDeclaration, /RunSnapshotStore/);
+  assert.doesNotMatch(rootDeclaration, /RunProjection/);
   const portsDeclarations = readReachableDeclarations(
     join(installedPackage, 'dist/ports/index.d.ts'),
   );
@@ -435,8 +438,8 @@ try {
   );
   assert.doesNotMatch(
     reachableRootDeclarations,
-    /@revisium\/revo-pipeline|CompiledPipeline|PipelineFacts|PipelineDecision/,
-    'Packed root declarations must remain pipeline-package-free',
+    /@revisium\/revo-pipeline|@dbos-inc\/dbos-sdk|CompiledPipeline|PipelineFacts|PipelineDecision|DBOS/,
+    'Packed root declarations must remain workflow-provider and pipeline-package-free',
   );
   assert.match(reachableRootDeclarations, /compiledPipeline: JsonValue/);
   assert.match(reachableRootDeclarations, /idempotentExecution: boolean/);
@@ -478,6 +481,8 @@ try {
     'Packed canonical JSON declaration module specifiers must exclude runtime dependencies',
   );
   await linkPackage(join(root, 'node_modules'), consumerNodeModules, '@types/node');
+  await linkPackage(join(root, 'node_modules'), consumerNodeModules, '@dbos-inc/dbos-sdk');
+  await linkPackage(join(root, 'node_modules'), consumerNodeModules, '@revisium/revo-pipeline');
   await linkPackage(join(root, 'node_modules'), consumerNodeModules, 'canonicalize');
 
   await writeFile(

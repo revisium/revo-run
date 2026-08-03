@@ -18,9 +18,10 @@ Use this order when sources disagree:
 
 The architecture validator is active. The package-private pure domain layer and
 type-only storage contracts are implemented; the Store conformance harness is
-logical-only and no durable adapter exists. Ports, lifecycle, manager, and
-composition remain Draft/unimplemented. The root runtime namespace is
-intentionally empty and exports Stable portable contract types. The
+logical-only and no durable adapter exists. The accepted ports, lifecycle, manager, and composition target remains
+Draft/unimplemented. A provisional DBOS runner facade is exposed only for the unpublished `0.0.0` local MVP under
+[ADR 0004](docs/adr/0004-provisional-dbos-runner-facade.md); it is not the accepted durable RunManager or general
+recovery implementation. The root also exports Stable portable contract types. The
 `@revisium/revo-run/canonical-json` semantic subpath is Stable and implemented.
 
 ## Package ownership
@@ -113,8 +114,9 @@ revision conflict.
 
 The dependency direction is only `revo-run -> revo-pipeline`. No pipeline-owned
 type enters Run, Store, ports, manager, composition, root or the public
-lifecycle facade. The exact dependency is not installed until the private seam
-slice and must then be registry `0.0.0` after a separate publication gate.
+lifecycle facade. The provisional MVP installs the pipeline dependency for its private seam. Its pre-release version
+and DBOS dependency are local-only exceptions under ADR 0004 and must be removed, converged, or replaced before
+publication or deployment.
 
 `spec`, `errors`, `storage`, and `ports` are type-only. Unknown source layers
 fail closed.

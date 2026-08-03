@@ -1383,7 +1383,7 @@ describe('event-intent and package-private surface', () => {
     const rootSource = await import('../../src/index.js');
     const domainEntry = await import('../../src/domain/index.js');
 
-    expect(Object.keys(rootSource)).toEqual([]);
+    expect(Object.keys(rootSource)).toEqual(['createRunManager']);
     expect(Object.keys(domainEntry).sort()).toEqual([
       'applyDomainOperation',
       'applyRunProgression',

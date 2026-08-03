@@ -15,3 +15,7 @@ export type { ManagerIdSource } from './manager-id-source.js';
 export type { ManagerLifecycleIdempotencyPurpose } from './manager-lifecycle-idempotency-purpose.js';
 export type { ResolvedExecutor } from './resolved-executor.js';
 export type { ScheduledTask } from './scheduled-task.js';
+export type { RunExecutor } from './run-executor.js';
+export type { RunIdSource } from './run-id-source.js';
+export type { RunPlanSource } from './run-plan-source.js';
+export type { RunSnapshotStore } from './run-snapshot-store.js';

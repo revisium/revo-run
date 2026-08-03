@@ -12,13 +12,13 @@ wins for concrete commands, package boundaries, and repository policy.
 - Language: strict TypeScript 7, ESM, NodeNext module resolution.
 - Protected base branch: `master`.
 - Primary local gate: `pnpm verify`.
-- The root runtime namespace is intentionally empty. It exports Stable portable
-  contract types; the canonical JSON semantic subpath, pure domain foundation,
-  and package-private type-only Store contracts are implemented. Store behavior
-  currently has logical fake conformance only; RunManager product specs/APIs
-  remain Draft.
+- The root exports Stable portable contract types and the experimental local
+  `createRunManager` facade governed by ADR 0004. Store behavior currently has
+  logical fake conformance only; the accepted durable RunManager remains Draft.
 - The exact `canonicalize@3.0.0` dependency is isolated to the canonical JSON
-  policy leaf. No product integration dependency is installed.
+  policy leaf. The provisional MVP additionally confines DBOS to private
+  composition/workflow modules and the pipeline package to private lifecycle
+  modules under ADR 0004.
 
 ## Required reading
 
@@ -121,13 +121,12 @@ Start CAS -> start_committed -> execute`. Recovery takeover requires
   execution.
 - Do not implement agents, scripts, queues, HTTP, GraphQL, MCP, CLI, or host
   orchestration in core.
-- Do not add Prisma, DBOS, pg-boss, Graphile Worker, Nest, GraphQL, or an
-  orchestrator dependency.
-- The only planned runtime dependency is `@revisium/revo-pipeline`, reachable
-  only from private `src/lifecycle/pipeline/**` through public package
-  contracts. `src/lifecycle/index.ts` stays pipeline-free, and manager imports
-  only that index with explicit contracts, never `Parameters<>`/`ReturnType<>`
-  inference. It is not installed until real lifecycle code needs it.
+- Do not add Prisma, pg-boss, Graphile Worker, Nest, GraphQL, or an orchestrator dependency. DBOS is permitted only
+  for the expiring unpublished local MVP described by ADR 0004 and must remain behind private composition/workflow boundaries.
+- `@revisium/revo-pipeline` remains reachable only from private
+  `src/lifecycle/pipeline/**` through public package contracts.
+  `src/lifecycle/index.ts` stays pipeline-free, and manager imports only that
+  index with explicit contracts, never `Parameters<>`/`ReturnType<>` inference.
 - The final dependency source MUST be exact npm registry `0.0.0`. Publication,
   tag and release require their own human gate. Workspace, link, file, git,
   archive, vendored and alias substitutes are forbidden in committed evidence.
