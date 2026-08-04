@@ -1,6 +1,6 @@
 {
   "name": "@revisium/revo-run",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Reusable durable multi-run manager for Revo.",
   "homepage": "https://github.com/revisium/revo-run#readme",
   "bugs": {
