@@ -72,9 +72,15 @@ describe('pipeline continuation', () => {
     expect(executeCandidate).toHaveBeenCalledTimes(2);
   });
 
-  it('frames deterministic child IDs without tuple collisions', () => {
+  it('frames child ID components without tuple collisions', () => {
     expect(childWorkflowId('a', 'bc')).not.toBe(childWorkflowId('ab', 'c'));
+  });
+
+  it('creates deterministic child IDs', () => {
     expect(childWorkflowId('a', 'bc')).toBe(childWorkflowId('a', 'bc'));
+  });
+
+  it('keeps child IDs fixed-length for large components', () => {
     expect(childWorkflowId('x'.repeat(100_000))).toHaveLength(79);
   });
 

@@ -87,12 +87,15 @@ const manager = createRunManager({
 
 const terminalDeadline = Date.now() + 25_000;
 const waitForTerminal = async (): Promise<void> => {
-  const snapshot = await readSnapshot();
-  if (snapshot?.status === 'succeeded') return;
-  if (Date.now() >= terminalDeadline)
-    throw new Error(`Timed out waiting for recovered terminal snapshot in ${directory}.`);
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  return waitForTerminal();
+  while (true) {
+    // oxlint-disable-next-line no-await-in-loop -- recovery state is polled sequentially
+    const snapshot = await readSnapshot();
+    if (snapshot?.status === 'succeeded') return;
+    if (Date.now() >= terminalDeadline)
+      throw new Error(`Timed out waiting for recovered terminal snapshot in ${directory}.`);
+    // oxlint-disable-next-line no-await-in-loop -- each recovery attempt waits before retrying
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
 };
 
 await manager.start();

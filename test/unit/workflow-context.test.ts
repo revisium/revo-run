@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const dbos = vi.hoisted(() => ({
   registrations: [] as string[],
@@ -19,7 +19,10 @@ vi.mock('@dbos-inc/dbos-sdk', () => ({
   },
 }));
 
-import { createWorkflowRuntime } from '../../src/workflow/create-workflow-runtime.js';
+import {
+  createWorkflowRuntime,
+  type WorkflowRuntime,
+} from '../../src/workflow/create-workflow-runtime.js';
 import { WorkflowRegistrationHarness } from '../support/workflow-registration-harness.js';
 
 const options = () => ({
@@ -41,33 +44,54 @@ const options = () => ({
   },
 });
 
-describe('workflow registration and context', () => {
-  it('registers once and dispatches only through the currently bound dependencies', async () => {
-    const harness = new WorkflowRegistrationHarness(dbos.registrations, dbos.workflows);
-    const firstOptions = options();
-    const first = createWorkflowRuntime(firstOptions);
-    const task = harness.taskWorkflow();
+const harness = new WorkflowRegistrationHarness(dbos.registrations, dbos.workflows);
+const activeRuntimes: WorkflowRuntime[] = [];
+const createRuntime = (dependencies = options()): WorkflowRuntime => {
+  const runtime = createWorkflowRuntime(dependencies);
+  activeRuntimes.push(runtime);
+  return runtime;
+};
 
-    first.dispose();
+afterEach(() => {
+  for (const runtime of activeRuntimes.splice(0)) runtime.dispose();
+});
+
+describe('workflow registration and context', () => {
+  it('registers each DBOS workflow once across runtime replacements', () => {
+    createRuntime().dispose();
+    createRuntime();
+
+    expect(harness.registrations).toEqual([
+      'revo-run.task.v1',
+      'revo-run.candidate.v1',
+      'revo-run.run.v1',
+    ]);
+  });
+
+  it('rejects workflow dispatch after its context is disposed', async () => {
+    const runtime = createRuntime();
+    const task = harness.taskWorkflow();
+    runtime.dispose();
+
     await expect(task('run-1', 'task', null)).rejects.toThrow(
       'Run manager workflow context is not active.',
     );
+  });
 
+  it('dispatches through replacement dependencies without using stale dependencies', async () => {
+    const firstOptions = options();
+    createRuntime(firstOptions).dispose();
     const secondOptions = options();
-    const second = createWorkflowRuntime(secondOptions);
+    createRuntime(secondOptions);
+    const task = harness.taskWorkflow();
+
     await expect(task('run-2', 'task', null)).resolves.toBe('completed');
+
     expect(firstOptions.executor.execute).not.toHaveBeenCalled();
     expect(secondOptions.executor.execute).toHaveBeenCalledWith({
       runId: 'run-2',
       nodeKey: 'task',
       input: null,
     });
-    expect(harness.registrations).toEqual([
-      'revo-run.task.v1',
-      'revo-run.candidate.v1',
-      'revo-run.run.v1',
-    ]);
-
-    second.dispose();
   });
 });
