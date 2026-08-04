@@ -1,54 +1,51 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const dbos = vi.hoisted(() => {
-  const events = new Map<string, unknown>();
+  let adoptedSubmission: { readonly status: unknown } | undefined;
+  let currentWorkflowId: string | undefined;
   let failSubmission = false;
-  let missAdmission = false;
-  let timeOutAdmission = false;
+  const statuses = new Map<string, unknown>();
   const control = {
-    events,
+    arguments: [] as unknown[][],
+    adoptNextSubmission: (status: unknown) => {
+      adoptedSubmission = { status };
+    },
     ids: [] as string[],
-    results: [] as Promise<unknown>[],
-    getEvent: vi.fn<
-      (id: string, key: string, options: { timeoutSeconds: number }) => Promise<unknown>
-    >(async (id, key) => {
-      if (timeOutAdmission) {
-        return null;
-      }
-      if (missAdmission) {
-        missAdmission = false;
-        return null;
-      }
-      return events.get(`${id}:${key}`) ?? null;
-    }),
     launch: vi.fn<() => Promise<void>>(),
+    registrations: [] as string[],
+    results: [] as Promise<unknown>[],
     setConfig: vi.fn<(configuration: unknown) => void>(),
     shutdown: vi.fn<() => Promise<void>>(),
     sleepms: vi.fn<(duration: number) => Promise<void>>(),
+    currentWorkflowId: () => currentWorkflowId,
     failNextSubmission: () => {
       failSubmission = true;
     },
-    missNextAdmission: () => {
-      missAdmission = true;
-    },
-    timeOutAdmission: () => {
-      timeOutAdmission = true;
-    },
     shouldFailSubmission: () => {
-      if (!failSubmission) {
-        return false;
-      }
+      const fail = failSubmission;
       failSubmission = false;
-      return true;
+      return fail;
     },
+    takeAdoptedSubmission: () => {
+      const adopted = adoptedSubmission;
+      adoptedSubmission = undefined;
+      return adopted;
+    },
+    setCurrentWorkflowId: (value: string | undefined) => {
+      currentWorkflowId = value;
+    },
+    setStatus: (id: string, value: unknown) => {
+      statuses.set(id, value);
+    },
+    status: (id: string): unknown => statuses.get(id) ?? null,
     reset: () => {
-      events.clear();
+      control.arguments.length = 0;
       control.ids.length = 0;
       control.results.length = 0;
+      statuses.clear();
+      adoptedSubmission = undefined;
+      currentWorkflowId = undefined;
       failSubmission = false;
-      missAdmission = false;
-      timeOutAdmission = false;
-      control.getEvent.mockClear();
       control.launch.mockReset();
       control.setConfig.mockClear();
       control.shutdown.mockReset();
@@ -60,19 +57,20 @@ const dbos = vi.hoisted(() => {
 
 vi.mock('@dbos-inc/dbos-sdk', () => ({
   DBOS: {
-    getEvent: dbos.getEvent,
+    get workflowID() {
+      return dbos.currentWorkflowId();
+    },
+    getWorkflowStatus: vi.fn<(id: string) => Promise<unknown>>(async (id) => dbos.status(id)),
     launch: dbos.launch,
     registerWorkflow: <Arguments extends unknown[], Result>(
       workflow: (...arguments_: Arguments) => Promise<Result>,
-    ) => workflow,
+      options: { name: string },
+    ) => {
+      dbos.registrations.push(options.name);
+      return workflow;
+    },
     runStep: <Result>(operation: () => Promise<Result>) => operation(),
     setConfig: dbos.setConfig,
-    setEvent: async (key: string, value: unknown) => {
-      const id = dbos.ids.at(-1);
-      if (id) {
-        dbos.events.set(`${id}:${key}`, value);
-      }
-    },
     shutdown: dbos.shutdown,
     sleepms: dbos.sleepms,
     startWorkflow:
@@ -84,161 +82,420 @@ vi.mock('@dbos-inc/dbos-sdk', () => ({
         if (dbos.shouldFailSubmission()) {
           throw new Error('submission failed');
         }
-        if (options.workflowID) {
-          dbos.ids.push(options.workflowID);
+        const id = options.workflowID;
+        if (id === undefined) {
+          throw new Error('workflow ID missing');
         }
+        dbos.ids.push(id);
+        dbos.arguments.push(arguments_);
+        const adopted = dbos.takeAdoptedSubmission();
+        if (adopted !== undefined) {
+          dbos.setStatus(id, adopted.status);
+          return { workflowID: id };
+        }
+        const now = Date.now();
+        dbos.setStatus(id, {
+          createdAt: now,
+          input: arguments_,
+          status: 'PENDING',
+          workflowID: id,
+          workflowName: 'revo-run.run.v2',
+        });
+        dbos.setCurrentWorkflowId(id);
         const result = workflow(...arguments_);
+        dbos.setCurrentWorkflowId(undefined);
         dbos.results.push(result);
-        void result.catch(() => undefined);
-        return { getResult: () => result };
+        void result.then(
+          (output) => {
+            dbos.setStatus(id, {
+              createdAt: now,
+              input: arguments_,
+              output,
+              status: 'SUCCESS',
+              updatedAt: now + 1,
+              workflowID: id,
+              workflowName: 'revo-run.run.v2',
+            });
+          },
+          () => {
+            dbos.setStatus(id, {
+              createdAt: now,
+              error: new Error('private provider failure'),
+              input: arguments_,
+              status: 'ERROR',
+              updatedAt: now + 1,
+              workflowID: id,
+              workflowName: 'revo-run.run.v2',
+            });
+          },
+        );
+        return { workflowID: id };
       },
   },
 }));
 
-import { RunManagerScenario } from '../support/run-manager-scenario.js';
+import { createRunManager, type ExecutionPlan, type RunExecutor } from '../../src/index.js';
+import { taskExecutionPlan } from '../support/execution-plan.js';
 
-let scenario: RunManagerScenario | undefined;
-const arrangeScenario = (): RunManagerScenario => {
-  scenario = new RunManagerScenario(dbos);
-  return scenario;
+const executor = (): RunExecutor => ({
+  cancel: vi.fn<RunExecutor['cancel']>(async () => ({ status: 'not_supported' })),
+  execute: vi.fn<RunExecutor['execute']>(async () => ({
+    completion: { kind: 'task' },
+    status: 'completed',
+  })),
+  reconcile: vi.fn<RunExecutor['reconcile']>(async () => ({ status: 'not_found' })),
+});
+
+let manager: ReturnType<typeof createRunManager> | undefined;
+const arrangeManager = (runExecutor = executor()) => {
+  dbos.reset();
+  manager = createRunManager({ database: { url: 'postgresql://test' }, executor: runExecutor });
+  return { manager, runExecutor };
 };
 
 afterEach(async () => {
-  await scenario?.stop();
-  scenario = undefined;
+  await manager?.stop();
+  manager = undefined;
 });
 
-describe('run manager behavior', () => {
-  it('rejects run admission before start', async () => {
-    const manager = arrangeScenario();
+const status = (overrides: Readonly<Record<string, unknown>> = {}) => ({
+  createdAt: 1_000,
+  input: [taskExecutionPlan, { request: true }],
+  status: 'PENDING',
+  workflowID: 'run-id',
+  workflowName: 'revo-run.run.v2',
+  ...overrides,
+});
 
-    await expect(manager.startRun()).rejects.toThrow('not started');
+describe('run manager public behavior', () => {
+  it('uses one v2 workflow and returns the caller run ID unchanged after durable start', async () => {
+    const arranged = arrangeManager();
+    await arranged.manager.start();
+    const requestedRunId = 'caller/run id';
+
+    const admitted = await arranged.manager.startRun({
+      executionPlan: taskExecutionPlan,
+      input: { value: 'input' },
+      runId: requestedRunId,
+    });
+
+    expect(admitted.runId).toBe(requestedRunId);
+    expect(dbos.ids).toEqual([admitted.runId]);
+    expect(dbos.registrations).toEqual(['revo-run.run.v2']);
+    expect(dbos.arguments[0]).toEqual([taskExecutionPlan, { value: 'input' }]);
+    expect(Object.keys(admitted)).toEqual(['runId']);
   });
 
-  it('retries launch and coalesces repeated successful starts', async () => {
-    const manager = arrangeScenario();
-    manager.failNextLaunch();
-
-    await expect(manager.start()).rejects.toThrow('launch failed');
-    await Promise.all([manager.start(), manager.start()]);
-
-    expect(manager.launchCalls()).toBe(2);
-    expect(manager.configurationCalls()).toEqual([
-      [{ name: 'revo-run', systemDatabaseUrl: 'postgresql://test' }],
-      [{ name: 'revo-run', systemDatabaseUrl: 'postgresql://test' }],
-    ]);
-  });
-
-  it('assigns an ID and snapshots mutable admission data', async () => {
-    const manager = arrangeScenario();
-    await manager.start();
+  it('snapshots the execution plan and input before admission', async () => {
+    const arranged = arrangeManager();
+    await arranged.manager.start();
+    const executionPlan = structuredClone(taskExecutionPlan);
     const input = { nested: { value: 1 } };
-    const planPin = { id: 'p', revision: '1', digest: 'd' };
 
-    const admitted = await manager.startRunWith(planPin, input);
+    await arranged.manager.startRun({ executionPlan, input, runId: 'mutable-run' });
     input.nested.value = 2;
-    planPin.id = 'changed';
+    Reflect.set(executionPlan.terminalBindings, '0', {
+      nodeKey: 'changed',
+      outcome: 'changed',
+    });
 
-    expect(admitted.id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(admitted).toMatchObject({ input: { nested: { value: 1 } }, planPin: { id: 'p' } });
-    expect(Object.isFrozen(admitted.input)).toBe(true);
-    await vi.waitFor(() => expect(manager.snapshot(admitted.id)?.status).toBe('succeeded'));
+    expect(dbos.arguments[0]).toEqual([taskExecutionPlan, { nested: { value: 1 } }]);
   });
 
-  it('polls admission again after an event timeout without resubmitting', async () => {
-    const manager = arrangeScenario();
-    await manager.start();
-    manager.missNextAdmission();
+  it.each([
+    [
+      'cyclic plan',
+      () => {
+        const plan = structuredClone(taskExecutionPlan) as ExecutionPlan & { cycle?: unknown };
+        plan.cycle = plan;
+        return { executionPlan: plan, input: null, runId: 'invalid-run' };
+      },
+    ],
+    [
+      'non-finite input',
+      () => ({ executionPlan: taskExecutionPlan, input: Number.NaN, runId: 'invalid-run' }),
+    ],
+  ])('rejects %s without creating a DBOS workflow', async (_name, request) => {
+    const arranged = arrangeManager();
+    await arranged.manager.start();
 
-    const admitted = await manager.startRun();
+    await expect(arranged.manager.startRun(request())).rejects.toThrow('JSON-safe');
 
-    expect(manager.submittedWorkflowIds(admitted.id)).toHaveLength(1);
-    await vi.waitFor(() => expect(manager.snapshot(admitted.id)?.status).toBe('succeeded'));
+    expect(dbos.ids).toHaveLength(0);
   });
 
-  it('times out acknowledgement without cancelling the submitted durable run', async () => {
-    const manager = arrangeScenario();
-    await manager.start();
-    manager.timeOutAdmission();
+  it('rejects admission before start and reports durable submission failure', async () => {
+    const arranged = arrangeManager();
+    await expect(
+      arranged.manager.startRun({ executionPlan: taskExecutionPlan, input: null, runId: 'run-id' }),
+    ).rejects.toThrow('not started');
+    await arranged.manager.start();
+    dbos.failNextSubmission();
+    await expect(
+      arranged.manager.startRun({ executionPlan: taskExecutionPlan, input: null, runId: 'run-id' }),
+    ).rejects.toThrow('submission failed');
+  });
 
-    const admission = manager.startRun();
+  it('rejects an empty caller run ID before DBOS admission', async () => {
+    const arranged = arrangeManager();
+    await arranged.manager.start();
 
-    await expect(admission).rejects.toThrow('Timed out waiting 60 seconds for run');
-    expect(dbos.getEvent).toHaveBeenCalledTimes(12);
-    expect(dbos.getEvent.mock.calls.map(([, , options]) => options)).toEqual(
-      Array.from({ length: 12 }, () => ({ timeoutSeconds: 5 })),
+    await expect(
+      arranged.manager.startRun({ executionPlan: taskExecutionPlan, input: null, runId: '' }),
+    ).rejects.toThrow('non-empty');
+    expect(dbos.ids).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      'the same v2 payload',
+      status({ input: [taskExecutionPlan, { requested: true }], workflowID: 'duplicate-run' }),
+    ],
+    [
+      'a different v2 payload',
+      status({ input: [taskExecutionPlan, { other: true }], workflowID: 'duplicate-run' }),
+    ],
+    [
+      'a foreign workflow',
+      status({ workflowID: 'duplicate-run', workflowName: 'foreign.workflow.v1' }),
+    ],
+  ])('rejects a run ID already used by %s without starting another effect', async (_name, row) => {
+    const execute = vi.fn<RunExecutor['execute']>(async () => ({
+      completion: { kind: 'task' },
+      status: 'completed',
+    }));
+    const arranged = arrangeManager({ ...executor(), execute });
+    dbos.setStatus('duplicate-run', row);
+    await arranged.manager.start();
+
+    await expect(
+      arranged.manager.startRun({
+        executionPlan: taskExecutionPlan,
+        input: { requested: true },
+        runId: 'duplicate-run',
+      }),
+    ).rejects.toThrow('already in use');
+
+    expect(dbos.ids).toHaveLength(0);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'different input',
+      status({ input: [taskExecutionPlan, { other: true }], workflowID: 'racing-run' }),
+    ],
+    [
+      'a foreign workflow name',
+      status({
+        input: [taskExecutionPlan, { requested: true }],
+        workflowID: 'racing-run',
+        workflowName: 'foreign.workflow.v1',
+      }),
+    ],
+  ])('rejects post-admission adoption of %s without executing it', async (_name, row) => {
+    const execute = vi.fn<RunExecutor['execute']>(async () => ({
+      completion: { kind: 'task' },
+      status: 'completed',
+    }));
+    const arranged = arrangeManager({ ...executor(), execute });
+    dbos.adoptNextSubmission(row);
+    await arranged.manager.start();
+
+    await expect(
+      arranged.manager.startRun({
+        executionPlan: taskExecutionPlan,
+        input: { requested: true },
+        runId: 'racing-run',
+      }),
+    ).rejects.toThrow('conflicts with existing workflow data');
+
+    expect(dbos.ids).toEqual(['racing-run']);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('allows identical concurrent v2 submissions to converge after admission', async () => {
+    const input = { requested: true };
+    const execute = vi.fn<RunExecutor['execute']>(async () => ({
+      completion: { kind: 'task' },
+      status: 'completed',
+    }));
+    const arranged = arrangeManager({ ...executor(), execute });
+    dbos.adoptNextSubmission(
+      status({ input: [taskExecutionPlan, input], workflowID: 'converged-run' }),
     );
-    expect(dbos.ids).toHaveLength(4);
-    await vi.waitFor(() => expect(manager.latestSnapshot()?.status).toBe('succeeded'));
+    await arranged.manager.start();
+
+    await expect(
+      arranged.manager.startRun({
+        executionPlan: taskExecutionPlan,
+        input,
+        runId: 'converged-run',
+      }),
+    ).resolves.toEqual({ runId: 'converged-run' });
+
+    expect(dbos.ids).toEqual(['converged-run']);
+    expect(execute).not.toHaveBeenCalled();
   });
 
-  it.each(['pending', 'running', 'succeeded'] as const)(
-    'retries %s projection with deterministic backoff',
-    async (status) => {
-      const manager = arrangeScenario();
-      await manager.start();
-      manager.failProjection(status, 2);
+  it.each([
+    ['ENQUEUED', 'pending'],
+    ['DELAYED', 'pending'],
+    ['PENDING', 'running'],
+  ] as const)('maps DBOS %s to public %s', async (dbosStatus, runStatus) => {
+    const arranged = arrangeManager();
+    dbos.setStatus('run-id', status({ status: dbosStatus }));
+    await arranged.manager.start();
 
-      const admitted = await manager.startRun();
+    const snapshot = await arranged.manager.getRun('run-id');
 
-      await vi.waitFor(() => expect(manager.snapshot(admitted.id)?.status).toBe('succeeded'));
-      expect(manager.retryDelays()).toEqual([100, 200]);
-    },
-  );
-
-  it('does not re-execute work or change outcome during terminal projection retries', async () => {
-    const manager = arrangeScenario();
-    await manager.start();
-    manager.failProjection('succeeded', 2);
-    manager.changeExecutorOutcomeDuringTerminalProjectionFailure();
-
-    const admitted = await manager.startRun();
-
-    await vi.waitFor(() => expect(manager.snapshot(admitted.id)?.status).toBe('succeeded'));
-    expect(manager.latestSnapshot()).toMatchObject({ status: 'succeeded' });
-    expect(manager.executorCalls()).toBe(3);
+    expect(snapshot).toMatchObject({
+      createdAt: new Date(1_000),
+      executionPlan: taskExecutionPlan,
+      id: 'run-id',
+      input: { request: true },
+      status: runStatus,
+      updatedAt: new Date(1_000),
+    });
   });
 
-  it('reports workflow submission failure', async () => {
-    const manager = arrangeScenario();
-    await manager.start();
-    manager.failNextSubmission();
-
-    await expect(manager.startRun()).rejects.toThrow('submission failed');
-  });
-
-  it('projects a failed run when the executor fails', async () => {
-    const manager = arrangeScenario();
-    await manager.start();
-    manager.executorFails();
-
-    const admitted = await manager.startRun();
-
-    await vi.waitFor(() => expect(manager.snapshot(admitted.id)?.status).toBe('failed'));
-  });
-
-  it('projects an invalid compiled plan as a failed run', async () => {
-    const manager = arrangeScenario();
-    await manager.start();
-    manager.useInvalidPlan();
-
-    const admitted = await manager.startRun();
-
-    await vi.waitFor(() =>
-      expect(manager.snapshot(admitted.id)?.error).toContain('invalid compiled'),
+  it('maps a valid terminal envelope and converts both DBOS dates', async () => {
+    const arranged = arrangeManager();
+    dbos.setStatus(
+      'run-id',
+      status({
+        output: {
+          kind: 'revo-run.terminal.v1',
+          result: { outcome: 'succeeded' },
+          status: 'succeeded',
+        },
+        status: 'SUCCESS',
+        updatedAt: 2_000,
+      }),
     );
+    await arranged.manager.start();
+
+    await expect(arranged.manager.getRun('run-id')).resolves.toMatchObject({
+      createdAt: new Date(1_000),
+      result: { outcome: 'succeeded' },
+      status: 'succeeded',
+      updatedAt: new Date(2_000),
+    });
   });
 
-  it('blocks operations after shutdown failure until shutdown retry succeeds', async () => {
-    const manager = arrangeScenario();
-    await manager.start();
-    manager.failNextShutdown();
+  it.each([
+    ['ERROR', 'workflow_failed'],
+    ['MAX_RECOVERY_ATTEMPTS_EXCEEDED', 'recovery_exhausted'],
+    ['UNKNOWN', 'invalid_workflow_state'],
+  ] as const)('maps DBOS %s to sanitized %s', async (dbosStatus, code) => {
+    const arranged = arrangeManager();
+    dbos.setStatus(
+      'run-id',
+      status({ error: new Error('secret stack and provider details'), status: dbosStatus }),
+    );
+    await arranged.manager.start();
 
-    await expect(manager.stop()).rejects.toThrow('shutdown failed');
-    await expect(manager.start()).rejects.toThrow('shutdown state is uncertain');
-    await expect(manager.startRun()).rejects.toThrow('not started');
+    const snapshot = await arranged.manager.getRun('run-id');
 
-    await Promise.all([manager.stop(), manager.stop()]);
-    expect(manager.shutdownCalls()).toBe(2);
+    expect(snapshot).toMatchObject({ error: { code }, status: 'failed' });
+    expect(JSON.stringify(snapshot)).not.toContain('secret');
+  });
+
+  it('maps DBOS cancellation without an error field', async () => {
+    const arranged = arrangeManager();
+    dbos.setStatus('run-id', status({ error: new Error('private'), status: 'CANCELLED' }));
+    await arranged.manager.start();
+
+    const snapshot = await arranged.manager.getRun('run-id');
+
+    expect(snapshot).toMatchObject({ status: 'cancelled' });
+    expect(snapshot).not.toHaveProperty('error');
+  });
+
+  it.each([
+    { kind: 'wrong', result: null, status: 'succeeded' },
+    { kind: 'revo-run.terminal.v1', status: 'succeeded' },
+    { error: { code: 'provider_secret' }, kind: 'revo-run.terminal.v1', status: 'failed' },
+    { error: { code: 'execution_failed' }, kind: 'revo-run.terminal.v1', status: 'failed' },
+    { kind: 'revo-run.terminal.v1', result: undefined, status: 'succeeded' },
+  ])('maps malformed SUCCESS output to invalid_workflow_state', async (output) => {
+    const arranged = arrangeManager();
+    dbos.setStatus('run-id', status({ output, status: 'SUCCESS' }));
+    await arranged.manager.start();
+
+    await expect(arranged.manager.getRun('run-id')).resolves.toMatchObject({
+      error: { code: 'invalid_workflow_state' },
+      status: 'failed',
+    });
+  });
+
+  it.each([
+    [{ kind: 'revo-run.terminal.v1', status: 'cancelled' }, 'cancelled', undefined],
+    [
+      {
+        error: { code: 'execution_failed', message: 'Bounded execution failure.' },
+        kind: 'revo-run.terminal.v1',
+        status: 'failed',
+      },
+      'failed',
+      'execution_failed',
+    ],
+    [
+      {
+        error: { code: 'invalid_workflow_state' },
+        kind: 'revo-run.terminal.v1',
+        status: 'failed',
+      },
+      'failed',
+      'invalid_workflow_state',
+    ],
+  ] as const)('maps each valid private terminal envelope', async (output, runStatus, code) => {
+    const arranged = arrangeManager();
+    dbos.setStatus('run-id', status({ output, status: 'SUCCESS' }));
+    await arranged.manager.start();
+
+    const snapshot = await arranged.manager.getRun('run-id');
+
+    expect(snapshot?.status).toBe(runStatus);
+    expect(snapshot?.error?.code).toBe(code);
+  });
+
+  it('retains a bounded executor failure message in the public snapshot', async () => {
+    const arranged = arrangeManager();
+    dbos.setStatus(
+      'run-id',
+      status({
+        output: {
+          error: { code: 'execution_failed', message: 'External execution was rejected.' },
+          kind: 'revo-run.terminal.v1',
+          status: 'failed',
+        },
+        status: 'SUCCESS',
+      }),
+    );
+    await arranged.manager.start();
+
+    await expect(arranged.manager.getRun('run-id')).resolves.toMatchObject({
+      error: { code: 'execution_failed', message: 'External execution was rejected.' },
+      status: 'failed',
+    });
+  });
+
+  it('guards workflow names and returns undefined for an absent run', async () => {
+    const arranged = arrangeManager();
+    dbos.setStatus('foreign', status({ workflowID: 'foreign', workflowName: 'foreign.v1' }));
+    await arranged.manager.start();
+
+    await expect(arranged.manager.getRun('foreign')).resolves.toBeUndefined();
+    await expect(arranged.manager.getRun('absent')).resolves.toBeUndefined();
+  });
+
+  it('accepts any non-empty run ID without format assumptions', async () => {
+    const arranged = arrangeManager();
+    const runId = 'external/string with spaces';
+    dbos.setStatus(runId, status({ workflowID: runId }));
+    await arranged.manager.start();
+
+    await expect(arranged.manager.getRun(runId)).resolves.toMatchObject({ id: runId });
   });
 });

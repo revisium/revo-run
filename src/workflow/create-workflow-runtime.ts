@@ -1,41 +1,39 @@
-import { DBOS } from '@dbos-inc/dbos-sdk';
+import { isDeepStrictEqual } from 'node:util';
 
-import type { CreateRunManagerOptions, RunSnapshot } from '../types.js';
-import { registerWorkflows } from './register-workflows.js';
+import { DBOS } from '@dbos-inc/dbos-sdk';
+import type { JsonValue } from '@revisium/revo-pipeline';
+
+import type { CreateRunManagerOptions, ExecutionPlan, RunSnapshot } from '../types.js';
+import { mapWorkflowStatus } from './map-workflow-status.js';
+import { registerWorkflows, RUN_WORKFLOW_NAME } from './register-workflows.js';
 import { bindWorkflowContext } from './workflow-context.js';
 
 const APPLICATION_NAME = 'revo-run';
+
+interface AdmissionStatus {
+  readonly input?: unknown[];
+  readonly workflowName: string;
+}
+
+const matchesAdmission = (
+  status: AdmissionStatus | null,
+  executionPlan: ExecutionPlan,
+  input: JsonValue,
+): boolean =>
+  status !== null &&
+  status.workflowName === RUN_WORKFLOW_NAME &&
+  status.input?.length === 2 &&
+  isDeepStrictEqual(status.input[0], executionPlan) &&
+  isDeepStrictEqual(status.input[1], input);
 
 export interface WorkflowRuntime {
   configure(): void;
   launch(): Promise<void>;
   shutdown(): Promise<void>;
   dispose(): void;
-  submit(snapshot: RunSnapshot): Promise<RunAdmission>;
+  submit(runId: string, executionPlan: ExecutionPlan, input: JsonValue): Promise<void>;
+  get(runId: string): Promise<RunSnapshot | undefined>;
 }
-
-export interface RunAdmission {
-  readonly acknowledgement: Promise<RunSnapshot>;
-}
-
-const ADMISSION_POLL_TIMEOUT_SECONDS = 5;
-const ADMISSION_POLL_ATTEMPTS = 12;
-const ADMISSION_WAIT_TIMEOUT_SECONDS = ADMISSION_POLL_TIMEOUT_SECONDS * ADMISSION_POLL_ATTEMPTS;
-
-const waitForAdmission = async (runId: string): Promise<RunSnapshot> => {
-  for (let attempt = 0; attempt < ADMISSION_POLL_ATTEMPTS; attempt += 1) {
-    // oxlint-disable-next-line no-await-in-loop -- admission polling is intentionally sequential
-    const acknowledged = await DBOS.getEvent<RunSnapshot>(runId, 'created', {
-      timeoutSeconds: ADMISSION_POLL_TIMEOUT_SECONDS,
-    });
-    if (acknowledged) {
-      return acknowledged;
-    }
-  }
-  throw new Error(
-    `Timed out waiting ${String(ADMISSION_WAIT_TIMEOUT_SECONDS)} seconds for run ${runId} admission acknowledgement; the durable run remains submitted.`,
-  );
-};
 
 export const createWorkflowRuntime = (dependencies: CreateRunManagerOptions): WorkflowRuntime => {
   const workflows = registerWorkflows();
@@ -47,9 +45,18 @@ export const createWorkflowRuntime = (dependencies: CreateRunManagerOptions): Wo
     launch: () => DBOS.launch(),
     shutdown: () => DBOS.shutdown(),
     dispose: () => context.dispose(),
-    submit: async (snapshot) => {
-      await DBOS.startWorkflow(workflows.run, { workflowID: snapshot.id })(snapshot);
-      return { acknowledgement: waitForAdmission(snapshot.id) };
+    submit: async (runId, executionPlan, input) => {
+      if ((await DBOS.getWorkflowStatus(runId)) !== null) {
+        throw new Error('Run ID is already in use.');
+      }
+      await DBOS.startWorkflow(workflows.run, { workflowID: runId })(executionPlan, input);
+      if (!matchesAdmission(await DBOS.getWorkflowStatus(runId), executionPlan, input)) {
+        throw new Error('Run admission conflicts with existing workflow data.');
+      }
+    },
+    get: async (runId) => {
+      const status = await DBOS.getWorkflowStatus(runId);
+      return status === null ? undefined : mapWorkflowStatus(status);
     },
   };
 };
