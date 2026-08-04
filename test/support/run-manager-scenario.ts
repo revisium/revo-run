@@ -31,7 +31,9 @@ const compilation = compilePipeline(
     ],
   }),
 );
-if (!compilation.ok) throw new Error('run manager scenario pipeline is invalid');
+if (!compilation.ok) {
+  throw new Error('run manager scenario pipeline is invalid');
+}
 const compiledPipeline = compilation.pipeline;
 
 export interface RunManagerDbosControl {
@@ -49,131 +51,132 @@ export interface RunManagerDbosControl {
 const planPin = { id: 'p', revision: '1', digest: 'd' };
 
 export class RunManagerScenario {
-  readonly #dbos: RunManagerDbosControl;
-  readonly #executor = vi.fn<() => Promise<{ outcome: 'completed' | 'failed' }>>();
-  readonly #manager: RunManager;
-  readonly #projectionFailures = new Map<RunSnapshot['status'], number>();
-  readonly #snapshots = new Map<string, RunSnapshot>();
-  #changeOutcomeOnTerminalProjectionFailure = false;
-  #executorOutcome: 'completed' | 'failed' = 'completed';
-  #planSource: JsonValue = compiledPipeline;
+  private readonly dbos: RunManagerDbosControl;
+  private readonly executor = vi.fn<() => Promise<{ outcome: 'completed' | 'failed' }>>();
+  private readonly manager: RunManager;
+  private readonly projectionFailures = new Map<RunSnapshot['status'], number>();
+  private readonly snapshots = new Map<string, RunSnapshot>();
+  private changeOutcomeOnTerminalProjectionFailure = false;
+  private executorOutcome: 'completed' | 'failed' = 'completed';
+  private planSource: JsonValue = compiledPipeline;
 
   constructor(dbos: RunManagerDbosControl) {
-    this.#dbos = dbos;
+    this.dbos = dbos;
     dbos.reset();
-    this.#executor.mockImplementation(async () => ({ outcome: this.#executorOutcome }));
+    this.executor.mockImplementation(async () => ({ outcome: this.executorOutcome }));
     const project = async (snapshot: RunSnapshot): Promise<void> => {
-      const remaining = this.#projectionFailures.get(snapshot.status) ?? 0;
+      const remaining = this.projectionFailures.get(snapshot.status) ?? 0;
       if (remaining > 0) {
-        this.#projectionFailures.set(snapshot.status, remaining - 1);
-        if (snapshot.status === 'succeeded' && this.#changeOutcomeOnTerminalProjectionFailure)
-          this.#executorOutcome = 'failed';
+        this.projectionFailures.set(snapshot.status, remaining - 1);
+        if (snapshot.status === 'succeeded' && this.changeOutcomeOnTerminalProjectionFailure) {
+          this.executorOutcome = 'failed';
+        }
         throw new Error('projection unavailable');
       }
-      this.#snapshots.set(snapshot.id, snapshot);
+      this.snapshots.set(snapshot.id, snapshot);
     };
-    this.#manager = createRunManager({
+    this.manager = createRunManager({
       database: { url: 'postgresql://test' },
       plans: {
         loadExact: async () => ({
-          compiledPipeline: this.#planSource,
+          compiledPipeline: this.planSource,
           taskInputs: { task: ['exact'] },
         }),
       },
-      executor: { execute: this.#executor },
+      executor: { execute: this.executor },
       snapshots: {
         create: project,
         update: project,
-        get: async (id) => this.#snapshots.get(id),
+        get: async (id) => this.snapshots.get(id),
       },
     });
   }
 
   start(): Promise<void> {
-    return this.#manager.start();
+    return this.manager.start();
   }
 
   stop(): Promise<void> {
-    return this.#manager.stop();
+    return this.manager.stop();
   }
 
   startRun(input: JsonValue = null): Promise<RunSnapshot> {
-    return this.#manager.startRun({ planPin, input });
+    return this.manager.startRun({ planPin, input });
   }
 
   startRunWith(plan: { id: string; revision: string; digest: string }, input: JsonValue) {
-    return this.#manager.startRun({ planPin: plan, input });
+    return this.manager.startRun({ planPin: plan, input });
   }
 
   snapshot(runId: string): RunSnapshot | undefined {
-    return this.#snapshots.get(runId);
+    return this.snapshots.get(runId);
   }
 
   latestSnapshot(): RunSnapshot | undefined {
-    return [...this.#snapshots.values()].at(-1);
+    return [...this.snapshots.values()].at(-1);
   }
 
   failNextLaunch(): void {
-    this.#dbos.launch.mockRejectedValueOnce(new Error('launch failed'));
+    this.dbos.launch.mockRejectedValueOnce(new Error('launch failed'));
   }
 
   failNextShutdown(): void {
-    this.#dbos.shutdown.mockRejectedValueOnce(new Error('shutdown failed'));
+    this.dbos.shutdown.mockRejectedValueOnce(new Error('shutdown failed'));
   }
 
   failNextSubmission(): void {
-    this.#dbos.failNextSubmission();
+    this.dbos.failNextSubmission();
   }
 
   missNextAdmission(): void {
-    this.#dbos.missNextAdmission();
+    this.dbos.missNextAdmission();
   }
 
   failProjection(status: RunSnapshot['status'], attempts: number): void {
-    this.#projectionFailures.set(status, attempts);
+    this.projectionFailures.set(status, attempts);
   }
 
   changeExecutorOutcomeDuringTerminalProjectionFailure(): void {
-    this.#changeOutcomeOnTerminalProjectionFailure = true;
+    this.changeOutcomeOnTerminalProjectionFailure = true;
   }
 
   executorFails(): void {
-    this.#executorOutcome = 'failed';
+    this.executorOutcome = 'failed';
   }
 
   useInvalidPlan(): void {
-    this.#planSource = null;
+    this.planSource = null;
   }
 
   executorCalls(): number {
-    return this.#executor.mock.calls.length;
+    return this.executor.mock.calls.length;
   }
 
   configurationCalls(): readonly unknown[][] {
-    return this.#dbos.setConfig.mock.calls;
+    return this.dbos.setConfig.mock.calls;
   }
 
   launchCalls(): number {
-    return this.#dbos.launch.mock.calls.length;
+    return this.dbos.launch.mock.calls.length;
   }
 
   shutdownCalls(): number {
-    return this.#dbos.shutdown.mock.calls.length;
+    return this.dbos.shutdown.mock.calls.length;
   }
 
   submittedWorkflowIds(runId: string): string[] {
-    return this.#dbos.ids.filter((id) => id === runId);
+    return this.dbos.ids.filter((id) => id === runId);
   }
 
   retryDelays(): number[] {
-    return this.#dbos.sleepms.mock.calls.map(([duration]) => duration);
+    return this.dbos.sleepms.mock.calls.map(([duration]) => duration);
   }
 
   resultMarker(): number {
-    return this.#dbos.results.length;
+    return this.dbos.results.length;
   }
 
   resultsSince(marker: number): Promise<unknown[]> {
-    return Promise.all(this.#dbos.results.slice(marker));
+    return Promise.all(this.dbos.results.slice(marker));
   }
 }

@@ -28,7 +28,9 @@ export const childWorkflowId = (...components: readonly string[]): string => {
 
 export const interpretPipeline = async (source: JsonValue, execution: PipelineExecution) => {
   const decoding = decodeCompiledPipeline(source);
-  if (!decoding.ok) throw new Error('Execution plan contains an invalid compiled pipeline.');
+  if (!decoding.ok) {
+    throw new Error('Execution plan contains an invalid compiled pipeline.');
+  }
   const nodes = new Map<string, NodeFact>();
   const verdicts: CandidateVerdict[] = [];
   const facts = (): PipelineFacts => ({
@@ -38,7 +40,9 @@ export const interpretPipeline = async (source: JsonValue, execution: PipelineEx
     values: [],
   });
   const enable = (key: string): void => {
-    if (!nodes.has(key)) nodes.set(key, { key, state: 'enabled' });
+    if (!nodes.has(key)) {
+      nodes.set(key, { key, state: 'enabled' });
+    }
   };
 
   const advance = async (): Promise<{ outcome: string; terminalNode: string }> => {

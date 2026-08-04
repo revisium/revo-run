@@ -82,16 +82,18 @@ try {
     'RunExecutor',
     'RunSnapshotStore',
     'JsonValue',
-  ])
+  ]) {
     assert.match(declaration, new RegExp(name));
+  }
   for (const forbidden of [
     'RunManagerSnapshot',
     'RunIdSource',
     'canonicalize',
     'applicationName',
     'systemDatabaseUrl',
-  ])
+  ]) {
     assert.doesNotMatch(declaration, new RegExp(forbidden));
+  }
 
   const packageSource = readFileSync(join(root, 'package.json'), 'utf8');
   assert.match(packageSource, /"exports":\s*\{\s*"\."\s*:/);
@@ -130,7 +132,24 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import('@revisium/revo-run').then(m => { if (Object.keys(m).join(',') !== 'createRunManager') process.exit(1) })",
+      `const module = await import('@revisium/revo-run');
+if (Object.keys(module).join(',') !== 'createRunManager') { process.exit(1); }
+const manager = module.createRunManager({
+  database: { url: 'postgresql://test' },
+  plans: { loadExact: async () => ({ compiledPipeline: null }) },
+  executor: { execute: async () => ({ outcome: 'completed' }) },
+  snapshots: {
+    create: async () => undefined,
+    update: async () => undefined,
+    get: async () => undefined,
+  },
+});
+if (Object.keys(manager).join(',') !== 'start,stop,startRun,getRun') { process.exit(1); }
+if (!Object.isFrozen(manager)) { process.exit(1); }
+if (Reflect.set(manager, 'state', 'started')) { process.exit(1); }
+const start = manager.start;
+if (typeof start !== 'function') { process.exit(1); }
+await manager.stop();`,
     ],
     { cwd: consumer, stdio: 'inherit' },
   );

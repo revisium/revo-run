@@ -15,7 +15,9 @@ export class WorkflowRegistrationHarness {
 
   taskWorkflow(): TaskWorkflow {
     const workflow = this.workflows.get('revo-run.task.v1');
-    if (!isTaskWorkflow(workflow)) throw new Error('task workflow was not registered');
+    if (!isTaskWorkflow(workflow)) {
+      throw new Error('task workflow was not registered');
+    }
     return workflow;
   }
 }

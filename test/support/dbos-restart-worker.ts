@@ -14,8 +14,9 @@ if (
   (mode !== 'first' && mode !== 'recover') ||
   directory === undefined ||
   databaseUrl === undefined
-)
+) {
   throw new Error('worker arguments are invalid');
+}
 
 const path = (name: string): string => join(directory, name);
 const writeJson = async (file: string, value: unknown): Promise<void> => {
@@ -44,13 +45,17 @@ const compilation = compilePipeline(
     ],
   }),
 );
-if (!compilation.ok) throw new Error('worker pipeline is invalid');
+if (!compilation.ok) {
+  throw new Error('worker pipeline is invalid');
+}
 
 const readSnapshot = async (): Promise<RunSnapshot | undefined> => {
   try {
     return parseRunSnapshot(await readFile(path('snapshot.json'), 'utf8'));
   } catch (error: unknown) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined;
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      return undefined;
+    }
     throw error;
   }
 };
@@ -66,7 +71,9 @@ const manager = createRunManager({
       try {
         count = Number(await readFile(path('executions.txt'), 'utf8'));
       } catch (error: unknown) {
-        if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+        if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
+          throw error;
+        }
       }
       await writeFile(path('executions.txt'), String(count + 1));
       return { outcome: 'completed' };
@@ -78,7 +85,9 @@ const manager = createRunManager({
     update: async (snapshot) => {
       if (snapshot.status === 'succeeded') {
         await writeFile(path('terminal-reached'), 'true');
-        if (mode === 'first') await new Promise<never>(() => undefined);
+        if (mode === 'first') {
+          await new Promise<never>(() => undefined);
+        }
       }
       await persist(snapshot);
     },
@@ -90,9 +99,12 @@ const waitForTerminal = async (): Promise<void> => {
   while (true) {
     // oxlint-disable-next-line no-await-in-loop -- recovery state is polled sequentially
     const snapshot = await readSnapshot();
-    if (snapshot?.status === 'succeeded') return;
-    if (Date.now() >= terminalDeadline)
+    if (snapshot?.status === 'succeeded') {
+      return;
+    }
+    if (Date.now() >= terminalDeadline) {
       throw new Error(`Timed out waiting for recovered terminal snapshot in ${directory}.`);
+    }
     // oxlint-disable-next-line no-await-in-loop -- each recovery attempt waits before retrying
     await new Promise((resolve) => setTimeout(resolve, 50));
   }

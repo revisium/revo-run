@@ -1,10 +1,16 @@
 import type { ExecutionPlanPin, JsonValue, RunSnapshot } from '../types.js';
 
 const copyJson = (value: JsonValue): JsonValue => {
-  if (value === null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return Object.freeze(value.map(copyJson));
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return Object.freeze(value.map(copyJson));
+  }
   const copy: Record<string, JsonValue> = {};
-  for (const [key, member] of Object.entries(value)) copy[key] = copyJson(member);
+  for (const [key, member] of Object.entries(value)) {
+    copy[key] = copyJson(member);
+  }
   return Object.freeze(copy);
 };
 

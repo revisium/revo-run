@@ -36,8 +36,11 @@ const projectSnapshot = async (snapshot: RunSnapshot): Promise<void> => {
       async () => {
         try {
           const snapshots = getWorkflowDependencies().snapshots;
-          if (snapshot.status === 'pending') await snapshots.create(snapshot);
-          else await snapshots.update(snapshot);
+          if (snapshot.status === 'pending') {
+            await snapshots.create(snapshot);
+          } else {
+            await snapshots.update(snapshot);
+          }
           return true;
         } catch {
           return false;
@@ -45,7 +48,9 @@ const projectSnapshot = async (snapshot: RunSnapshot): Promise<void> => {
       },
       { name: `project-${snapshot.status}` },
     );
-    if (delivered) return;
+    if (delivered) {
+      return;
+    }
     // oxlint-disable-next-line no-await-in-loop -- each retry waits for its deterministic backoff
     await DBOS.sleepms(Math.min(100 * 2 ** Math.min(attempt, 6), 5_000));
   }
@@ -111,7 +116,9 @@ export interface RegisteredWorkflows {
 let registeredWorkflows: RegisteredWorkflows | undefined;
 
 export const registerWorkflows = (): RegisteredWorkflows => {
-  if (registeredWorkflows) return registeredWorkflows;
+  if (registeredWorkflows) {
+    return registeredWorkflows;
+  }
 
   const task = DBOS.registerWorkflow(taskWorkflow, { name: TASK_WORKFLOW_NAME });
   const candidate = DBOS.registerWorkflow(candidateWorkflow, { name: CANDIDATE_WORKFLOW_NAME });

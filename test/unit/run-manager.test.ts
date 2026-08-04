@@ -26,7 +26,9 @@ const dbos = vi.hoisted(() => {
       missAdmission = true;
     },
     shouldFailSubmission: () => {
-      if (!failSubmission) return false;
+      if (!failSubmission) {
+        return false;
+      }
       failSubmission = false;
       return true;
     },
@@ -57,7 +59,9 @@ vi.mock('@dbos-inc/dbos-sdk', () => ({
     setConfig: dbos.setConfig,
     setEvent: async (key: string, value: unknown) => {
       const id = dbos.ids.at(-1);
-      if (id) dbos.events.set(`${id}:${key}`, value);
+      if (id) {
+        dbos.events.set(`${id}:${key}`, value);
+      }
     },
     shutdown: dbos.shutdown,
     sleepms: dbos.sleepms,
@@ -67,8 +71,12 @@ vi.mock('@dbos-inc/dbos-sdk', () => ({
         options: { workflowID?: string },
       ) =>
       async (...arguments_: Arguments) => {
-        if (dbos.shouldFailSubmission()) throw new Error('submission failed');
-        if (options.workflowID) dbos.ids.push(options.workflowID);
+        if (dbos.shouldFailSubmission()) {
+          throw new Error('submission failed');
+        }
+        if (options.workflowID) {
+          dbos.ids.push(options.workflowID);
+        }
         const result = workflow(...arguments_);
         dbos.results.push(result);
         void result.catch(() => undefined);

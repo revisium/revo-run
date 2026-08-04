@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createRunManagerWithRuntimeFactory } from '../../src/manager/create-run-manager.js';
 import { acquireProcessManagerOwnership } from '../../src/manager/process-manager-ownership.js';
-import { RunManager } from '../../src/manager/run-manager.js';
+import { RunManagerController } from '../../src/manager/run-manager.js';
 import type { RunSnapshot } from '../../src/types.js';
 import {
   FakeProcessManagerOwnership,
@@ -16,13 +16,17 @@ const snapshots = {
 };
 
 const managerFixture = (): {
-  manager: RunManager;
+  manager: RunManagerController;
   ownership: FakeProcessManagerOwnership;
   runtime: FakeWorkflowRuntime;
 } => {
   const runtime = new FakeWorkflowRuntime();
   const ownership = new FakeProcessManagerOwnership();
-  return { manager: new RunManager(runtime, ownership, snapshots), ownership, runtime };
+  return {
+    manager: new RunManagerController(runtime, ownership, snapshots),
+    ownership,
+    runtime,
+  };
 };
 
 describe('run manager lifecycle', () => {
@@ -91,6 +95,29 @@ describe('run manager lifecycle', () => {
 });
 
 describe('process manager ownership', () => {
+  it('returns a frozen public facade with closure-bound methods only', async () => {
+    const runtime = new FakeWorkflowRuntime();
+    const manager = createRunManagerWithRuntimeFactory(
+      {
+        database: { url: 'postgresql://test' },
+        plans: { loadExact: async () => ({ compiledPipeline: null }) },
+        executor: { execute: async () => ({ outcome: 'completed' }) },
+        snapshots,
+      },
+      () => runtime,
+    );
+
+    expect(Object.keys(manager)).toEqual(['start', 'stop', 'startRun', 'getRun']);
+    expect(Object.isFrozen(manager)).toBe(true);
+    expect(Reflect.set(manager, 'state', 'started')).toBe(false);
+    expect(Reflect.deleteProperty(manager, 'start')).toBe(false);
+
+    await manager.start.call(undefined);
+    expect(runtime.launchCalls()).toBe(1);
+
+    await manager.stop();
+  });
+
   it('allows one owner and allows a replacement only after release', () => {
     const first = acquireProcessManagerOwnership();
     expect(() => acquireProcessManagerOwnership()).toThrow(

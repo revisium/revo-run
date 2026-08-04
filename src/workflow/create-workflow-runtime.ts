@@ -20,7 +20,9 @@ const waitForAdmission = async (runId: string): Promise<RunSnapshot> => {
     const acknowledged = await DBOS.getEvent<RunSnapshot>(runId, 'created', {
       timeoutSeconds: 60,
     });
-    if (acknowledged) return acknowledged;
+    if (acknowledged) {
+      return acknowledged;
+    }
   }
 };
 

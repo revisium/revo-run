@@ -53,7 +53,9 @@ const createRuntime = (dependencies = options()): WorkflowRuntime => {
 };
 
 afterEach(() => {
-  for (const runtime of activeRuntimes.splice(0)) runtime.dispose();
+  for (const runtime of activeRuntimes.splice(0)) {
+    runtime.dispose();
+  }
 });
 
 describe('workflow registration and context', () => {

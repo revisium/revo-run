@@ -10,39 +10,39 @@ const deferred = (): { promise: Promise<void>; resolve: () => void } => {
 };
 
 export class FakeWorkflowRuntime implements WorkflowRuntime {
-  #configureCalls = 0;
-  #disposeCalls = 0;
-  #launchCalls = 0;
-  #launchFailure: Error | undefined;
-  #shutdownCalls = 0;
-  #shutdownFailure: Error | undefined;
-  #shutdownGate: ReturnType<typeof deferred> | undefined;
+  private configureCallCount = 0;
+  private disposeCallCount = 0;
+  private launchCallCount = 0;
+  private launchFailure: Error | undefined;
+  private shutdownCallCount = 0;
+  private shutdownFailure: Error | undefined;
+  private shutdownGate: ReturnType<typeof deferred> | undefined;
 
   configure(): void {
-    this.#configureCalls += 1;
+    this.configureCallCount += 1;
   }
 
   dispose(): void {
-    this.#disposeCalls += 1;
+    this.disposeCallCount += 1;
   }
 
   async launch(): Promise<void> {
-    this.#launchCalls += 1;
-    if (this.#launchFailure) {
-      const error = this.#launchFailure;
-      this.#launchFailure = undefined;
+    this.launchCallCount += 1;
+    if (this.launchFailure) {
+      const error = this.launchFailure;
+      this.launchFailure = undefined;
       throw error;
     }
   }
 
   async shutdown(): Promise<void> {
-    this.#shutdownCalls += 1;
-    if (this.#shutdownFailure) {
-      const error = this.#shutdownFailure;
-      this.#shutdownFailure = undefined;
+    this.shutdownCallCount += 1;
+    if (this.shutdownFailure) {
+      const error = this.shutdownFailure;
+      this.shutdownFailure = undefined;
       throw error;
     }
-    await this.#shutdownGate?.promise;
+    await this.shutdownGate?.promise;
   }
 
   async submit(snapshot: RunSnapshot): Promise<RunSnapshot> {
@@ -50,51 +50,51 @@ export class FakeWorkflowRuntime implements WorkflowRuntime {
   }
 
   failNextLaunch(error = new Error('launch failed')): void {
-    this.#launchFailure = error;
+    this.launchFailure = error;
   }
 
   failNextShutdown(error = new Error('shutdown failed')): void {
-    this.#shutdownFailure = error;
+    this.shutdownFailure = error;
   }
 
   deferShutdown(): void {
-    this.#shutdownGate = deferred();
+    this.shutdownGate = deferred();
   }
 
   completeShutdown(): void {
-    this.#shutdownGate?.resolve();
-    this.#shutdownGate = undefined;
+    this.shutdownGate?.resolve();
+    this.shutdownGate = undefined;
   }
 
   configureCalls(): number {
-    return this.#configureCalls;
+    return this.configureCallCount;
   }
 
   disposeCalls(): number {
-    return this.#disposeCalls;
+    return this.disposeCallCount;
   }
 
   launchCalls(): number {
-    return this.#launchCalls;
+    return this.launchCallCount;
   }
 
   shutdownCalls(): number {
-    return this.#shutdownCalls;
+    return this.shutdownCallCount;
   }
 }
 
 export class FakeProcessManagerOwnership {
-  #releaseCalls = 0;
+  private releaseCallCount = 0;
 
   release(): void {
-    this.#releaseCalls += 1;
+    this.releaseCallCount += 1;
   }
 
   isReleased(): boolean {
-    return this.#releaseCalls > 0;
+    return this.releaseCallCount > 0;
   }
 
   releaseCalls(): number {
-    return this.#releaseCalls;
+    return this.releaseCallCount;
   }
 }

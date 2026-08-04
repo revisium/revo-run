@@ -13,29 +13,29 @@ import type { ProcessManagerOwnership } from './process-manager-ownership.js';
 
 type RunManagerState = 'idle' | 'starting' | 'started' | 'stopping' | 'stop-failed' | 'disposed';
 
-export class RunManager implements RunManagerContract {
-  readonly #ownership: ProcessManagerOwnership;
-  readonly #runtime: WorkflowRuntime;
-  readonly #snapshots: RunSnapshotStore;
-  #state: RunManagerState = 'idle';
-  #transition = Promise.resolve();
+export class RunManagerController implements RunManagerContract {
+  private readonly ownership: ProcessManagerOwnership;
+  private readonly runtime: WorkflowRuntime;
+  private readonly snapshots: RunSnapshotStore;
+  private state: RunManagerState = 'idle';
+  private transition = Promise.resolve();
 
   constructor(
     runtime: WorkflowRuntime,
     ownership: ProcessManagerOwnership,
     snapshots: RunSnapshotStore,
   ) {
-    this.#runtime = runtime;
-    this.#ownership = ownership;
-    this.#snapshots = snapshots;
+    this.runtime = runtime;
+    this.ownership = ownership;
+    this.snapshots = snapshots;
   }
 
   start(): Promise<void> {
-    return this.#serialize(() => this.#start());
+    return this.serialize(() => this.startTransition());
   }
 
   stop(): Promise<void> {
-    return this.#serialize(() => this.#stop());
+    return this.serialize(() => this.stopTransition());
   }
 
   startRun(request: {
@@ -43,59 +43,68 @@ export class RunManager implements RunManagerContract {
     readonly input: JsonValue;
   }): Promise<RunSnapshot> {
     const snapshot = createPendingSnapshot(randomUUID(), request.planPin, request.input);
-    return this.#serialize(async () => {
-      if (this.#state !== 'started') throw new Error('Run manager is not started.');
-      return this.#runtime.submit(snapshot);
+    return this.serialize(async () => {
+      if (this.state !== 'started') {
+        throw new Error('Run manager is not started.');
+      }
+      return this.runtime.submit(snapshot);
     });
   }
 
   getRun(runId: string): Promise<RunSnapshot | undefined> {
-    return this.#snapshots.get(runId);
+    return this.snapshots.get(runId);
   }
 
-  async #start(): Promise<void> {
-    if (this.#state === 'disposed') throw new Error('Run manager has been stopped.');
-    if (this.#state === 'started') return;
-    if (this.#state === 'stop-failed')
+  private async startTransition(): Promise<void> {
+    if (this.state === 'disposed') {
+      throw new Error('Run manager has been stopped.');
+    }
+    if (this.state === 'started') {
+      return;
+    }
+    if (this.state === 'stop-failed') {
       throw new Error('Run manager shutdown state is uncertain; stop must be retried.');
+    }
 
-    this.#state = 'starting';
+    this.state = 'starting';
     try {
-      this.#runtime.configure();
-      await this.#runtime.launch();
-      this.#state = 'started';
+      this.runtime.configure();
+      await this.runtime.launch();
+      this.state = 'started';
     } catch (error: unknown) {
-      this.#state = 'idle';
+      this.state = 'idle';
       throw error;
     }
   }
 
-  async #stop(): Promise<void> {
-    if (this.#state === 'disposed') return;
-    if (this.#state === 'idle') {
-      this.#dispose();
+  private async stopTransition(): Promise<void> {
+    if (this.state === 'disposed') {
+      return;
+    }
+    if (this.state === 'idle') {
+      this.dispose();
       return;
     }
 
-    this.#state = 'stopping';
+    this.state = 'stopping';
     try {
-      await this.#runtime.shutdown();
-      this.#dispose();
+      await this.runtime.shutdown();
+      this.dispose();
     } catch (error: unknown) {
-      this.#state = 'stop-failed';
+      this.state = 'stop-failed';
       throw error;
     }
   }
 
-  #dispose(): void {
-    this.#state = 'disposed';
-    this.#runtime.dispose();
-    this.#ownership.release();
+  private dispose(): void {
+    this.state = 'disposed';
+    this.runtime.dispose();
+    this.ownership.release();
   }
 
-  #serialize<Result>(operation: () => Promise<Result>): Promise<Result> {
-    const result = this.#transition.then(operation);
-    this.#transition = result.then(
+  private serialize<Result>(operation: () => Promise<Result>): Promise<Result> {
+    const result = this.transition.then(operation);
+    this.transition = result.then(
       () => undefined,
       () => undefined,
     );

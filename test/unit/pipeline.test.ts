@@ -48,7 +48,9 @@ const compilation = compilePipeline(
     ],
   }),
 );
-if (!compilation.ok) throw new Error('fixture compilation failed');
+if (!compilation.ok) {
+  throw new Error('fixture compilation failed');
+}
 
 describe('pipeline continuation', () => {
   it('runs fork, join, consensus, and terminal semantics', async () => {
@@ -59,7 +61,9 @@ describe('pipeline continuation', () => {
     });
     const executeTask = vi.fn<(nodeKey: string) => Promise<'completed'>>(async (nodeKey) => {
       started.add(nodeKey);
-      if (started.size === 2) release();
+      if (started.size === 2) {
+        release();
+      }
       await barrier;
       return 'completed';
     });

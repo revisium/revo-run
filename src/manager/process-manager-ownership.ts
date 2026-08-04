@@ -5,14 +5,18 @@ export interface ProcessManagerOwnership {
 let activeOwner: symbol | undefined;
 
 export const acquireProcessManagerOwnership = (): ProcessManagerOwnership => {
-  if (activeOwner) throw new Error('Only one run manager may be created per process.');
+  if (activeOwner) {
+    throw new Error('Only one run manager may be created per process.');
+  }
 
   const owner = Symbol('run-manager');
   activeOwner = owner;
 
   return {
     release: () => {
-      if (activeOwner === owner) activeOwner = undefined;
+      if (activeOwner === owner) {
+        activeOwner = undefined;
+      }
     },
   };
 };

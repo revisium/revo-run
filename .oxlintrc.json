@@ -12,6 +12,7 @@
   },
   "plugins": ["typescript", "vitest"],
   "rules": {
+    "curly": ["error", "all"],
     "typescript/no-explicit-any": "error",
     "typescript/no-floating-promises": "error",
     "typescript/no-misused-promises": "error",

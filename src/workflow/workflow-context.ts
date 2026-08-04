@@ -19,12 +19,16 @@ export const bindWorkflowContext = (
 
   return {
     dispose: () => {
-      if (activeContext?.owner === owner) activeContext = undefined;
+      if (activeContext?.owner === owner) {
+        activeContext = undefined;
+      }
     },
   };
 };
 
 export const getWorkflowDependencies = (): CreateRunManagerOptions => {
-  if (!activeContext) throw new Error('Run manager workflow context is not active.');
+  if (!activeContext) {
+    throw new Error('Run manager workflow context is not active.');
+  }
   return activeContext.dependencies;
 };
