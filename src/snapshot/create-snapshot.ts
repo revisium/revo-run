@@ -1,4 +1,4 @@
-import type { ExecutionPlanPin, JsonValue, RunSnapshot } from './types.js';
+import type { ExecutionPlanPin, JsonValue, RunSnapshot } from '../types.js';
 
 const copyJson = (value: JsonValue): JsonValue => {
   if (value === null || typeof value !== 'object') return value;
@@ -8,7 +8,7 @@ const copyJson = (value: JsonValue): JsonValue => {
   return Object.freeze(copy);
 };
 
-export const createSnapshot = (
+export const createPendingSnapshot = (
   id: string,
   planPin: ExecutionPlanPin,
   input: JsonValue,
@@ -21,3 +21,26 @@ export const createSnapshot = (
     result: null,
     error: null,
   });
+
+export const createRunningSnapshot = (pending: RunSnapshot): RunSnapshot => ({
+  ...pending,
+  status: 'running',
+});
+
+export const createSucceededSnapshot = (running: RunSnapshot, result: JsonValue): RunSnapshot => ({
+  ...running,
+  status: 'succeeded',
+  result,
+  error: null,
+});
+
+export const createFailedSnapshot = (
+  running: RunSnapshot,
+  error: string,
+  result: JsonValue | null = null,
+): RunSnapshot => ({
+  ...running,
+  status: 'failed',
+  result,
+  error,
+});

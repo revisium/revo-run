@@ -8,7 +8,7 @@ import {
   type PipelineFacts,
 } from '@revisium/revo-pipeline';
 
-import type { JsonValue } from './types.js';
+import type { JsonValue } from '../types.js';
 
 export interface PipelineExecution {
   executeTask(nodeKey: string): Promise<'completed' | 'failed'>;

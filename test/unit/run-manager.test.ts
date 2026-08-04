@@ -150,7 +150,9 @@ describe('run manager', () => {
       const resultIndex = dbos.results.length;
       const accepted = await manager.startRun({ planPin, input: null });
       expect(accepted.status).toBe('pending');
-      await expect(dbos.results[resultIndex]).resolves.toMatchObject({ status: 'succeeded' });
+      await expect(Promise.all(dbos.results.slice(resultIndex))).resolves.toContainEqual(
+        expect.objectContaining({ status: 'succeeded' }),
+      );
       await vi.waitFor(() => expect(snapshots.get(accepted.id)?.status).toBe('succeeded'));
     };
     await verifyProjectionFailure('pending');

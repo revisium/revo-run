@@ -1,164 +1,130 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-const dbos = vi.hoisted(() => ({
-  launch: vi.fn<() => Promise<void>>(),
-  registrations: [] as string[],
-  shutdown: vi.fn<() => Promise<void>>(),
-  workflows: new Map<string, unknown>(),
-}));
+import { createRunManagerWithRuntimeFactory } from '../../src/manager/create-run-manager.js';
+import { acquireProcessManagerOwnership } from '../../src/manager/process-manager-ownership.js';
+import type { ProcessManagerOwnership } from '../../src/manager/process-manager-ownership.js';
+import { RunManager } from '../../src/manager/run-manager.js';
+import type { RunSnapshot } from '../../src/types.js';
+import { FakeWorkflowRuntime } from '../support/fake-workflow-runtime.js';
 
-vi.mock('@dbos-inc/dbos-sdk', () => ({
-  DBOS: {
-    launch: dbos.launch,
-    registerWorkflow: <Arguments extends unknown[], Result>(
-      workflow: (...arguments_: Arguments) => Promise<Result>,
-      options: { name: string },
-    ) => {
-      dbos.registrations.push(options.name);
-      dbos.workflows.set(options.name, workflow);
-      return workflow;
-    },
-    runStep: <Result>(operation: () => Promise<Result>) => operation(),
-    setConfig: vi.fn<(configuration: unknown) => void>(),
-    shutdown: dbos.shutdown,
-  },
-}));
-
-import { createRunManager } from '../../src/index.js';
-
-const options = () => ({
-  database: { url: 'postgresql://test' },
-  plans: {
-    loadExact: vi.fn<() => Promise<{ compiledPipeline: null }>>(async () => ({
-      compiledPipeline: null,
-    })),
-  },
-  executor: {
-    execute: vi.fn<() => Promise<{ outcome: 'completed' }>>(async () => ({
-      outcome: 'completed',
-    })),
-  },
-  snapshots: {
-    create: vi.fn<() => Promise<void>>(async () => undefined),
-    update: vi.fn<() => Promise<void>>(async () => undefined),
-    get: vi.fn<() => Promise<undefined>>(async () => undefined),
-  },
-});
-
-const deferred = (): {
-  promise: Promise<void>;
-  reject: (error: Error) => void;
-  resolve: () => void;
-} => {
-  let resolve!: () => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, reject, resolve };
+const snapshots = {
+  create: async (): Promise<void> => undefined,
+  update: async (): Promise<void> => undefined,
+  get: async (): Promise<RunSnapshot | undefined> => undefined,
 };
 
-type TaskWorkflow = (runId: string, nodeKey: string, input: null) => Promise<unknown>;
-
-const isTaskWorkflow = (value: unknown): value is TaskWorkflow => typeof value === 'function';
-
-describe('run manager process ownership', () => {
-  beforeEach(() => {
-    dbos.launch.mockReset();
-    dbos.shutdown.mockReset();
+const deferred = (): { promise: Promise<void>; resolve: () => void } => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
   });
+  return { promise, resolve };
+};
 
-  it('rejects a second manager while the first is active', async () => {
-    const manager = createRunManager(options());
-    await manager.start();
+const managerFixture = (): {
+  manager: RunManager;
+  ownership: ProcessManagerOwnership & { releases: number };
+  runtime: FakeWorkflowRuntime;
+} => {
+  const runtime = new FakeWorkflowRuntime();
+  const ownership = {
+    releases: 0,
+    release() {
+      this.releases += 1;
+    },
+  };
+  return { manager: new RunManager(runtime, ownership, snapshots), ownership, runtime };
+};
 
-    expect(() => createRunManager(options())).toThrow(
-      'Only one run manager may be created per process.',
-    );
+describe('run manager lifecycle', () => {
+  it('serializes concurrent starts and stops, then disposes exactly once', async () => {
+    const { manager, ownership, runtime } = managerFixture();
+
+    await Promise.all([manager.start(), manager.start()]);
+    expect(runtime.configureCalls).toBe(1);
+    expect(runtime.launchCalls).toBe(1);
 
     await Promise.all([manager.stop(), manager.stop()]);
-    expect(dbos.shutdown).toHaveBeenCalledOnce();
+    expect(runtime.shutdownCalls).toBe(1);
+    expect(runtime.disposeCalls).toBe(1);
+    expect(ownership.releases).toBe(1);
   });
 
-  it('retains ownership until shutdown completes and permanently stops the old manager', async () => {
-    const shutdown = deferred();
-    dbos.shutdown.mockReturnValueOnce(shutdown.promise);
-    const manager = createRunManager(options());
+  it('does not dispose or release while shutdown is in progress', async () => {
+    const stopping = deferred();
+    const { manager, ownership, runtime } = managerFixture();
+    runtime.shutdownResult = stopping.promise;
     await manager.start();
 
-    const stopping = manager.stop();
-    await vi.waitFor(() => expect(dbos.shutdown).toHaveBeenCalledOnce());
-    expect(() => createRunManager(options())).toThrow(
-      'Only one run manager may be created per process.',
-    );
+    const stop = manager.stop();
+    await vi.waitFor(() => expect(runtime.shutdownCalls).toBe(1));
+    expect(runtime.disposeCalls).toBe(0);
+    expect(ownership.releases).toBe(0);
 
-    shutdown.resolve();
-    await stopping;
-    const replacement = createRunManager(options());
+    stopping.resolve();
+    await stop;
+    expect(runtime.disposeCalls).toBe(1);
+    expect(ownership.releases).toBe(1);
+  });
+
+  it('keeps ownership after failures until a completed stop', async () => {
+    const startFailure = managerFixture();
+    startFailure.runtime.launchResult = Promise.reject(new Error('launch failed'));
+    await expect(startFailure.manager.start()).rejects.toThrow('launch failed');
+    expect(startFailure.ownership.releases).toBe(0);
+    await startFailure.manager.stop();
+    expect(startFailure.ownership.releases).toBe(1);
+
+    const stopFailure = managerFixture();
+    await stopFailure.manager.start();
+    stopFailure.runtime.shutdownResult = Promise.reject(new Error('shutdown failed'));
+    await expect(stopFailure.manager.stop()).rejects.toThrow('shutdown failed');
+    expect(stopFailure.ownership.releases).toBe(0);
+    await expect(stopFailure.manager.start()).rejects.toThrow('shutdown state is uncertain');
+    stopFailure.runtime.shutdownResult = Promise.resolve();
+    await stopFailure.manager.stop();
+    expect(stopFailure.ownership.releases).toBe(1);
+  });
+
+  it('rejects operations after disposal', async () => {
+    const { manager } = managerFixture();
+    await manager.stop();
+
     await expect(manager.start()).rejects.toThrow('Run manager has been stopped.');
     await expect(
       manager.startRun({ planPin: { id: 'p', revision: '1', digest: 'd' }, input: null }),
     ).rejects.toThrow('Run manager is not started.');
-    await replacement.stop();
   });
+});
 
-  it('registers workflows once and dispatches them through only the current manager', async () => {
-    const firstOptions = options();
-    const first = createRunManager(firstOptions);
-    const task = dbos.workflows.get('revo-run.task.v1');
-    if (!isTaskWorkflow(task)) throw new Error('task workflow was not registered');
-
-    await first.stop();
-    await expect(task('run-1', 'task', null)).rejects.toThrow(
-      'Run manager workflow context is not active.',
-    );
-
-    const secondOptions = options();
-    const second = createRunManager(secondOptions);
-    await expect(task('run-2', 'task', null)).resolves.toBe('completed');
-    expect(firstOptions.executor.execute).not.toHaveBeenCalled();
-    expect(secondOptions.executor.execute).toHaveBeenCalledWith({
-      runId: 'run-2',
-      nodeKey: 'task',
-      input: null,
-    });
-    expect(dbos.registrations).toEqual([
-      'revo-run.task.v1',
-      'revo-run.candidate.v1',
-      'revo-run.run.v1',
-    ]);
-
-    await second.stop();
-  });
-
-  it('retains ownership after start failure until stop completes', async () => {
-    dbos.launch.mockRejectedValueOnce(new Error('launch failed'));
-    const manager = createRunManager(options());
-
-    await expect(manager.start()).rejects.toThrow('launch failed');
-    expect(() => createRunManager(options())).toThrow(
+describe('process manager ownership', () => {
+  it('allows one owner and allows a replacement only after release', () => {
+    const first = acquireProcessManagerOwnership();
+    expect(() => acquireProcessManagerOwnership()).toThrow(
       'Only one run manager may be created per process.',
     );
+    first.release();
 
-    await manager.stop();
-    const replacement = createRunManager(options());
-    await replacement.stop();
+    const replacement = acquireProcessManagerOwnership();
+    replacement.release();
   });
 
-  it('retains ownership after stop failure and releases it after a successful retry', async () => {
-    dbos.shutdown.mockRejectedValueOnce(new Error('shutdown failed'));
-    const manager = createRunManager(options());
-    await manager.start();
+  it('releases ownership when runtime construction fails', () => {
+    expect(() =>
+      createRunManagerWithRuntimeFactory(
+        {
+          database: { url: 'postgresql://test' },
+          plans: { loadExact: async () => ({ compiledPipeline: null }) },
+          executor: { execute: async () => ({ outcome: 'completed' }) },
+          snapshots,
+        },
+        () => {
+          throw new Error('runtime construction failed');
+        },
+      ),
+    ).toThrow('runtime construction failed');
 
-    await expect(manager.stop()).rejects.toThrow('shutdown failed');
-    expect(() => createRunManager(options())).toThrow(
-      'Only one run manager may be created per process.',
-    );
-
-    await Promise.all([manager.stop(), manager.stop()]);
-    expect(dbos.shutdown).toHaveBeenCalledTimes(2);
-    const replacement = createRunManager(options());
-    await replacement.stop();
+    const replacement = acquireProcessManagerOwnership();
+    replacement.release();
   });
 });

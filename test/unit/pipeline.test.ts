@@ -1,8 +1,8 @@
 import { compilePipeline, definePipeline } from '@revisium/revo-pipeline';
 import { describe, expect, it, vi } from 'vitest';
 
-import { childWorkflowId, interpretPipeline } from '../../src/pipeline.js';
-import { createSnapshot } from '../../src/snapshot.js';
+import { childWorkflowId, interpretPipeline } from '../../src/pipeline/interpret-pipeline.js';
+import { createPendingSnapshot } from '../../src/snapshot/create-snapshot.js';
 
 const compilation = compilePipeline(
   definePipeline({
@@ -89,7 +89,7 @@ describe('pipeline continuation', () => {
 
   it('defensively copies arrays and primitive values', () => {
     const input = [{ value: 1 }, true];
-    const snapshot = createSnapshot('id', { id: 'p', revision: '1', digest: 'd' }, input);
+    const snapshot = createPendingSnapshot('id', { id: 'p', revision: '1', digest: 'd' }, input);
     input[0] = false;
     expect(snapshot.input).toEqual([{ value: 1 }, true]);
     expect(Object.isFrozen(snapshot.input)).toBe(true);
