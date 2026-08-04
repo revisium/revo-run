@@ -8,44 +8,60 @@ const RUN_WORKFLOW_NAME = 'revo-run.run.v1';
 const TASK_WORKFLOW_NAME = 'revo-run.task.v1';
 const CANDIDATE_WORKFLOW_NAME = 'revo-run.candidate.v1';
 
-export const createWorkflowRuntime = (dependencies: CreateRunManagerOptions) => {
-  const waitForAdmission = async (runId: string): Promise<RunSnapshot> => {
-    const acknowledged = await DBOS.getEvent<RunSnapshot>(runId, 'created', {
-      timeoutSeconds: 60,
-    });
-    return acknowledged ?? waitForAdmission(runId);
-  };
-  const project = async (snapshot: RunSnapshot, attempt = 0): Promise<void> => {
-    const delivered = await DBOS.runStep(
-      async () => {
-        try {
-          if (snapshot.status === 'pending') await dependencies.snapshots.create(snapshot);
-          else await dependencies.snapshots.update(snapshot);
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      { name: `project-${snapshot.status}` },
-    );
-    if (delivered) return;
-    await DBOS.sleepms(Math.min(100 * 2 ** Math.min(attempt, 6), 5_000));
-    return project(snapshot, attempt + 1);
-  };
+let activeContext:
+  | { readonly dependencies: CreateRunManagerOptions; readonly owner: symbol }
+  | undefined;
+
+const currentDependencies = (): CreateRunManagerOptions => {
+  if (!activeContext) throw new Error('Run manager workflow context is not active.');
+  return activeContext.dependencies;
+};
+
+const waitForAdmission = async (runId: string): Promise<RunSnapshot> => {
+  const acknowledged = await DBOS.getEvent<RunSnapshot>(runId, 'created', {
+    timeoutSeconds: 60,
+  });
+  return acknowledged ?? waitForAdmission(runId);
+};
+
+const project = async (snapshot: RunSnapshot, attempt = 0): Promise<void> => {
+  const delivered = await DBOS.runStep(
+    async () => {
+      try {
+        const dependencies = currentDependencies();
+        if (snapshot.status === 'pending') await dependencies.snapshots.create(snapshot);
+        else await dependencies.snapshots.update(snapshot);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { name: `project-${snapshot.status}` },
+  );
+  if (delivered) return;
+  await DBOS.sleepms(Math.min(100 * 2 ** Math.min(attempt, 6), 5_000));
+  return project(snapshot, attempt + 1);
+};
+
+const registerWorkflows = () => {
   const task = DBOS.registerWorkflow(
     async (runId: string, nodeKey: string, input: JsonValue) =>
       (
-        await DBOS.runStep(() => dependencies.executor.execute({ runId, nodeKey, input }), {
-          name: 'execute',
-        })
+        await DBOS.runStep(
+          () => currentDependencies().executor.execute({ runId, nodeKey, input }),
+          {
+            name: 'execute',
+          },
+        )
       ).outcome,
     { name: TASK_WORKFLOW_NAME },
   );
+
   const candidate = DBOS.registerWorkflow(
     async (runId: string, nodeKey: string, name: string, input: JsonValue) =>
       (
         await DBOS.runStep(
-          () => dependencies.executor.execute({ runId, nodeKey, candidate: name, input }),
+          () => currentDependencies().executor.execute({ runId, nodeKey, candidate: name, input }),
           { name: 'execute' },
         )
       ).outcome === 'completed'
@@ -53,6 +69,7 @@ export const createWorkflowRuntime = (dependencies: CreateRunManagerOptions) => 
         : ('reject' as const),
     { name: CANDIDATE_WORKFLOW_NAME },
   );
+
   const run = DBOS.registerWorkflow(
     async (created: RunSnapshot): Promise<RunSnapshot> => {
       await DBOS.setEvent('created', created);
@@ -61,9 +78,10 @@ export const createWorkflowRuntime = (dependencies: CreateRunManagerOptions) => 
       await project(running);
       let terminal: RunSnapshot;
       try {
-        const plan = await DBOS.runStep(() => dependencies.plans.loadExact(created.planPin), {
-          name: 'load-plan',
-        });
+        const plan = await DBOS.runStep(
+          () => currentDependencies().plans.loadExact(created.planPin),
+          { name: 'load-plan' },
+        );
         const result = await interpretPipeline(plan.compiledPipeline, {
           executeTask: async (nodeKey) => {
             const handle = await DBOS.startWorkflow(task, {
@@ -99,13 +117,26 @@ export const createWorkflowRuntime = (dependencies: CreateRunManagerOptions) => 
     { name: RUN_WORKFLOW_NAME },
   );
 
+  return { run };
+};
+
+let registeredWorkflows: ReturnType<typeof registerWorkflows> | undefined;
+
+export const createWorkflowRuntime = (dependencies: CreateRunManagerOptions) => {
+  const workflows = (registeredWorkflows ??= registerWorkflows());
+  const owner = Symbol('workflow-runtime');
+  activeContext = { dependencies, owner };
+
   return {
     configure: () =>
       DBOS.setConfig({ name: APPLICATION_NAME, systemDatabaseUrl: dependencies.database.url }),
     launch: () => DBOS.launch(),
     shutdown: () => DBOS.shutdown(),
+    dispose: () => {
+      if (activeContext?.owner === owner) activeContext = undefined;
+    },
     submit: async (snapshot: RunSnapshot) => {
-      await DBOS.startWorkflow(run, { workflowID: snapshot.id })(snapshot);
+      await DBOS.startWorkflow(workflows.run, { workflowID: snapshot.id })(snapshot);
       return waitForAdmission(snapshot.id);
     },
   };
