@@ -74,26 +74,44 @@ try {
   );
   for (const name of [
     'CreateRunManagerOptions',
+    'ExecutionPlan',
+    'RunError',
+    'RunErrorCode',
+    'RunExecutor',
     'RunManager',
-    'ExecutionPlanPin',
     'RunSnapshot',
     'RunStatus',
-    'RunPlanSource',
-    'RunExecutor',
-    'RunSnapshotStore',
-    'JsonValue',
+    'StartRunInput',
+    'StartRunResult',
   ]) {
     assert.match(declaration, new RegExp(name));
   }
   for (const forbidden of [
     'RunManagerSnapshot',
     'RunIdSource',
+    'ExecutionPlanPin',
+    'RunPlanSource',
+    'RunSnapshotStore',
     'canonicalize',
     'applicationName',
     'systemDatabaseUrl',
+    'planPin',
+    'taskInputs',
+    'revision',
   ]) {
     assert.doesNotMatch(declaration, new RegExp(forbidden));
   }
+  const packageRoot = join(consumer, 'node_modules', '@revisium', 'revo-run');
+  const declarations = paths
+    .filter((path) => path.endsWith('.d.ts'))
+    .map((path) => readFileSync(join(packageRoot, path), 'utf8'))
+    .join('\n');
+  assert.match(declarations, /type ExecutionPlan = PipelineExecutionTemplate/);
+  assert.doesNotMatch(declarations, /@dbos-inc|DBOSConfig/);
+  assert.doesNotMatch(
+    declaration,
+    /ExecutionInvocation|ExecutionResult|ReconcileResult|CancelResult/,
+  );
 
   const packageSource = readFileSync(join(root, 'package.json'), 'utf8');
   assert.match(packageSource, /"exports":\s*\{\s*"\."\s*:/);
@@ -104,7 +122,35 @@ try {
       { cwd: consumer, stdio: 'pipe' },
     ),
   );
-  const source = `import { createRunManager } from '@revisium/revo-run';\nimport type { CreateRunManagerOptions } from '@revisium/revo-run';\nexport const value: typeof createRunManager | CreateRunManagerOptions = createRunManager;\n`;
+  const source = `import { compilePipeline, definePipeline } from '@revisium/revo-pipeline';
+import { createRunManager } from '@revisium/revo-run';
+import type { CreateRunManagerOptions, ExecutionPlan, RunExecutor, RunSnapshot } from '@revisium/revo-run';
+
+const compilation = compilePipeline(definePipeline({
+  schemaVersion: 1,
+  entry: 'done',
+  facts: [],
+  nodes: [{ kind: 'terminal', key: 'done', outcome: 'succeeded' }],
+}));
+if (!compilation.ok) throw new Error('consumer fixture failed');
+const executionPlan: ExecutionPlan = compilation.template;
+const executor: RunExecutor = {
+  cancel: async () => ({ status: 'not_supported' }),
+  execute: async () => ({ status: 'completed', completion: { kind: 'task' } }),
+  reconcile: async () => ({ status: 'not_found' }),
+};
+const options: CreateRunManagerOptions = { database: { url: 'postgresql://test' }, executor };
+
+export const createConsumer = () => {
+  const manager = createRunManager(options);
+  const startRun = (runId: string) => manager.startRun({ executionPlan, input: null, runId });
+  const getDates = async (runId: string): Promise<readonly Date[] | undefined> => {
+    const snapshot: RunSnapshot | undefined = await manager.getRun(runId);
+    return snapshot === undefined ? undefined : [snapshot.createdAt, snapshot.updatedAt];
+  };
+  return { getDates, manager, startRun };
+};
+`;
   mkdirSync(dirname(join(consumer, 'src', 'index.ts')), { recursive: true });
   await import('node:fs/promises').then(({ writeFile }) =>
     Promise.all([
@@ -136,12 +182,10 @@ try {
 if (Object.keys(module).join(',') !== 'createRunManager') { process.exit(1); }
 const manager = module.createRunManager({
   database: { url: 'postgresql://test' },
-  plans: { loadExact: async () => ({ compiledPipeline: null }) },
-  executor: { execute: async () => ({ outcome: 'completed' }) },
-  snapshots: {
-    create: async () => undefined,
-    update: async () => undefined,
-    get: async () => undefined,
+  executor: {
+    cancel: async () => ({ status: 'not_supported' }),
+    execute: async () => ({ status: 'completed', completion: { kind: 'task' } }),
+    reconcile: async () => ({ status: 'not_found' }),
   },
 });
 if (Object.keys(manager).join(',') !== 'start,stop,startRun,getRun') { process.exit(1); }

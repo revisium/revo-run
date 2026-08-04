@@ -4,8 +4,8 @@ import { basename, dirname, join } from 'node:path';
 
 import { compilePipeline, definePipeline } from '@revisium/revo-pipeline';
 
-import { createRunManager, type RunSnapshot } from '../../src/index.js';
-import { parseRunSnapshot } from './parse-run-snapshot.js';
+import { createRunManager, type RunSnapshot, type StartRunResult } from '../../src/index.js';
+import type { ExecutionInvocation } from '../../src/types.js';
 
 const mode = process.argv[2];
 const directory = process.argv[3];
@@ -46,12 +46,15 @@ const compilation = compilePipeline(
   }),
 );
 if (!compilation.ok) {
-  throw new Error('worker pipeline is invalid');
+  throw new Error('worker execution plan is invalid');
 }
+const executionPlan = compilation.template;
+const input = { value: 'durable input' };
+const requestedRunId = 'caller-supplied/restart-run';
 
-const readSnapshot = async (): Promise<RunSnapshot | undefined> => {
+const readText = async (file: string): Promise<string | undefined> => {
   try {
-    return parseRunSnapshot(await readFile(path('snapshot.json'), 'utf8'));
+    return await readFile(file, 'utf8');
   } catch (error: unknown) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       return undefined;
@@ -59,64 +62,78 @@ const readSnapshot = async (): Promise<RunSnapshot | undefined> => {
     throw error;
   }
 };
-const persist = async (snapshot: RunSnapshot): Promise<void> => {
-  await writeJson(path('snapshot.json'), snapshot);
+
+const readAccepted = async (): Promise<StartRunResult> => {
+  const source = await readFile(path('accepted.json'), 'utf8');
+  const value: unknown = JSON.parse(source);
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('runId' in value) ||
+    typeof value.runId !== 'string'
+  ) {
+    throw new Error('accepted run is invalid');
+  }
+  return { runId: value.runId };
 };
+
 const manager = createRunManager({
   database: { url: databaseUrl },
-  plans: { loadExact: async () => ({ compiledPipeline: compilation.pipeline }) },
   executor: {
-    execute: async () => {
-      let count = 0;
-      try {
-        count = Number(await readFile(path('executions.txt'), 'utf8'));
-      } catch (error: unknown) {
-        if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
-          throw error;
-        }
+    cancel: async () => ({ status: 'not_supported' }),
+    reconcile: async (invocation) => {
+      const recordedExecutionId = await readText(path('external-effect.json'));
+      if (recordedExecutionId === undefined) {
+        return { status: 'not_found' };
       }
-      await writeFile(path('executions.txt'), String(count + 1));
-      return { outcome: 'completed' };
+      const value: unknown = JSON.parse(recordedExecutionId);
+      if (
+        typeof value !== 'object' ||
+        value === null ||
+        !('executionId' in value) ||
+        value.executionId !== invocation.executionId
+      ) {
+        return { status: 'outcome_unknown' };
+      }
+      return { status: 'completed', completion: { kind: 'task' } };
     },
-  },
-  snapshots: {
-    create: persist,
-    get: async () => readSnapshot(),
-    update: async (snapshot) => {
-      if (snapshot.status === 'succeeded') {
-        await writeFile(path('terminal-reached'), 'true');
-        if (mode === 'first') {
-          await new Promise<never>(() => undefined);
-        }
+    execute: async (invocation: ExecutionInvocation) => {
+      const count = Number((await readText(path('executions.txt'))) ?? '0');
+      await writeFile(path('executions.txt'), String(count + 1));
+      await writeJson(path('external-effect.json'), { executionId: invocation.executionId });
+      await writeFile(path('effect-recorded'), 'true');
+      if (mode === 'first') {
+        await new Promise<never>(() => undefined);
       }
-      await persist(snapshot);
+      return { status: 'completed', completion: { kind: 'task' } } as const;
     },
   },
 });
 
-const terminalDeadline = Date.now() + 25_000;
-const waitForTerminal = async (): Promise<void> => {
+const waitForTerminal = async (runId: string): Promise<RunSnapshot> => {
+  const deadline = Date.now() + 25_000;
   while (true) {
-    // oxlint-disable-next-line no-await-in-loop -- recovery state is polled sequentially
-    const snapshot = await readSnapshot();
-    if (snapshot?.status === 'succeeded') {
-      return;
+    // oxlint-disable-next-line no-await-in-loop -- recovered DBOS status is polled sequentially
+    const snapshot = await manager.getRun(runId);
+    if (snapshot?.status === 'succeeded' || snapshot?.status === 'failed') {
+      return snapshot;
     }
-    if (Date.now() >= terminalDeadline) {
-      throw new Error(`Timed out waiting for recovered terminal snapshot in ${directory}.`);
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for recovered run ${runId}.`);
     }
-    // oxlint-disable-next-line no-await-in-loop -- each recovery attempt waits before retrying
+    // oxlint-disable-next-line no-await-in-loop -- each recovery poll waits before retrying
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 };
 
 await manager.start();
 if (mode === 'first') {
-  const accepted = await manager.startRun({
-    planPin: { id: 'plan', revision: '1', digest: 'digest' },
-    input: { value: 'input' },
-  });
+  const accepted = await manager.startRun({ executionPlan, input, runId: requestedRunId });
   await writeJson(path('accepted.json'), accepted);
+  await new Promise<never>(() => undefined);
 }
-await waitForTerminal();
+
+const accepted = await readAccepted();
+const final = await waitForTerminal(accepted.runId);
+await writeJson(path('final.json'), final);
 await manager.stop();

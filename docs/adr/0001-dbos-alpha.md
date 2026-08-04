@@ -2,6 +2,6 @@
 
 Status: Accepted
 
-`revo-run` delegates continuation authority to DBOS. The package owns a stable DBOS application name, stable versioned workflow names, UUID run identities, deterministic framed child-workflow identities, and compact pipeline interpretation. Host snapshot storage is a read-model projection and is not continuation authority.
+`revo-run` delegates continuation and snapshot authority to DBOS. The package owns a stable DBOS application name, the disposable `revo-run.run.v2` workflow, deterministic framed external-execution identities, and compact generic `PipelineExecutionTemplate` interpretation. Caller-supplied opaque run identities pass to DBOS unchanged. Plans and run input are durable positional workflow arguments; public snapshots are mapped only from DBOS workflow status.
 
-The alpha public boundary is only `createRunManager({ database: { url }, plans, executor, snapshots })` and the nine documented public types. Compatibility aliases, deep exports, canonical JSON, the earlier domain/store architecture, and configurable DBOS naming are intentionally removed before publication.
+The alpha runtime boundary is only `createRunManager({ database: { url }, executor })`. Compatibility aliases, deep exports, host plan/snapshot stores, direct SQL, DBOS types, and configurable DBOS naming are intentionally absent before publication.

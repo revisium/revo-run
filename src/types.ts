@@ -1,63 +1,105 @@
-export type JsonValue =
-  | boolean
-  | null
-  | number
-  | string
-  | readonly JsonValue[]
-  | { readonly [key: string]: JsonValue };
+import type {
+  CandidateKey,
+  CandidateVerdict,
+  JsonValue,
+  NodeKey,
+  PipelineExecutionTemplate,
+  ScriptIdentity,
+} from '@revisium/revo-pipeline';
 
-export interface ExecutionPlanPin {
-  readonly id: string;
-  readonly revision: string;
-  readonly digest: string;
+export type ExecutionPlan = PipelineExecutionTemplate;
+
+export interface StartRunInput {
+  readonly runId: string;
+  readonly executionPlan: ExecutionPlan;
+  readonly input: JsonValue;
 }
 
-export type RunStatus = 'pending' | 'running' | 'succeeded' | 'failed';
+export interface StartRunResult {
+  readonly runId: string;
+}
+
+export type RunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+export type RunErrorCode =
+  | 'execution_failed'
+  | 'workflow_failed'
+  | 'recovery_exhausted'
+  | 'invalid_workflow_state';
+
+export interface RunError {
+  readonly code: RunErrorCode;
+  readonly message: string;
+}
 
 export interface RunSnapshot {
   readonly id: string;
-  readonly planPin: ExecutionPlanPin;
-  readonly input: JsonValue;
   readonly status: RunStatus;
-  readonly result: JsonValue | null;
-  readonly error: string | null;
+  readonly executionPlan: ExecutionPlan;
+  readonly input: JsonValue;
+  readonly result?: JsonValue;
+  readonly error?: RunError;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
 }
 
-export interface RunPlanSource {
-  loadExact(pin: ExecutionPlanPin): Promise<{
-    readonly compiledPipeline: JsonValue;
-    readonly taskInputs?: Readonly<Record<string, JsonValue>>;
-  }>;
+interface ExecutionInvocationBase {
+  readonly executionId: string;
+  readonly runId: string;
+  readonly nodeKey: NodeKey;
+  readonly input: JsonValue;
 }
+
+export type ExecutionInvocation =
+  | (ExecutionInvocationBase & {
+      readonly kind: 'task';
+      readonly script?: ScriptIdentity;
+    })
+  | (ExecutionInvocationBase & {
+      readonly kind: 'candidate';
+      readonly candidateKey: CandidateKey;
+    });
+
+export type ExecutionCompletion =
+  | { readonly kind: 'task' }
+  | { readonly kind: 'candidate'; readonly verdict: CandidateVerdict['verdict'] };
+
+export type ExecutionResult =
+  | { readonly status: 'completed'; readonly completion: ExecutionCompletion }
+  | {
+      readonly status: 'failed';
+      readonly error: { readonly code: 'execution_failed'; readonly message: string };
+    }
+  | { readonly status: 'outcome_unknown' };
+
+export type ReconcileResult =
+  | ExecutionResult
+  | { readonly status: 'running' }
+  | { readonly status: 'not_found' };
+
+export type CancelResult =
+  | { readonly status: 'cancelled' }
+  | { readonly status: 'already_finished' }
+  | { readonly status: 'not_supported' }
+  | { readonly status: 'outcome_unknown' };
 
 export interface RunExecutor {
-  execute(request: {
-    readonly runId: string;
-    readonly nodeKey: string;
-    readonly candidate?: string;
-    readonly input: JsonValue;
-  }): Promise<{ readonly outcome: 'completed' | 'failed'; readonly output?: JsonValue }>;
-}
-
-export interface RunSnapshotStore {
-  create(snapshot: RunSnapshot): Promise<void>;
-  update(snapshot: RunSnapshot): Promise<void>;
-  get(runId: string): Promise<RunSnapshot | undefined>;
+  /** Calls must be bounded. executionId is the idempotency key for repeated execution attempts. */
+  execute(invocation: ExecutionInvocation): Promise<ExecutionResult>;
+  /** Calls must be bounded and repeatable. not_found authoritatively permits execute. */
+  reconcile(invocation: ExecutionInvocation): Promise<ReconcileResult>;
+  /** Calls must be bounded and repeatable. */
+  cancel(invocation: ExecutionInvocation): Promise<CancelResult>;
 }
 
 export interface CreateRunManagerOptions {
   readonly database: { readonly url: string };
-  readonly plans: RunPlanSource;
   readonly executor: RunExecutor;
-  readonly snapshots: RunSnapshotStore;
 }
 
 export interface RunManager {
   start(): Promise<void>;
   stop(): Promise<void>;
-  startRun(request: {
-    readonly planPin: ExecutionPlanPin;
-    readonly input: JsonValue;
-  }): Promise<RunSnapshot>;
+  startRun(input: StartRunInput): Promise<StartRunResult>;
   getRun(runId: string): Promise<RunSnapshot | undefined>;
 }

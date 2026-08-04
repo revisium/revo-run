@@ -1,9 +1,9 @@
-import type { JsonValue, RunSnapshot } from '../../src/types.js';
+import type { JsonValue } from '@revisium/revo-pipeline';
 
-type TaskWorkflow = (runId: string, nodeKey: string, input: JsonValue) => Promise<unknown>;
-type RunWorkflow = (snapshot: RunSnapshot) => Promise<RunSnapshot>;
+import type { ExecutionPlan } from '../../src/types.js';
 
-const isTaskWorkflow = (value: unknown): value is TaskWorkflow => typeof value === 'function';
+type RunWorkflow = (executionPlan: ExecutionPlan, input: JsonValue) => Promise<unknown>;
+
 const isRunWorkflow = (value: unknown): value is RunWorkflow => typeof value === 'function';
 
 export class WorkflowRegistrationHarness {
@@ -15,18 +15,10 @@ export class WorkflowRegistrationHarness {
     this.workflows = workflows;
   }
 
-  taskWorkflow(): TaskWorkflow {
-    const workflow = this.workflows.get('revo-run.task.v1');
-    if (!isTaskWorkflow(workflow)) {
-      throw new Error('task workflow was not registered');
-    }
-    return workflow;
-  }
-
   runWorkflow(): RunWorkflow {
-    const workflow = this.workflows.get('revo-run.run.v1');
+    const workflow = this.workflows.get('revo-run.run.v2');
     if (!isRunWorkflow(workflow)) {
-      throw new Error('run workflow was not registered');
+      throw new Error('v2 run workflow was not registered');
     }
     return workflow;
   }

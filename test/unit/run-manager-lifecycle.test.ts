@@ -3,22 +3,20 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRunManagerWithRuntimeFactory } from '../../src/manager/create-run-manager.js';
 import { acquireProcessManagerOwnership } from '../../src/manager/process-manager-ownership.js';
 import { RunManagerController } from '../../src/manager/run-manager.js';
-import type { RunSnapshot } from '../../src/types.js';
-import { FakeRunSnapshotStore } from '../support/fake-run-snapshot-store.js';
+import type { RunExecutor, RunSnapshot } from '../../src/types.js';
+import { taskExecutionPlan } from '../support/execution-plan.js';
 import {
   FakeProcessManagerOwnership,
   FakeWorkflowRuntime,
 } from '../support/fake-workflow-runtime.js';
 
-const snapshots = {
-  create: async (): Promise<void> => undefined,
-  update: async (): Promise<void> => undefined,
-  get: async (): Promise<RunSnapshot | undefined> => undefined,
+const executor: RunExecutor = {
+  cancel: async () => ({ status: 'not_supported' }),
+  execute: async () => ({ status: 'completed', completion: { kind: 'task' } }),
+  reconcile: async () => ({ status: 'not_found' }),
 };
 
-const managerFixture = (
-  snapshotStore = snapshots,
-): {
+const managerFixture = (): {
   manager: RunManagerController;
   ownership: FakeProcessManagerOwnership;
   runtime: FakeWorkflowRuntime;
@@ -26,7 +24,7 @@ const managerFixture = (
   const runtime = new FakeWorkflowRuntime();
   const ownership = new FakeProcessManagerOwnership();
   return {
-    manager: new RunManagerController(runtime, ownership, snapshotStore),
+    manager: new RunManagerController(runtime, ownership),
     ownership,
     runtime,
   };
@@ -62,22 +60,24 @@ describe('run manager lifecycle', () => {
     expect(ownership.isReleased()).toBe(true);
   });
 
-  it('allows stop to complete while admission acknowledgement is pending', async () => {
+  it('waits for durable submission before stopping', async () => {
     const { manager, runtime } = managerFixture();
-    runtime.deferAdmission();
+    runtime.deferSubmit();
     await manager.start();
 
     const admission = manager.startRun({
-      planPin: { id: 'p', revision: '1', digest: 'd' },
+      executionPlan: taskExecutionPlan,
       input: null,
+      runId: 'run-id',
     });
-    await vi.waitFor(() => expect(runtime.hasPendingAdmission()).toBe(true));
+    await vi.waitFor(() => expect(runtime.hasPendingSubmit()).toBe(true));
+    const stop = manager.stop();
+    expect(runtime.shutdownCalls()).toBe(0);
 
-    await manager.stop();
+    runtime.completeSubmit();
+    await admission;
+    await stop;
     expect(runtime.shutdownCalls()).toBe(1);
-
-    runtime.completeAdmission();
-    await expect(admission).resolves.toMatchObject({ status: 'pending' });
   });
 
   it('keeps ownership after launch failure until stop disposes the manager', async () => {
@@ -110,52 +110,42 @@ describe('run manager lifecycle', () => {
 
     await expect(manager.start()).rejects.toThrow('Run manager has been stopped.');
     await expect(
-      manager.startRun({ planPin: { id: 'p', revision: '1', digest: 'd' }, input: null }),
+      manager.startRun({ executionPlan: taskExecutionPlan, input: null, runId: 'run-id' }),
     ).rejects.toThrow('Run manager is not started.');
-  });
-
-  it('rejects reads after disposal', async () => {
-    const { manager } = managerFixture();
-    await manager.start();
-    await manager.stop();
-
     await expect(manager.getRun('run-id')).rejects.toThrow('Run manager is not started.');
   });
 
-  it('allows stop to complete while an initiated snapshot read is pending', async () => {
-    const snapshotStore = new FakeRunSnapshotStore();
-    snapshotStore.deferNextGet();
-    const { manager, runtime } = managerFixture(snapshotStore);
+  it('allows stop to complete while an initiated DBOS status read is pending', async () => {
+    const { manager, runtime } = managerFixture();
+    runtime.deferGet();
     const expected: RunSnapshot = {
+      createdAt: new Date(1),
+      executionPlan: taskExecutionPlan,
       id: 'run-id',
-      planPin: { id: 'p', revision: '1', digest: 'd' },
       input: null,
+      result: { outcome: 'succeeded' },
       status: 'succeeded',
-      result: null,
-      error: null,
+      updatedAt: new Date(2),
     };
     await manager.start();
 
     const read = manager.getRun('run-id');
-    await vi.waitFor(() => expect(snapshotStore.isGetPending()).toBe(true));
+    await vi.waitFor(() => expect(runtime.isGetPending()).toBe(true));
 
     await manager.stop();
     expect(runtime.shutdownCalls()).toBe(1);
-    expect(snapshotStore.isGetPending()).toBe(true);
+    expect(runtime.isGetPending()).toBe(true);
 
-    snapshotStore.completeGet(expected);
+    runtime.completeGet(expected);
     await expect(read).resolves.toEqual(expected);
   });
 
-  it('propagates snapshot read rejection', async () => {
-    const snapshotStore = new FakeRunSnapshotStore();
-    snapshotStore.failNextGet();
-    const { manager } = managerFixture(snapshotStore);
+  it('rejects an empty run ID without calling DBOS', async () => {
+    const { manager, runtime } = managerFixture();
     await manager.start();
 
-    const read = manager.getRun('run-id');
-
-    await expect(read).rejects.toThrow('snapshot read failed');
+    await expect(manager.getRun('')).rejects.toThrow('non-empty');
+    expect(runtime.isGetPending()).toBe(false);
     await manager.stop();
   });
 });
@@ -164,12 +154,7 @@ describe('process manager ownership', () => {
   it('returns a frozen public facade with closure-bound methods only', async () => {
     const runtime = new FakeWorkflowRuntime();
     const manager = createRunManagerWithRuntimeFactory(
-      {
-        database: { url: 'postgresql://test' },
-        plans: { loadExact: async () => ({ compiledPipeline: null }) },
-        executor: { execute: async () => ({ outcome: 'completed' }) },
-        snapshots,
-      },
+      { database: { url: 'postgresql://test' }, executor },
       () => runtime,
     );
 
@@ -198,12 +183,7 @@ describe('process manager ownership', () => {
   it('releases ownership when runtime construction fails', () => {
     expect(() =>
       createRunManagerWithRuntimeFactory(
-        {
-          database: { url: 'postgresql://test' },
-          plans: { loadExact: async () => ({ compiledPipeline: null }) },
-          executor: { execute: async () => ({ outcome: 'completed' }) },
-          snapshots,
-        },
+        { database: { url: 'postgresql://test' }, executor },
         () => {
           throw new Error('runtime construction failed');
         },
