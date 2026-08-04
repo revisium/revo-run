@@ -22,8 +22,12 @@ const waitUntilReady = async (attempt = 0): Promise<void> => {
     ],
     { encoding: 'utf8' },
   );
-  if (ready.status === 0 && ready.stdout.trim() === database) return;
-  if (attempt === 59) throw new Error('PostgreSQL test container did not become ready.');
+  if (ready.status === 0 && ready.stdout.trim() === database) {
+    return;
+  }
+  if (attempt === 59) {
+    throw new Error('PostgreSQL test container did not become ready.');
+  }
   await new Promise((resolve) => setTimeout(resolve, 500));
   return waitUntilReady(attempt + 1);
 };
@@ -52,7 +56,9 @@ try {
     .trim()
     .split(':')
     .at(-1);
-  if (port === undefined) throw new Error('PostgreSQL test port was not published.');
+  if (port === undefined) {
+    throw new Error('PostgreSQL test port was not published.');
+  }
   execFileSync('vitest', ['run', 'test/integration'], {
     env: {
       ...process.env,

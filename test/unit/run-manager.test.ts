@@ -1,28 +1,61 @@
-import { compilePipeline, definePipeline } from '@revisium/revo-pipeline';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const dbos = vi.hoisted(() => {
   const events = new Map<string, unknown>();
-  const ids: string[] = [];
-  const results: Promise<unknown>[] = [];
-  return {
+  let failSubmission = false;
+  let missAdmission = false;
+  let timeOutAdmission = false;
+  const control = {
     events,
-    ids,
-    results,
-    failSubmission: false,
-    missNextEvent: false,
-    getEvent: vi.fn<(id: string, key: string) => Promise<unknown>>(async (id, key) => {
-      if (dbos.missNextEvent) {
-        dbos.missNextEvent = false;
+    ids: [] as string[],
+    results: [] as Promise<unknown>[],
+    getEvent: vi.fn<
+      (id: string, key: string, options: { timeoutSeconds: number }) => Promise<unknown>
+    >(async (id, key) => {
+      if (timeOutAdmission) {
+        return null;
+      }
+      if (missAdmission) {
+        missAdmission = false;
         return null;
       }
       return events.get(`${id}:${key}`) ?? null;
     }),
     launch: vi.fn<() => Promise<void>>(),
     setConfig: vi.fn<(configuration: unknown) => void>(),
-    sleepms: vi.fn<(duration: number) => Promise<void>>(),
     shutdown: vi.fn<() => Promise<void>>(),
+    sleepms: vi.fn<(duration: number) => Promise<void>>(),
+    failNextSubmission: () => {
+      failSubmission = true;
+    },
+    missNextAdmission: () => {
+      missAdmission = true;
+    },
+    timeOutAdmission: () => {
+      timeOutAdmission = true;
+    },
+    shouldFailSubmission: () => {
+      if (!failSubmission) {
+        return false;
+      }
+      failSubmission = false;
+      return true;
+    },
+    reset: () => {
+      events.clear();
+      control.ids.length = 0;
+      control.results.length = 0;
+      failSubmission = false;
+      missAdmission = false;
+      timeOutAdmission = false;
+      control.getEvent.mockClear();
+      control.launch.mockReset();
+      control.setConfig.mockClear();
+      control.shutdown.mockReset();
+      control.sleepms.mockReset();
+    },
   };
+  return control;
 });
 
 vi.mock('@dbos-inc/dbos-sdk', () => ({
@@ -36,21 +69,24 @@ vi.mock('@dbos-inc/dbos-sdk', () => ({
     setConfig: dbos.setConfig,
     setEvent: async (key: string, value: unknown) => {
       const id = dbos.ids.at(-1);
-      if (id) dbos.events.set(`${id}:${key}`, value);
+      if (id) {
+        dbos.events.set(`${id}:${key}`, value);
+      }
     },
-    sleepms: dbos.sleepms,
     shutdown: dbos.shutdown,
+    sleepms: dbos.sleepms,
     startWorkflow:
       <Arguments extends unknown[], Result>(
         workflow: (...arguments_: Arguments) => Promise<Result>,
         options: { workflowID?: string },
       ) =>
       async (...arguments_: Arguments) => {
-        if (dbos.failSubmission) {
-          dbos.failSubmission = false;
+        if (dbos.shouldFailSubmission()) {
           throw new Error('submission failed');
         }
-        if (options.workflowID) dbos.ids.push(options.workflowID);
+        if (options.workflowID) {
+          dbos.ids.push(options.workflowID);
+        }
         const result = workflow(...arguments_);
         dbos.results.push(result);
         void result.catch(() => undefined);
@@ -59,125 +95,150 @@ vi.mock('@dbos-inc/dbos-sdk', () => ({
   },
 }));
 
-import { createRunManager, type JsonValue, type RunSnapshot } from '../../src/index.js';
+import { RunManagerScenario } from '../support/run-manager-scenario.js';
 
-const compiled = compilePipeline(
-  definePipeline({
-    schemaVersion: 1,
-    entry: 'task',
-    facts: [],
-    nodes: [
-      {
-        kind: 'task',
-        key: 'task',
-        outcomes: { completed: 'review', failed: 'failed', cancelled: 'failed', skipped: 'failed' },
-      },
-      {
-        kind: 'consensus',
-        key: 'review',
-        candidates: ['a', 'b'],
-        policy: { kind: 'quorum', quorum: 2 },
-        outcomes: { approved: 'done', rejected: 'failed', insufficient: 'failed', tied: 'failed' },
-      },
-      { kind: 'terminal', key: 'done', outcome: 'succeeded' },
-      { kind: 'terminal', key: 'failed', outcome: 'failed' },
-    ],
-  }),
-);
-if (!compiled.ok) throw new Error('fixture compilation failed');
-const compiledPipeline = compiled.pipeline;
+let scenario: RunManagerScenario | undefined;
+const arrangeScenario = (): RunManagerScenario => {
+  scenario = new RunManagerScenario(dbos);
+  return scenario;
+};
 
-describe('run manager', () => {
-  it('owns IDs, lifecycle, immutable admission, submission, execution, and projection', async () => {
-    const snapshots = new Map<string, RunSnapshot>();
-    let executorOutcome: 'completed' | 'failed' = 'completed';
-    let planSource: JsonValue = compiledPipeline;
-    const projectionFailures = new Map<RunSnapshot['status'], number>();
-    let changeOutcomeOnTerminalFailure = false;
-    const project = async (snapshot: RunSnapshot): Promise<void> => {
-      const remaining = projectionFailures.get(snapshot.status) ?? 0;
-      if (remaining > 0) {
-        projectionFailures.set(snapshot.status, remaining - 1);
-        if (snapshot.status === 'succeeded' && changeOutcomeOnTerminalFailure)
-          executorOutcome = 'failed';
-        throw new Error('projection unavailable');
-      }
-      snapshots.set(snapshot.id, snapshot);
-    };
-    const execute = vi.fn<() => Promise<{ outcome: 'completed' | 'failed' }>>(async () => ({
-      outcome: executorOutcome,
-    }));
-    const manager = createRunManager({
-      database: { url: 'postgresql://test' },
-      plans: {
-        loadExact: vi.fn<() => Promise<{ compiledPipeline: JsonValue }>>(async () => ({
-          compiledPipeline: planSource,
-          taskInputs: { task: ['exact'] },
-        })),
-      },
-      executor: { execute },
-      snapshots: {
-        create: project,
-        update: project,
-        get: async (id) => snapshots.get(id),
-      },
-    });
-    await expect(
-      manager.startRun({ planPin: { id: 'p', revision: '1', digest: 'd' }, input: null }),
-    ).rejects.toThrow('not started');
-    dbos.launch.mockRejectedValueOnce(new Error('launch failed'));
+afterEach(async () => {
+  await scenario?.stop();
+  scenario = undefined;
+});
+
+describe('run manager behavior', () => {
+  it('rejects run admission before start', async () => {
+    const manager = arrangeScenario();
+
+    await expect(manager.startRun()).rejects.toThrow('not started');
+  });
+
+  it('retries launch and coalesces repeated successful starts', async () => {
+    const manager = arrangeScenario();
+    manager.failNextLaunch();
+
     await expect(manager.start()).rejects.toThrow('launch failed');
     await Promise.all([manager.start(), manager.start()]);
-    expect(dbos.setConfig).toHaveBeenCalledWith({
-      name: 'revo-run',
-      systemDatabaseUrl: 'postgresql://test',
-    });
+
+    expect(manager.launchCalls()).toBe(2);
+    expect(manager.configurationCalls()).toEqual([
+      [{ name: 'revo-run', systemDatabaseUrl: 'postgresql://test' }],
+      [{ name: 'revo-run', systemDatabaseUrl: 'postgresql://test' }],
+    ]);
+  });
+
+  it('assigns an ID and snapshots mutable admission data', async () => {
+    const manager = arrangeScenario();
+    await manager.start();
     const input = { nested: { value: 1 } };
     const planPin = { id: 'p', revision: '1', digest: 'd' };
-    const admitted = await manager.startRun({ planPin, input });
+
+    const admitted = await manager.startRunWith(planPin, input);
     input.nested.value = 2;
     planPin.id = 'changed';
+
     expect(admitted.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(admitted).toMatchObject({ input: { nested: { value: 1 } }, planPin: { id: 'p' } });
     expect(Object.isFrozen(admitted.input)).toBe(true);
-    await vi.waitFor(() => expect(snapshots.get(admitted.id)?.status).toBe('succeeded'));
-    dbos.missNextEvent = true;
-    const acknowledgedAfterPollTimeout = await manager.startRun({ planPin, input: null });
-    expect(dbos.ids.filter((id) => id === acknowledgedAfterPollTimeout.id)).toHaveLength(1);
-    const verifyProjectionFailure = async (status: RunSnapshot['status']): Promise<void> => {
-      projectionFailures.clear();
-      projectionFailures.set(status, 2);
-      const resultIndex = dbos.results.length;
-      const accepted = await manager.startRun({ planPin, input: null });
-      expect(accepted.status).toBe('pending');
-      await expect(dbos.results[resultIndex]).resolves.toMatchObject({ status: 'succeeded' });
-      await vi.waitFor(() => expect(snapshots.get(accepted.id)?.status).toBe('succeeded'));
-    };
-    await verifyProjectionFailure('pending');
-    await verifyProjectionFailure('running');
-    const callsBeforeTerminalRetry = execute.mock.calls.length;
-    changeOutcomeOnTerminalFailure = true;
-    await verifyProjectionFailure('succeeded');
-    expect([...snapshots.values()].at(-1)).toMatchObject({ status: 'succeeded' });
-    expect(execute.mock.calls.length - callsBeforeTerminalRetry).toBe(3);
-    expect(dbos.sleepms.mock.calls.map(([duration]) => duration)).toEqual([
-      100, 200, 100, 200, 100, 200,
-    ]);
-    changeOutcomeOnTerminalFailure = false;
-    executorOutcome = 'completed';
-    projectionFailures.clear();
-    dbos.failSubmission = true;
-    await expect(manager.startRun({ planPin, input: null })).rejects.toThrow('submission failed');
-    executorOutcome = 'failed';
-    const failed = await manager.startRun({ planPin, input: null });
-    await vi.waitFor(() => expect(snapshots.get(failed.id)?.status).toBe('failed'));
-    planSource = null;
-    const invalid = await manager.startRun({ planPin, input: null });
-    await vi.waitFor(() => expect(snapshots.get(invalid.id)?.error).toContain('invalid compiled'));
-    dbos.shutdown.mockRejectedValueOnce(new Error('shutdown failed'));
+    await vi.waitFor(() => expect(manager.snapshot(admitted.id)?.status).toBe('succeeded'));
+  });
+
+  it('polls admission again after an event timeout without resubmitting', async () => {
+    const manager = arrangeScenario();
+    await manager.start();
+    manager.missNextAdmission();
+
+    const admitted = await manager.startRun();
+
+    expect(manager.submittedWorkflowIds(admitted.id)).toHaveLength(1);
+    await vi.waitFor(() => expect(manager.snapshot(admitted.id)?.status).toBe('succeeded'));
+  });
+
+  it('times out acknowledgement without cancelling the submitted durable run', async () => {
+    const manager = arrangeScenario();
+    await manager.start();
+    manager.timeOutAdmission();
+
+    const admission = manager.startRun();
+
+    await expect(admission).rejects.toThrow('Timed out waiting 60 seconds for run');
+    expect(dbos.getEvent).toHaveBeenCalledTimes(12);
+    expect(dbos.getEvent.mock.calls.map(([, , options]) => options)).toEqual(
+      Array.from({ length: 12 }, () => ({ timeoutSeconds: 5 })),
+    );
+    expect(dbos.ids).toHaveLength(4);
+    await vi.waitFor(() => expect(manager.latestSnapshot()?.status).toBe('succeeded'));
+  });
+
+  it.each(['pending', 'running', 'succeeded'] as const)(
+    'retries %s projection with deterministic backoff',
+    async (status) => {
+      const manager = arrangeScenario();
+      await manager.start();
+      manager.failProjection(status, 2);
+
+      const admitted = await manager.startRun();
+
+      await vi.waitFor(() => expect(manager.snapshot(admitted.id)?.status).toBe('succeeded'));
+      expect(manager.retryDelays()).toEqual([100, 200]);
+    },
+  );
+
+  it('does not re-execute work or change outcome during terminal projection retries', async () => {
+    const manager = arrangeScenario();
+    await manager.start();
+    manager.failProjection('succeeded', 2);
+    manager.changeExecutorOutcomeDuringTerminalProjectionFailure();
+
+    const admitted = await manager.startRun();
+
+    await vi.waitFor(() => expect(manager.snapshot(admitted.id)?.status).toBe('succeeded'));
+    expect(manager.latestSnapshot()).toMatchObject({ status: 'succeeded' });
+    expect(manager.executorCalls()).toBe(3);
+  });
+
+  it('reports workflow submission failure', async () => {
+    const manager = arrangeScenario();
+    await manager.start();
+    manager.failNextSubmission();
+
+    await expect(manager.startRun()).rejects.toThrow('submission failed');
+  });
+
+  it('projects a failed run when the executor fails', async () => {
+    const manager = arrangeScenario();
+    await manager.start();
+    manager.executorFails();
+
+    const admitted = await manager.startRun();
+
+    await vi.waitFor(() => expect(manager.snapshot(admitted.id)?.status).toBe('failed'));
+  });
+
+  it('projects an invalid compiled plan as a failed run', async () => {
+    const manager = arrangeScenario();
+    await manager.start();
+    manager.useInvalidPlan();
+
+    const admitted = await manager.startRun();
+
+    await vi.waitFor(() =>
+      expect(manager.snapshot(admitted.id)?.error).toContain('invalid compiled'),
+    );
+  });
+
+  it('blocks operations after shutdown failure until shutdown retry succeeds', async () => {
+    const manager = arrangeScenario();
+    await manager.start();
+    manager.failNextShutdown();
+
     await expect(manager.stop()).rejects.toThrow('shutdown failed');
     await expect(manager.start()).rejects.toThrow('shutdown state is uncertain');
-    await expect(manager.startRun({ planPin, input: null })).rejects.toThrow('not started');
+    await expect(manager.startRun()).rejects.toThrow('not started');
+
     await Promise.all([manager.stop(), manager.stop()]);
+    expect(manager.shutdownCalls()).toBe(2);
   });
 });
