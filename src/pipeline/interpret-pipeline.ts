@@ -228,135 +228,204 @@ const failedEnvelope = (
   error: { code, message },
 });
 
+type PipelineDecision = ReturnType<typeof decidePipeline>;
+type PipelineNode = ExecutionPlan['pipeline']['nodes'][number];
+type TaskNode = Extract<PipelineNode, { readonly kind: 'task' }>;
+type ConsensusNode = Extract<PipelineNode, { readonly kind: 'consensus' }>;
+
+interface InterpretationContext {
+  readonly executionPlan: ExecutionPlan;
+  readonly executor: RunExecutor;
+  readonly nodes: Map<NodeKey, NodeFact>;
+  readonly requirements: ReturnType<typeof indexRequirements>;
+  readonly runId: string;
+  readonly runInput: JsonValue;
+  readonly terminalBindings: ReturnType<typeof indexTerminalBindings>;
+  readonly verdicts: CandidateVerdict[];
+  executionFailureMessage?: string;
+}
+
+const currentFacts = (context: InterpretationContext): PipelineFacts => ({
+  candidateVerdicts: context.verdicts,
+  gateResolutions: [],
+  nodes: [...context.nodes.values()],
+  values: [],
+});
+
+const enableNode = (context: InterpretationContext, key: NodeKey): void => {
+  if (!context.nodes.has(key)) {
+    context.nodes.set(key, { key, state: 'enabled' });
+  }
+};
+
+const applyActivation = (
+  context: InterpretationContext,
+  decision: Extract<PipelineDecision, { readonly kind: 'activate' }>,
+): void => {
+  decision.nodeKeys.forEach((key) => enableNode(context, key));
+};
+
+const applySelection = (
+  context: InterpretationContext,
+  decision: Extract<PipelineDecision, { readonly kind: 'select' }>,
+): void => {
+  context.nodes.set(decision.nodeKey, {
+    key: decision.nodeKey,
+    outcome: decision.outcome,
+    state: 'terminal',
+  });
+  decision.activate.forEach((key) => enableNode(context, key));
+};
+
+const terminalEnvelope = (
+  context: InterpretationContext,
+  decision: Extract<PipelineDecision, { readonly kind: 'terminal' }>,
+): RunTerminalEnvelope => {
+  const outcome = context.terminalBindings.get(decision.nodeKey);
+  if (outcome === undefined) {
+    throw new RunInterpretationError(
+      'invalid_workflow_state',
+      `Terminal node ${decision.nodeKey} has no binding.`,
+    );
+  }
+  if (outcome !== decision.outcome) {
+    invalidState(`Terminal node ${decision.nodeKey} has no matching binding.`);
+  }
+  if (outcome === 'cancelled') {
+    return { kind: RUN_TERMINAL_ENVELOPE, status: 'cancelled' };
+  }
+  if (outcome === 'failed') {
+    return failedEnvelope('execution_failed', context.executionFailureMessage);
+  }
+  return {
+    kind: RUN_TERMINAL_ENVELOPE,
+    status: 'succeeded',
+    result: { outcome },
+  };
+};
+
+const taskInvocation = (context: InterpretationContext, task: TaskNode): ExecutionInvocation => {
+  const requirement = context.requirements.get(task.key);
+  return {
+    executionId: taskExecutionId(context.runId, task.key),
+    runId: context.runId,
+    nodeKey: task.key,
+    input: requirement === undefined ? context.runInput : requirement.input,
+    kind: 'task',
+    ...(requirement === undefined ? {} : { script: requirement.script }),
+  };
+};
+
+const executeReadyTasks = async (context: InterpretationContext): Promise<void> => {
+  const readyTasks = context.executionPlan.pipeline.nodes.filter(
+    (node): node is TaskNode =>
+      node.kind === 'task' && context.nodes.get(node.key)?.state === 'enabled',
+  );
+  for (const task of readyTasks) {
+    const invocation = taskInvocation(context, task);
+    // oxlint-disable-next-line no-await-in-loop -- deterministic effect order is durable workflow state
+    const result = await settleExecution(context.executor, invocation);
+    if (result.status === 'failed') {
+      context.executionFailureMessage ??= result.error.message;
+      context.nodes.set(task.key, { key: task.key, outcome: 'failed', state: 'terminal' });
+      continue;
+    }
+    if (result.completion.kind !== 'task') {
+      invalidState(`Task ${task.key} returned a candidate completion.`);
+    }
+    context.nodes.set(task.key, { key: task.key, outcome: 'completed', state: 'terminal' });
+  }
+};
+
+const executeCandidates = async (
+  context: InterpretationContext,
+  node: ConsensusNode,
+): Promise<void> => {
+  for (const candidateKey of node.candidates) {
+    const invocation: ExecutionInvocation = {
+      candidateKey,
+      executionId: candidateExecutionId(context.runId, node.key, candidateKey),
+      input: context.runInput,
+      kind: 'candidate',
+      nodeKey: node.key,
+      runId: context.runId,
+    };
+    // oxlint-disable-next-line no-await-in-loop -- deterministic effect order is durable workflow state
+    const result = await settleExecution(context.executor, invocation);
+    if (result.status === 'failed') {
+      throw new RunInterpretationError('execution_failed', result.error.message);
+    }
+    const completion = result.completion;
+    if (completion.kind !== 'candidate') {
+      throw new RunInterpretationError(
+        'invalid_workflow_state',
+        `Candidate ${candidateKey} returned a task completion.`,
+      );
+    }
+    context.verdicts.push({
+      candidate: candidateKey,
+      nodeKey: node.key,
+      verdict: completion.verdict,
+    });
+  }
+};
+
+const executeWait = async (
+  context: InterpretationContext,
+  decision: Extract<PipelineDecision, { readonly kind: 'wait' }>,
+): Promise<void> => {
+  const waitingNode = context.executionPlan.pipeline.nodes.find(
+    ({ key }) => key === decision.nodeKey,
+  );
+  if (waitingNode?.kind === 'task') {
+    await executeReadyTasks(context);
+    return;
+  }
+  if (waitingNode?.kind === 'consensus') {
+    await executeCandidates(context, waitingNode);
+    return;
+  }
+  invalidState(`Pipeline wait at ${decision.nodeKey} is not executable by this MVP.`);
+};
+
 export const interpretExecutionPlan = async (
   runId: string,
   executionPlan: ExecutionPlan,
   runInput: JsonValue,
   executor: RunExecutor,
 ): Promise<RunTerminalEnvelope> => {
-  const requirements = indexRequirements(executionPlan);
-  const terminalBindings = indexTerminalBindings(executionPlan);
-  const nodes = new Map<NodeKey, NodeFact>();
-  const verdicts: CandidateVerdict[] = [];
-  let executionFailureMessage: string | undefined;
-  const facts = (): PipelineFacts => ({
-    candidateVerdicts: verdicts,
-    gateResolutions: [],
-    nodes: [...nodes.values()],
-    values: [],
-  });
-  const enable = (key: NodeKey): void => {
-    if (!nodes.has(key)) {
-      nodes.set(key, { key, state: 'enabled' });
-    }
+  const context: InterpretationContext = {
+    executionPlan,
+    executor,
+    nodes: new Map(),
+    requirements: indexRequirements(executionPlan),
+    runId,
+    runInput,
+    terminalBindings: indexTerminalBindings(executionPlan),
+    verdicts: [],
   };
 
   while (true) {
-    const decision = decidePipeline(executionPlan.pipeline, facts());
-    if (decision.kind === 'activate') {
-      decision.nodeKeys.forEach(enable);
-      continue;
-    }
-    if (decision.kind === 'select') {
-      nodes.set(decision.nodeKey, {
-        key: decision.nodeKey,
-        outcome: decision.outcome,
-        state: 'terminal',
-      });
-      decision.activate.forEach(enable);
-      continue;
-    }
-    if (decision.kind === 'terminal') {
-      const outcome = terminalBindings.get(decision.nodeKey);
-      if (outcome === undefined) {
+    const decision = decidePipeline(executionPlan.pipeline, currentFacts(context));
+    switch (decision.kind) {
+      case 'activate':
+        applyActivation(context, decision);
+        break;
+      case 'select':
+        applySelection(context, decision);
+        break;
+      case 'terminal':
+        return terminalEnvelope(context, decision);
+      case 'wait':
+        // oxlint-disable-next-line no-await-in-loop -- each decision advances durable workflow state
+        await executeWait(context, decision);
+        break;
+      case 'noop':
+      case 'reject':
         throw new RunInterpretationError(
           'invalid_workflow_state',
-          `Terminal node ${decision.nodeKey} has no binding.`,
+          `Pipeline reached ${decision.kind} instead of an executable wait.`,
         );
-      }
-      if (outcome !== decision.outcome) {
-        invalidState(`Terminal node ${decision.nodeKey} has no matching binding.`);
-      }
-      if (outcome === 'cancelled') {
-        return { kind: RUN_TERMINAL_ENVELOPE, status: 'cancelled' };
-      }
-      if (outcome === 'failed') {
-        return failedEnvelope('execution_failed', executionFailureMessage);
-      }
-      return {
-        kind: RUN_TERMINAL_ENVELOPE,
-        status: 'succeeded',
-        result: { outcome },
-      };
     }
-    if (decision.kind !== 'wait') {
-      throw new RunInterpretationError(
-        'invalid_workflow_state',
-        `Pipeline reached ${decision.kind} instead of an executable wait.`,
-      );
-    }
-    const waitingNode = executionPlan.pipeline.nodes.find(({ key }) => key === decision.nodeKey);
-    if (waitingNode?.kind === 'task') {
-      const readyTasks = executionPlan.pipeline.nodes.filter(
-        (node) => node.kind === 'task' && nodes.get(node.key)?.state === 'enabled',
-      );
-      for (const task of readyTasks) {
-        const requirement = requirements.get(task.key);
-        const invocation: ExecutionInvocation = {
-          executionId: taskExecutionId(runId, task.key),
-          runId,
-          nodeKey: task.key,
-          input: requirement === undefined ? runInput : requirement.input,
-          kind: 'task',
-          ...(requirement === undefined ? {} : { script: requirement.script }),
-        };
-        // oxlint-disable-next-line no-await-in-loop -- deterministic effect order is durable workflow state
-        const result = await settleExecution(executor, invocation);
-        if (result.status === 'failed') {
-          executionFailureMessage ??= result.error.message;
-          nodes.set(task.key, { key: task.key, outcome: 'failed', state: 'terminal' });
-          continue;
-        }
-        if (result.completion.kind !== 'task') {
-          invalidState(`Task ${task.key} returned a candidate completion.`);
-        }
-        nodes.set(task.key, { key: task.key, outcome: 'completed', state: 'terminal' });
-      }
-      continue;
-    }
-    if (waitingNode?.kind === 'consensus') {
-      for (const candidateKey of waitingNode.candidates) {
-        const invocation: ExecutionInvocation = {
-          candidateKey,
-          executionId: candidateExecutionId(runId, waitingNode.key, candidateKey),
-          input: runInput,
-          kind: 'candidate',
-          nodeKey: waitingNode.key,
-          runId,
-        };
-        // oxlint-disable-next-line no-await-in-loop -- deterministic effect order is durable workflow state
-        const result = await settleExecution(executor, invocation);
-        if (result.status === 'failed') {
-          throw new RunInterpretationError('execution_failed', result.error.message);
-        }
-        const completion = result.completion;
-        if (completion.kind !== 'candidate') {
-          throw new RunInterpretationError(
-            'invalid_workflow_state',
-            `Candidate ${candidateKey} returned a task completion.`,
-          );
-        }
-        verdicts.push({
-          candidate: candidateKey,
-          nodeKey: waitingNode.key,
-          verdict: completion.verdict,
-        });
-      }
-      continue;
-    }
-    throw new RunInterpretationError(
-      'invalid_workflow_state',
-      `Pipeline wait at ${decision.nodeKey} is not executable by this MVP.`,
-    );
   }
 };
