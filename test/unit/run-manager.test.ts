@@ -4,11 +4,17 @@ const dbos = vi.hoisted(() => {
   const events = new Map<string, unknown>();
   let failSubmission = false;
   let missAdmission = false;
+  let timeOutAdmission = false;
   const control = {
     events,
     ids: [] as string[],
     results: [] as Promise<unknown>[],
-    getEvent: vi.fn<(id: string, key: string) => Promise<unknown>>(async (id, key) => {
+    getEvent: vi.fn<
+      (id: string, key: string, options: { timeoutSeconds: number }) => Promise<unknown>
+    >(async (id, key) => {
+      if (timeOutAdmission) {
+        return null;
+      }
       if (missAdmission) {
         missAdmission = false;
         return null;
@@ -25,6 +31,9 @@ const dbos = vi.hoisted(() => {
     missNextAdmission: () => {
       missAdmission = true;
     },
+    timeOutAdmission: () => {
+      timeOutAdmission = true;
+    },
     shouldFailSubmission: () => {
       if (!failSubmission) {
         return false;
@@ -38,6 +47,7 @@ const dbos = vi.hoisted(() => {
       control.results.length = 0;
       failSubmission = false;
       missAdmission = false;
+      timeOutAdmission = false;
       control.getEvent.mockClear();
       control.launch.mockReset();
       control.setConfig.mockClear();
@@ -144,6 +154,22 @@ describe('run manager behavior', () => {
 
     expect(manager.submittedWorkflowIds(admitted.id)).toHaveLength(1);
     await vi.waitFor(() => expect(manager.snapshot(admitted.id)?.status).toBe('succeeded'));
+  });
+
+  it('times out acknowledgement without cancelling the submitted durable run', async () => {
+    const manager = arrangeScenario();
+    await manager.start();
+    manager.timeOutAdmission();
+
+    const admission = manager.startRun();
+
+    await expect(admission).rejects.toThrow('Timed out waiting 60 seconds for run');
+    expect(dbos.getEvent).toHaveBeenCalledTimes(12);
+    expect(dbos.getEvent.mock.calls.map(([, , options]) => options)).toEqual(
+      Array.from({ length: 12 }, () => ({ timeoutSeconds: 5 })),
+    );
+    expect(dbos.ids).toHaveLength(4);
+    await vi.waitFor(() => expect(manager.latestSnapshot()?.status).toBe('succeeded'));
   });
 
   it.each(['pending', 'running', 'succeeded'] as const)(

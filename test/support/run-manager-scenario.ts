@@ -45,6 +45,7 @@ export interface RunManagerDbosControl {
   readonly sleepms: Mock<(duration: number) => Promise<void>>;
   failNextSubmission(): void;
   missNextAdmission(): void;
+  timeOutAdmission(): void;
   reset(): void;
 }
 
@@ -130,6 +131,10 @@ export class RunManagerScenario {
 
   missNextAdmission(): void {
     this.dbos.missNextAdmission();
+  }
+
+  timeOutAdmission(): void {
+    this.dbos.timeOutAdmission();
   }
 
   failProjection(status: RunSnapshot['status'], attempts: number): void {

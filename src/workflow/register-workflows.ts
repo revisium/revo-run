@@ -31,11 +31,11 @@ const loadPlan = (snapshot: RunSnapshot) =>
 
 const projectSnapshot = async (snapshot: RunSnapshot): Promise<void> => {
   for (let attempt = 0; ; attempt += 1) {
+    const snapshots = getWorkflowDependencies().snapshots;
     // oxlint-disable-next-line no-await-in-loop -- durable projection retries are sequential
     const delivered = await DBOS.runStep(
       async () => {
         try {
-          const snapshots = getWorkflowDependencies().snapshots;
           if (snapshot.status === 'pending') {
             await snapshots.create(snapshot);
           } else {

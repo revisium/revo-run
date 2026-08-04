@@ -38,21 +38,28 @@ export class RunManagerController implements RunManagerContract {
     return this.serialize(() => this.stopTransition());
   }
 
-  startRun(request: {
+  async startRun(request: {
     readonly planPin: ExecutionPlanPin;
     readonly input: JsonValue;
   }): Promise<RunSnapshot> {
     const snapshot = createPendingSnapshot(randomUUID(), request.planPin, request.input);
-    return this.serialize(async () => {
+    const admission = await this.serialize(async () => {
       if (this.state !== 'started') {
         throw new Error('Run manager is not started.');
       }
       return this.runtime.submit(snapshot);
     });
+    return admission.acknowledgement;
   }
 
-  getRun(runId: string): Promise<RunSnapshot | undefined> {
-    return this.snapshots.get(runId);
+  async getRun(runId: string): Promise<RunSnapshot | undefined> {
+    const read = await this.serialize(async () => {
+      if (this.state !== 'started') {
+        throw new Error('Run manager is not started.');
+      }
+      return { result: this.snapshots.get(runId) };
+    });
+    return read.result;
   }
 
   private async startTransition(): Promise<void> {

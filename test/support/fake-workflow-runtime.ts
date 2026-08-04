@@ -1,5 +1,5 @@
 import type { RunSnapshot } from '../../src/types.js';
-import type { WorkflowRuntime } from '../../src/workflow/create-workflow-runtime.js';
+import type { RunAdmission, WorkflowRuntime } from '../../src/workflow/create-workflow-runtime.js';
 
 const deferred = (): { promise: Promise<void>; resolve: () => void } => {
   let resolve!: () => void;
@@ -10,6 +10,10 @@ const deferred = (): { promise: Promise<void>; resolve: () => void } => {
 };
 
 export class FakeWorkflowRuntime implements WorkflowRuntime {
+  private admission:
+    | { readonly promise: Promise<RunSnapshot>; resolve(snapshot: RunSnapshot): void }
+    | undefined;
+  private admittedSnapshot: RunSnapshot | undefined;
   private configureCallCount = 0;
   private disposeCallCount = 0;
   private launchCallCount = 0;
@@ -45,8 +49,9 @@ export class FakeWorkflowRuntime implements WorkflowRuntime {
     await this.shutdownGate?.promise;
   }
 
-  async submit(snapshot: RunSnapshot): Promise<RunSnapshot> {
-    return snapshot;
+  async submit(snapshot: RunSnapshot): Promise<RunAdmission> {
+    this.admittedSnapshot = snapshot;
+    return { acknowledgement: this.admission?.promise ?? Promise.resolve(snapshot) };
   }
 
   failNextLaunch(error = new Error('launch failed')): void {
@@ -64,6 +69,25 @@ export class FakeWorkflowRuntime implements WorkflowRuntime {
   completeShutdown(): void {
     this.shutdownGate?.resolve();
     this.shutdownGate = undefined;
+  }
+
+  deferAdmission(): void {
+    let resolve!: (snapshot: RunSnapshot) => void;
+    const promise = new Promise<RunSnapshot>((resolvePromise) => {
+      resolve = resolvePromise;
+    });
+    this.admission = { promise, resolve };
+  }
+
+  completeAdmission(): void {
+    if (this.admittedSnapshot) {
+      this.admission?.resolve(this.admittedSnapshot);
+      this.admission = undefined;
+    }
+  }
+
+  hasPendingAdmission(): boolean {
+    return this.admittedSnapshot !== undefined && this.admission !== undefined;
   }
 
   configureCalls(): number {

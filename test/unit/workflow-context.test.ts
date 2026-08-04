@@ -16,9 +16,11 @@ vi.mock('@dbos-inc/dbos-sdk', () => ({
       return workflow;
     },
     runStep: <Result>(operation: () => Promise<Result>) => operation(),
+    setEvent: vi.fn<() => Promise<void>>(),
   },
 }));
 
+import { createPendingSnapshot } from '../../src/snapshot/create-snapshot.js';
 import {
   createWorkflowRuntime,
   type WorkflowRuntime,
@@ -70,14 +72,14 @@ describe('workflow registration and context', () => {
     ]);
   });
 
-  it('rejects workflow dispatch after its context is disposed', async () => {
+  it('fails projection immediately after its workflow context is disposed', async () => {
     const runtime = createRuntime();
-    const task = harness.taskWorkflow();
+    const run = harness.runWorkflow();
     runtime.dispose();
 
-    await expect(task('run-1', 'task', null)).rejects.toThrow(
-      'Run manager workflow context is not active.',
-    );
+    await expect(
+      run(createPendingSnapshot('run-1', { id: 'p', revision: '1', digest: 'd' }, null)),
+    ).rejects.toThrow('Run manager workflow context is not active.');
   });
 
   it('dispatches through replacement dependencies without using stale dependencies', async () => {
