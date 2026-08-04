@@ -1,26 +1,31 @@
-import type { RunSnapshot } from '../../src/types.js';
-import type { RunAdmission, WorkflowRuntime } from '../../src/workflow/create-workflow-runtime.js';
+import type { JsonValue } from '@revisium/revo-pipeline';
 
-const deferred = (): { promise: Promise<void>; resolve: () => void } => {
-  let resolve!: () => void;
-  const promise = new Promise<void>((resolvePromise) => {
+import type { ExecutionPlan, RunSnapshot } from '../../src/types.js';
+import type { WorkflowRuntime } from '../../src/workflow/create-workflow-runtime.js';
+
+const deferred = <Value>(): {
+  promise: Promise<Value>;
+  resolve: (value: Value) => void;
+} => {
+  let resolve!: (value: Value) => void;
+  const promise = new Promise<Value>((resolvePromise) => {
     resolve = resolvePromise;
   });
   return { promise, resolve };
 };
 
 export class FakeWorkflowRuntime implements WorkflowRuntime {
-  private admission:
-    | { readonly promise: Promise<RunSnapshot>; resolve(snapshot: RunSnapshot): void }
-    | undefined;
-  private admittedSnapshot: RunSnapshot | undefined;
   private configureCallCount = 0;
   private disposeCallCount = 0;
+  private getGate: ReturnType<typeof deferred<RunSnapshot | undefined>> | undefined;
+  private getPending = false;
   private launchCallCount = 0;
   private launchFailure: Error | undefined;
   private shutdownCallCount = 0;
   private shutdownFailure: Error | undefined;
-  private shutdownGate: ReturnType<typeof deferred> | undefined;
+  private shutdownGate: ReturnType<typeof deferred<void>> | undefined;
+  private submitGate: ReturnType<typeof deferred<void>> | undefined;
+  private submitPending = false;
 
   configure(): void {
     this.configureCallCount += 1;
@@ -49,9 +54,22 @@ export class FakeWorkflowRuntime implements WorkflowRuntime {
     await this.shutdownGate?.promise;
   }
 
-  async submit(snapshot: RunSnapshot): Promise<RunAdmission> {
-    this.admittedSnapshot = snapshot;
-    return { acknowledgement: this.admission?.promise ?? Promise.resolve(snapshot) };
+  async submit(_runId: string, _executionPlan: ExecutionPlan, _input: JsonValue): Promise<void> {
+    this.submitPending = true;
+    try {
+      await this.submitGate?.promise;
+    } finally {
+      this.submitPending = false;
+    }
+  }
+
+  async get(_runId: string): Promise<RunSnapshot | undefined> {
+    this.getPending = true;
+    try {
+      return await this.getGate?.promise;
+    } finally {
+      this.getPending = false;
+    }
   }
 
   failNextLaunch(error = new Error('launch failed')): void {
@@ -63,7 +81,7 @@ export class FakeWorkflowRuntime implements WorkflowRuntime {
   }
 
   deferShutdown(): void {
-    this.shutdownGate = deferred();
+    this.shutdownGate = deferred<void>();
   }
 
   completeShutdown(): void {
@@ -71,23 +89,30 @@ export class FakeWorkflowRuntime implements WorkflowRuntime {
     this.shutdownGate = undefined;
   }
 
-  deferAdmission(): void {
-    let resolve!: (snapshot: RunSnapshot) => void;
-    const promise = new Promise<RunSnapshot>((resolvePromise) => {
-      resolve = resolvePromise;
-    });
-    this.admission = { promise, resolve };
+  deferSubmit(): void {
+    this.submitGate = deferred<void>();
   }
 
-  completeAdmission(): void {
-    if (this.admittedSnapshot) {
-      this.admission?.resolve(this.admittedSnapshot);
-      this.admission = undefined;
-    }
+  completeSubmit(): void {
+    this.submitGate?.resolve();
+    this.submitGate = undefined;
   }
 
-  hasPendingAdmission(): boolean {
-    return this.admittedSnapshot !== undefined && this.admission !== undefined;
+  hasPendingSubmit(): boolean {
+    return this.submitPending;
+  }
+
+  deferGet(): void {
+    this.getGate = deferred<RunSnapshot | undefined>();
+  }
+
+  completeGet(snapshot: RunSnapshot | undefined): void {
+    this.getGate?.resolve(snapshot);
+    this.getGate = undefined;
+  }
+
+  isGetPending(): boolean {
+    return this.getPending;
   }
 
   configureCalls(): number {

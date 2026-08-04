@@ -3,9 +3,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { compilePipeline, definePipeline } from '@revisium/revo-pipeline';
 import { describe, expect, it } from 'vitest';
 
-import { parseRunSnapshot } from '../support/parse-run-snapshot.js';
 import { assertIsolatedTestDatabase } from '../support/test-database.js';
 
 const databaseUrl = process.env['DATABASE_URL'];
@@ -57,23 +57,46 @@ const terminate = async (child: ChildProcess | undefined): Promise<void> => {
   await waitForExit(child);
 };
 const worker = join(import.meta.dirname, '../support/dbos-restart-worker.ts');
-const launchWorker = (
-  mode: 'first' | 'recover',
-  directory: string,
-  connectionUrl: string,
-): ChildProcess =>
+const launchWorker = (mode: 'first' | 'recover', directory: string, connectionUrl: string) =>
   spawn(process.execPath, ['--import', 'tsx', worker, mode, directory, connectionUrl], {
     stdio: 'inherit',
   });
 
-const waitForCrashPoint = async (directory: string): Promise<void> => {
-  await waitForFile(join(directory, 'accepted.json'));
-  await waitForFile(join(directory, 'executions.txt'));
-  await waitForFile(join(directory, 'terminal-reached'));
+const parseAccepted = (source: string): { readonly runId: string } => {
+  const value: unknown = JSON.parse(source);
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('runId' in value) ||
+    typeof value.runId !== 'string'
+  ) {
+    throw new Error('Accepted run result is invalid.');
+  }
+  return { runId: value.runId };
 };
 
-integration('package DBOS restart and replay', () => {
-  it('recovers an interrupted manager workflow and adopts its completed child exactly once', async () => {
+const compilation = compilePipeline(
+  definePipeline({
+    schemaVersion: 1,
+    entry: 'task',
+    facts: [],
+    nodes: [
+      {
+        kind: 'task',
+        key: 'task',
+        outcomes: { completed: 'done', failed: 'failed', cancelled: 'failed', skipped: 'failed' },
+      },
+      { kind: 'terminal', key: 'done', outcome: 'succeeded' },
+      { kind: 'terminal', key: 'failed', outcome: 'failed' },
+    ],
+  }),
+);
+if (!compilation.ok) {
+  throw new Error('integration execution plan is invalid');
+}
+
+integration('DBOS-authoritative restart and replay', () => {
+  it('recovers durable plan/input and reconciles the caller run ID without duplicate effects', async () => {
     if (databaseUrl === undefined) {
       throw new Error('DATABASE_URL is required.');
     }
@@ -83,17 +106,26 @@ integration('package DBOS restart and replay', () => {
     let recovered: ChildProcess | undefined;
     try {
       first = launchWorker('first', directory, databaseUrl);
-      await waitForCrashPoint(directory);
+      const acceptedSource = await waitForFile(join(directory, 'accepted.json'));
+      await waitForFile(join(directory, 'effect-recorded'));
+      const accepted = parseAccepted(acceptedSource);
+      const runId = accepted.runId;
+      expect(runId).toBe('caller-supplied/restart-run');
+
       first.kill('SIGKILL');
       await waitForExit(first);
 
       recovered = launchWorker('recover', directory, databaseUrl);
       await waitForExit(recovered);
 
-      const accepted = parseRunSnapshot(await readFile(join(directory, 'accepted.json'), 'utf8'));
-      const final = parseRunSnapshot(await readFile(join(directory, 'snapshot.json'), 'utf8'));
-      expect(accepted).toMatchObject({ id: final.id, status: 'pending' });
-      expect(final).toMatchObject({ status: 'succeeded', result: { outcome: 'succeeded' } });
+      const final: unknown = JSON.parse(await readFile(join(directory, 'final.json'), 'utf8'));
+      expect(final).toMatchObject({
+        executionPlan: compilation.template,
+        id: runId,
+        input: { value: 'durable input' },
+        result: { outcome: 'succeeded' },
+        status: 'succeeded',
+      });
       expect(await readFile(join(directory, 'executions.txt'), 'utf8')).toBe('1');
     } finally {
       await terminate(first);

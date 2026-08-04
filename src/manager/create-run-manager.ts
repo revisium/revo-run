@@ -12,7 +12,7 @@ export const createRunManagerWithRuntimeFactory = (
   const ownership = acquireProcessManagerOwnership();
   try {
     const runtime = createRuntime(options);
-    const controller = new RunManagerController(runtime, ownership, options.snapshots);
+    const controller = new RunManagerController(runtime, ownership);
     return Object.freeze({
       start: () => controller.start(),
       stop: () => controller.stop(),

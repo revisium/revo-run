@@ -1,33 +1,24 @@
-import { randomUUID } from 'node:crypto';
-
-import { createPendingSnapshot } from '../snapshot/create-snapshot.js';
 import type {
-  ExecutionPlanPin,
-  JsonValue,
   RunManager as RunManagerContract,
   RunSnapshot,
-  RunSnapshotStore,
+  StartRunInput,
+  StartRunResult,
 } from '../types.js';
 import type { WorkflowRuntime } from '../workflow/create-workflow-runtime.js';
 import type { ProcessManagerOwnership } from './process-manager-ownership.js';
+import { snapshotStartRunInput } from './snapshot-run-input.js';
 
 type RunManagerState = 'idle' | 'starting' | 'started' | 'stopping' | 'stop-failed' | 'disposed';
 
 export class RunManagerController implements RunManagerContract {
   private readonly ownership: ProcessManagerOwnership;
   private readonly runtime: WorkflowRuntime;
-  private readonly snapshots: RunSnapshotStore;
   private state: RunManagerState = 'idle';
   private transition = Promise.resolve();
 
-  constructor(
-    runtime: WorkflowRuntime,
-    ownership: ProcessManagerOwnership,
-    snapshots: RunSnapshotStore,
-  ) {
+  constructor(runtime: WorkflowRuntime, ownership: ProcessManagerOwnership) {
     this.runtime = runtime;
     this.ownership = ownership;
-    this.snapshots = snapshots;
   }
 
   start(): Promise<void> {
@@ -38,26 +29,29 @@ export class RunManagerController implements RunManagerContract {
     return this.serialize(() => this.stopTransition());
   }
 
-  async startRun(request: {
-    readonly planPin: ExecutionPlanPin;
-    readonly input: JsonValue;
-  }): Promise<RunSnapshot> {
-    const snapshot = createPendingSnapshot(randomUUID(), request.planPin, request.input);
-    const admission = await this.serialize(async () => {
+  async startRun(input: StartRunInput): Promise<StartRunResult> {
+    if (typeof input.runId !== 'string' || input.runId.length === 0) {
+      throw new TypeError('Run ID must be a non-empty string.');
+    }
+    const snapshot = snapshotStartRunInput(input);
+    await this.serialize(async () => {
       if (this.state !== 'started') {
         throw new Error('Run manager is not started.');
       }
-      return this.runtime.submit(snapshot);
+      await this.runtime.submit(snapshot.runId, snapshot.executionPlan, snapshot.input);
     });
-    return admission.acknowledgement;
+    return { runId: snapshot.runId };
   }
 
   async getRun(runId: string): Promise<RunSnapshot | undefined> {
+    if (runId.length === 0) {
+      throw new TypeError('Run ID must be a non-empty string.');
+    }
     const read = await this.serialize(async () => {
       if (this.state !== 'started') {
         throw new Error('Run manager is not started.');
       }
-      return { result: this.snapshots.get(runId) };
+      return { result: this.runtime.get(runId) };
     });
     return read.result;
   }

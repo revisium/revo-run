@@ -1,12 +1,13 @@
 export { createRunManager } from './manager/create-run-manager.js';
 export type {
   CreateRunManagerOptions,
-  ExecutionPlanPin,
-  JsonValue,
+  ExecutionPlan,
+  RunError,
+  RunErrorCode,
   RunExecutor,
   RunManager,
-  RunPlanSource,
   RunSnapshot,
-  RunSnapshotStore,
   RunStatus,
+  StartRunInput,
+  StartRunResult,
 } from './types.js';
