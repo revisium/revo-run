@@ -1,8 +1,8 @@
 import { compilePipeline, definePipeline } from '@revisium/revo-pipeline';
 import { describe, expect, it, vi } from 'vitest';
 
-import { childWorkflowId, interpretPipeline } from '../../src/pipeline.js';
-import { createSnapshot } from '../../src/snapshot.js';
+import { childWorkflowId, interpretPipeline } from '../../src/pipeline/interpret-pipeline.js';
+import { createPendingSnapshot } from '../../src/snapshot/create-snapshot.js';
 
 const compilation = compilePipeline(
   definePipeline({
@@ -48,7 +48,9 @@ const compilation = compilePipeline(
     ],
   }),
 );
-if (!compilation.ok) throw new Error('fixture compilation failed');
+if (!compilation.ok) {
+  throw new Error('fixture compilation failed');
+}
 
 describe('pipeline continuation', () => {
   it('runs fork, join, consensus, and terminal semantics', async () => {
@@ -59,7 +61,9 @@ describe('pipeline continuation', () => {
     });
     const executeTask = vi.fn<(nodeKey: string) => Promise<'completed'>>(async (nodeKey) => {
       started.add(nodeKey);
-      if (started.size === 2) release();
+      if (started.size === 2) {
+        release();
+      }
       await barrier;
       return 'completed';
     });
@@ -72,9 +76,15 @@ describe('pipeline continuation', () => {
     expect(executeCandidate).toHaveBeenCalledTimes(2);
   });
 
-  it('frames deterministic child IDs without tuple collisions', () => {
+  it('frames child ID components without tuple collisions', () => {
     expect(childWorkflowId('a', 'bc')).not.toBe(childWorkflowId('ab', 'c'));
+  });
+
+  it('creates deterministic child IDs', () => {
     expect(childWorkflowId('a', 'bc')).toBe(childWorkflowId('a', 'bc'));
+  });
+
+  it('keeps child IDs fixed-length for large components', () => {
     expect(childWorkflowId('x'.repeat(100_000))).toHaveLength(79);
   });
 
@@ -89,7 +99,7 @@ describe('pipeline continuation', () => {
 
   it('defensively copies arrays and primitive values', () => {
     const input = [{ value: 1 }, true];
-    const snapshot = createSnapshot('id', { id: 'p', revision: '1', digest: 'd' }, input);
+    const snapshot = createPendingSnapshot('id', { id: 'p', revision: '1', digest: 'd' }, input);
     input[0] = false;
     expect(snapshot.input).toEqual([{ value: 1 }, true]);
     expect(Object.isFrozen(snapshot.input)).toBe(true);

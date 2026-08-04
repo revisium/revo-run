@@ -1,4 +1,4 @@
-export { createRunManager } from './manager.js';
+export { createRunManager } from './manager/create-run-manager.js';
 export type {
   CreateRunManagerOptions,
   ExecutionPlanPin,
