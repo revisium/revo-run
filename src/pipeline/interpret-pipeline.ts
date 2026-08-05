@@ -12,6 +12,7 @@ import {
   type TerminalNode,
 } from '@revisium/revo-pipeline';
 
+import { snapshotJsonValue } from '../json/snapshot-json.js';
 import type {
   ExecutionInvocation,
   ExecutionPlan,
@@ -36,7 +37,7 @@ export type RunTerminalEnvelope =
   | {
       readonly kind: typeof RUN_TERMINAL_ENVELOPE;
       readonly status: 'succeeded';
-      readonly result: JsonValue;
+      readonly result: RunSuccessResult;
     }
   | {
       readonly kind: typeof RUN_TERMINAL_ENVELOPE;
@@ -46,6 +47,11 @@ export type RunTerminalEnvelope =
         | { readonly code: 'invalid_workflow_state' };
     }
   | { readonly kind: typeof RUN_TERMINAL_ENVELOPE; readonly status: 'cancelled' };
+
+export type TaskOutput = { readonly nodeKey: NodeKey; readonly value: JsonValue };
+export type RunSuccessResult =
+  | { readonly outcome: string }
+  | { readonly outcome: string; readonly outputs: readonly TaskOutput[] };
 
 export class RunInterpretationError extends Error {
   readonly code: 'execution_failed' | 'invalid_workflow_state';
@@ -87,61 +93,91 @@ export const candidateExecutionId = (
 const isCandidateVerdict = (value: unknown): value is CandidateVerdict['verdict'] =>
   value === 'approve' || value === 'reject' || value === 'abstain';
 
-const normalizeExecutionResult = (value: unknown): ExecutionResult => {
-  if (typeof value !== 'object' || value === null || !('status' in value)) {
+type JsonRecord = Readonly<Record<string, JsonValue>>;
+
+const isJsonRecord = (value: JsonValue): value is JsonRecord =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const snapshotExecutorRecord = (value: unknown): JsonRecord | undefined => {
+  try {
+    const snapshot = snapshotJsonValue(value, 'Executor result');
+    return isJsonRecord(snapshot) ? snapshot : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const normalizeExecutionRecord = (value: JsonRecord | undefined): ExecutionResult => {
+  if (value === undefined || !Object.hasOwn(value, 'status')) {
     return { status: 'outcome_unknown' };
   }
-  if (value.status === 'outcome_unknown') {
+  if (value['status'] === 'outcome_unknown') {
     return { status: 'outcome_unknown' };
   }
-  if (value.status === 'failed') {
-    if (!('error' in value) || typeof value.error !== 'object' || value.error === null) {
+  if (value['status'] === 'failed') {
+    const error = value['error'];
+    if (!Object.hasOwn(value, 'error') || error === undefined || !isJsonRecord(error)) {
       return { status: 'outcome_unknown' };
     }
-    const message =
-      'message' in value.error ? normalizeExecutionFailureMessage(value.error.message) : undefined;
+    const message = Object.hasOwn(error, 'message')
+      ? normalizeExecutionFailureMessage(error['message'])
+      : undefined;
     if (
-      !('code' in value.error) ||
-      value.error.code !== 'execution_failed' ||
+      !Object.hasOwn(error, 'code') ||
+      error['code'] !== 'execution_failed' ||
       message === undefined
     ) {
       return { status: 'outcome_unknown' };
     }
     return { status: 'failed', error: { code: 'execution_failed', message } };
   }
-  if (value.status !== 'completed' || !('completion' in value)) {
+  if (value['status'] !== 'completed' || !Object.hasOwn(value, 'completion')) {
     return { status: 'outcome_unknown' };
   }
-  const completion: unknown = value.completion;
-  if (typeof completion !== 'object' || completion === null || !('kind' in completion)) {
+  const completion = value['completion'];
+  if (completion === undefined || !isJsonRecord(completion) || !Object.hasOwn(completion, 'kind')) {
     return { status: 'outcome_unknown' };
   }
-  if (completion.kind === 'task') {
-    return { status: 'completed', completion: { kind: 'task' } };
+  if (completion['kind'] === 'task') {
+    if (Object.hasOwn(completion, 'verdict')) {
+      return { status: 'outcome_unknown' };
+    }
+    if (!Object.hasOwn(completion, 'output')) {
+      return { status: 'completed', completion: { kind: 'task' } };
+    }
+    const output = completion['output'];
+    return output === undefined
+      ? { status: 'outcome_unknown' }
+      : { status: 'completed', completion: { kind: 'task', output } };
   }
   if (
-    completion.kind === 'candidate' &&
-    'verdict' in completion &&
-    isCandidateVerdict(completion.verdict)
+    completion['kind'] === 'candidate' &&
+    !Object.hasOwn(completion, 'output') &&
+    Object.hasOwn(completion, 'verdict') &&
+    isCandidateVerdict(completion['verdict'])
   ) {
     return {
       status: 'completed',
-      completion: { kind: 'candidate', verdict: completion.verdict },
+      completion: { kind: 'candidate', verdict: completion['verdict'] },
     };
   }
   return { status: 'outcome_unknown' };
 };
 
+const normalizeExecutionResult = (value: unknown): ExecutionResult =>
+  normalizeExecutionRecord(snapshotExecutorRecord(value));
+
 const normalizeReconcileResult = (value: unknown): ReconcileResult => {
-  if (typeof value === 'object' && value !== null && 'status' in value) {
-    if (value.status === 'running') {
+  const snapshot = snapshotExecutorRecord(value);
+  if (snapshot !== undefined && Object.hasOwn(snapshot, 'status')) {
+    if (snapshot['status'] === 'running') {
       return { status: 'running' };
     }
-    if (value.status === 'not_found') {
+    if (snapshot['status'] === 'not_found') {
       return { status: 'not_found' };
     }
   }
-  return normalizeExecutionResult(value);
+  return normalizeExecutionRecord(snapshot);
 };
 
 const reconcileAndMaybeExecute = async (
@@ -237,6 +273,7 @@ interface InterpretationContext {
   readonly executionPlan: ExecutionPlan;
   readonly executor: RunExecutor;
   readonly nodes: Map<NodeKey, NodeFact>;
+  readonly outputs: Map<NodeKey, JsonValue>;
   readonly requirements: ReturnType<typeof indexRequirements>;
   readonly runId: string;
   readonly runInput: JsonValue;
@@ -300,7 +337,13 @@ const terminalEnvelope = (
   return {
     kind: RUN_TERMINAL_ENVELOPE,
     status: 'succeeded',
-    result: { outcome },
+    result:
+      context.outputs.size === 0
+        ? { outcome }
+        : {
+            outcome,
+            outputs: [...context.outputs].map(([nodeKey, value]) => ({ nodeKey, value })),
+          },
   };
 };
 
@@ -330,8 +373,18 @@ const executeReadyTasks = async (context: InterpretationContext): Promise<void> 
       context.nodes.set(task.key, { key: task.key, outcome: 'failed', state: 'terminal' });
       continue;
     }
-    if (result.completion.kind !== 'task') {
+    const completion = result.completion;
+    if (completion.kind !== 'task') {
       invalidState(`Task ${task.key} returned a candidate completion.`);
+    } else {
+      const output = completion.output;
+      if (
+        Object.hasOwn(completion, 'output') &&
+        output !== undefined &&
+        !context.outputs.has(task.key)
+      ) {
+        context.outputs.set(task.key, output);
+      }
     }
     context.nodes.set(task.key, { key: task.key, outcome: 'completed', state: 'terminal' });
   }
@@ -398,6 +451,7 @@ export const interpretExecutionPlan = async (
     executionPlan,
     executor,
     nodes: new Map(),
+    outputs: new Map(),
     requirements: indexRequirements(executionPlan),
     runId,
     runInput,

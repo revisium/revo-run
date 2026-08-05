@@ -1,3 +1,4 @@
+import type { JsonValue } from '@revisium/revo-pipeline';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbos = vi.hoisted(() => ({
@@ -17,10 +18,11 @@ import {
   RunInterpretationError,
   taskExecutionId,
 } from '../../src/pipeline/interpret-pipeline.js';
-import type { ExecutionPlan, RunExecutor } from '../../src/types.js';
+import type { ExecutionPlan, ExecutionResult, RunExecutor } from '../../src/types.js';
 import {
   candidateExecutionPlan,
   scriptExecutionPlan,
+  sequentialTaskExecutionPlan,
   taskExecutionPlan,
 } from '../support/execution-plan.js';
 
@@ -48,6 +50,35 @@ const executor = (overrides: Partial<RunExecutor> = {}) => {
 beforeEach(() => {
   dbos.sleepms.mockClear();
 });
+
+const recoverMalformedTaskCompletion = async (completion: unknown) => {
+  const reconcile = vi
+    .fn<RunExecutor['reconcile']>()
+    .mockResolvedValueOnce({ status: 'not_found' })
+    .mockResolvedValueOnce({
+      status: 'completed',
+      completion: { kind: 'task', output: { adopted: true } },
+    });
+  const malformed: ExecutionResult = { completion: { kind: 'task' }, status: 'completed' };
+  Reflect.set(malformed, 'completion', completion);
+  const execute = vi.fn<RunExecutor['execute']>(async () => malformed);
+  const runExecutor = executor({ execute, reconcile });
+
+  const result = await interpretExecutionPlan('run-id', taskExecutionPlan, null, runExecutor.value);
+
+  expect(result).toEqual({
+    kind: 'revo-run.terminal.v1',
+    result: {
+      outcome: 'succeeded',
+      outputs: [{ nodeKey: 'task', value: { adopted: true } }],
+    },
+    status: 'succeeded',
+  });
+  expect(execute).toHaveBeenCalledOnce();
+  expect(reconcile).toHaveBeenCalledTimes(2);
+  expect(execute.mock.calls[0]?.[0]).toBe(reconcile.mock.calls[1]?.[0]);
+  expect(dbos.sleepms).toHaveBeenCalledWith(100);
+};
 
 describe('generic execution-plan interpretation', () => {
   it('frames deterministic task and candidate execution IDs without tuple collisions', () => {
@@ -80,6 +111,62 @@ describe('generic execution-plan interpretation', () => {
       runId: 'run-id',
     });
     expect(invocation).not.toHaveProperty('script');
+  });
+
+  it('preserves scalar and nested task outputs in actual completion order without duplicates', async () => {
+    const source = { nested: [{ value: 1 }] };
+    const runExecutor = executor({
+      execute: vi.fn<RunExecutor['execute']>(async (invocation) => ({
+        completion: {
+          kind: 'task',
+          output: invocation.nodeKey === 'first' ? source : 42,
+        },
+        status: 'completed',
+      })),
+    });
+
+    const result = await interpretExecutionPlan(
+      'run-id',
+      sequentialTaskExecutionPlan,
+      null,
+      runExecutor.value,
+    );
+    source.nested[0]!.value = 2;
+
+    expect(result).toEqual({
+      kind: 'revo-run.terminal.v1',
+      result: {
+        outcome: 'published',
+        outputs: [
+          { nodeKey: 'first', value: { nested: [{ value: 1 }] } },
+          { nodeKey: 'second', value: 42 },
+        ],
+      },
+      status: 'succeeded',
+    });
+    const nodeKeys =
+      result.status === 'succeeded' && 'outputs' in result.result
+        ? result.result.outputs.map(({ nodeKey }) => nodeKey)
+        : [];
+    expect(new Set(nodeKeys).size).toBe(2);
+  });
+
+  it('adopts a reconciled task output without executing and keeps the execution ID stable', async () => {
+    const reconcile = vi.fn<RunExecutor['reconcile']>(async () => ({
+      completion: { kind: 'task', output: 'reconciled' },
+      status: 'completed',
+    }));
+    const runExecutor = executor({ reconcile });
+
+    await expect(
+      interpretExecutionPlan('run-id', taskExecutionPlan, null, runExecutor.value),
+    ).resolves.toMatchObject({
+      result: { outputs: [{ nodeKey: 'task', value: 'reconciled' }] },
+      status: 'succeeded',
+    });
+
+    expect(runExecutor.execute).not.toHaveBeenCalled();
+    expect(reconcile.mock.calls[0]?.[0].executionId).toBe(taskExecutionId('run-id', 'task'));
   });
 
   it('uses a matching script requirement and preserves its static null input', async () => {
@@ -176,6 +263,116 @@ describe('generic execution-plan interpretation', () => {
     expect(execute.mock.calls[0]?.[0]).toBe(reconcile.mock.calls[1]?.[0]);
     expect(execute.mock.calls[0]?.[0].executionId).toBe(taskExecutionId('run-id', 'task'));
     expect(dbos.sleepms).toHaveBeenCalledWith(100);
+  });
+
+  it.each([
+    ['task verdict', { kind: 'task', verdict: 'approve' }],
+    ['candidate output', { kind: 'candidate', output: null, verdict: 'approve' }],
+    ['explicit undefined output', { kind: 'task', output: undefined }],
+    ['non-finite output', { kind: 'task', output: Number.NaN }],
+    ['function output', { kind: 'task', output: () => true }],
+    ['symbol output', { kind: 'task', output: Symbol('output') }],
+    ['bigint output', { kind: 'task', output: 1n }],
+    [
+      'class output',
+      {
+        kind: 'task',
+        output: new (class Output {
+          readonly value = true;
+        })(),
+      },
+    ],
+    [
+      'sparse array output',
+      { kind: 'task', output: Object.assign(new Array<unknown>(2), { 0: 'present' }) },
+    ],
+    ['augmented array output', { kind: 'task', output: Object.assign([1], { extra: true }) }],
+  ])('normalizes a malformed %s to outcome_unknown', async (_name, completion) => {
+    expect.hasAssertions();
+    await recoverMalformedTaskCompletion(completion);
+  });
+
+  it('rejects cyclic output without repeating execute', async () => {
+    expect.hasAssertions();
+    const output: { cycle?: unknown } = {};
+    output.cycle = output;
+
+    await recoverMalformedTaskCompletion({ kind: 'task', output });
+  });
+
+  it('rejects accessors and non-enumerable output without invoking getters', async () => {
+    let getterCalls = 0;
+    const accessorOutput = {};
+    Object.defineProperty(accessorOutput, 'value', {
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return 'secret';
+      },
+    });
+    await recoverMalformedTaskCompletion({ kind: 'task', output: accessorOutput });
+    expect(getterCalls).toBe(0);
+
+    const hiddenOutput = {};
+    Object.defineProperty(hiddenOutput, 'value', { enumerable: false, value: 'hidden' });
+    await recoverMalformedTaskCompletion({ kind: 'task', output: hiddenOutput });
+  });
+
+  it('preserves special own string keys without prototype mutation', async () => {
+    const output: Record<string, JsonValue> = { constructor: 'own' };
+    Object.defineProperty(output, '__proto__', {
+      configurable: true,
+      enumerable: true,
+      value: { safe: true },
+      writable: true,
+    });
+    const runExecutor = executor({
+      execute: vi.fn<RunExecutor['execute']>(async () => ({
+        completion: { kind: 'task', output },
+        status: 'completed',
+      })),
+    });
+
+    const result = await interpretExecutionPlan(
+      'run-id',
+      taskExecutionPlan,
+      null,
+      runExecutor.value,
+    );
+    const captured =
+      result.status === 'succeeded' && 'outputs' in result.result
+        ? result.result.outputs[0]?.value
+        : undefined;
+
+    expect(captured).toEqual({ constructor: 'own', ['__proto__']: { safe: true } });
+    if (typeof captured !== 'object' || captured === null) {
+      throw new Error('Captured task output is not an object.');
+    }
+    expect(Object.hasOwn(captured, '__proto__')).toBe(true);
+    expect(Object.getPrototypeOf(captured)).toBe(Object.prototype);
+    expect(({} as { safe?: boolean }).safe).toBeUndefined();
+  });
+
+  it('rejects cross-kind completions after normalization', async () => {
+    const taskExecutor = executor({
+      execute: vi.fn<RunExecutor['execute']>(async () => ({
+        completion: { kind: 'candidate', verdict: 'approve' },
+        status: 'completed',
+      })),
+    });
+    await expect(
+      interpretExecutionPlan('run-id', taskExecutionPlan, null, taskExecutor.value),
+    ).rejects.toMatchObject({ code: 'invalid_workflow_state' });
+
+    const candidateExecutor = executor({
+      execute: vi.fn<RunExecutor['execute']>(async () => ({
+        completion: { kind: 'task' },
+        status: 'completed',
+      })),
+    });
+    await expect(
+      interpretExecutionPlan('run-id', candidateExecutionPlan, null, candidateExecutor.value),
+    ).rejects.toMatchObject({ code: 'invalid_workflow_state' });
   });
 
   it('treats a thrown execute as unknown and reconciles without repeating it', async () => {

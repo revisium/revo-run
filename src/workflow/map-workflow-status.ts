@@ -1,12 +1,15 @@
 import type { JsonValue } from '@revisium/revo-pipeline';
 
+import { snapshotJsonValue } from '../json/snapshot-json.js';
 import { snapshotExecutionPlan, snapshotRunInput } from '../manager/snapshot-run-input.js';
 import {
   normalizeExecutionFailureMessage,
   RUN_TERMINAL_ENVELOPE,
   type RunTerminalEnvelope,
+  type RunSuccessResult,
+  type TaskOutput,
 } from '../pipeline/interpret-pipeline.js';
-import type { RunErrorCode, RunSnapshot } from '../types.js';
+import type { ExecutionPlan, RunErrorCode, RunSnapshot } from '../types.js';
 import { RUN_WORKFLOW_NAME } from './register-workflows.js';
 
 interface WorkflowStatusRecord {
@@ -43,48 +46,123 @@ const failure = (
   error: { code, message },
 });
 
-const parseTerminalEnvelope = (value: unknown): RunTerminalEnvelope | undefined => {
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    !('kind' in value) ||
-    value.kind !== RUN_TERMINAL_ENVELOPE ||
-    !('status' in value)
-  ) {
+type JsonRecord = Readonly<Record<string, JsonValue>>;
+
+const isJsonRecord = (value: unknown): value is JsonRecord =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const hasExactKeys = (value: JsonRecord, expected: readonly string[]): boolean => {
+  const keys = Reflect.ownKeys(value);
+  return (
+    keys.length === expected.length &&
+    expected.every((key) => Object.hasOwn(value, key)) &&
+    keys.every((key) => typeof key === 'string')
+  );
+};
+
+const parseTaskOutputs = (
+  value: JsonValue | undefined,
+  executionPlan: ExecutionPlan,
+): readonly TaskOutput[] | undefined => {
+  if (!Array.isArray(value) || value.length === 0) {
     return undefined;
   }
-  if (value.status === 'cancelled') {
-    return { kind: RUN_TERMINAL_ENVELOPE, status: 'cancelled' };
-  }
-  if (value.status === 'succeeded' && 'result' in value) {
-    try {
-      return {
-        kind: RUN_TERMINAL_ENVELOPE,
-        status: 'succeeded',
-        result: snapshotRunInput(value.result),
-      };
-    } catch {
+  const seen = new Set<string>();
+  const outputs: TaskOutput[] = [];
+  for (const entry of value) {
+    if (!isJsonRecord(entry) || !hasExactKeys(entry, ['nodeKey', 'value'])) {
       return undefined;
     }
+    const nodeKey = entry['nodeKey'];
+    const output = entry['value'];
+    if (typeof nodeKey !== 'string' || output === undefined || seen.has(nodeKey)) {
+      return undefined;
+    }
+    const task = executionPlan.pipeline.nodes.find(
+      (node) => node.key === nodeKey && node.kind === 'task',
+    );
+    if (task === undefined) {
+      return undefined;
+    }
+    seen.add(nodeKey);
+    outputs.push({ nodeKey: task.key, value: output });
+  }
+  return outputs;
+};
+
+const parseSuccessResult = (
+  value: JsonValue | undefined,
+  executionPlan: ExecutionPlan,
+): RunSuccessResult | undefined => {
+  if (!isJsonRecord(value) || typeof value['outcome'] !== 'string') {
+    return undefined;
+  }
+  if (hasExactKeys(value, ['outcome'])) {
+    return { outcome: value['outcome'] };
+  }
+  if (!hasExactKeys(value, ['outcome', 'outputs'])) {
+    return undefined;
+  }
+  const outputs = parseTaskOutputs(value['outputs'], executionPlan);
+  return outputs === undefined ? undefined : { outcome: value['outcome'], outputs };
+};
+
+const parseTerminalEnvelope = (
+  value: unknown,
+  executionPlan: ExecutionPlan,
+): RunTerminalEnvelope | undefined => {
+  let snapshot: JsonValue;
+  try {
+    snapshot = snapshotJsonValue(value, 'Workflow output');
+  } catch {
+    return undefined;
   }
   if (
-    value.status !== 'failed' ||
-    !('error' in value) ||
-    typeof value.error !== 'object' ||
-    value.error === null ||
-    !('code' in value.error)
+    !isJsonRecord(snapshot) ||
+    !Object.hasOwn(snapshot, 'kind') ||
+    snapshot['kind'] !== RUN_TERMINAL_ENVELOPE ||
+    !Object.hasOwn(snapshot, 'status')
   ) {
     return undefined;
   }
-  if (value.error.code === 'invalid_workflow_state') {
+  if (snapshot['status'] === 'cancelled') {
+    if (!hasExactKeys(snapshot, ['kind', 'status'])) {
+      return undefined;
+    }
+    return { kind: RUN_TERMINAL_ENVELOPE, status: 'cancelled' };
+  }
+  if (snapshot['status'] === 'succeeded' && Object.hasOwn(snapshot, 'result')) {
+    if (!hasExactKeys(snapshot, ['kind', 'result', 'status'])) {
+      return undefined;
+    }
+    const result = parseSuccessResult(snapshot['result'], executionPlan);
+    return result === undefined
+      ? undefined
+      : { kind: RUN_TERMINAL_ENVELOPE, status: 'succeeded', result };
+  }
+  if (
+    snapshot['status'] !== 'failed' ||
+    !hasExactKeys(snapshot, ['error', 'kind', 'status']) ||
+    !Object.hasOwn(snapshot, 'error') ||
+    !isJsonRecord(snapshot['error']) ||
+    !Object.hasOwn(snapshot['error'], 'code')
+  ) {
+    return undefined;
+  }
+  const error = snapshot['error'];
+  if (error['code'] === 'invalid_workflow_state' && hasExactKeys(error, ['code'])) {
     return {
       error: { code: 'invalid_workflow_state' },
       kind: RUN_TERMINAL_ENVELOPE,
       status: 'failed',
     };
   }
-  if (value.error.code === 'execution_failed' && 'message' in value.error) {
-    const message = normalizeExecutionFailureMessage(value.error.message);
+  if (
+    error['code'] === 'execution_failed' &&
+    hasExactKeys(error, ['code', 'message']) &&
+    Object.hasOwn(error, 'message')
+  ) {
+    const message = normalizeExecutionFailureMessage(error['message']);
     if (message !== undefined) {
       return {
         error: { code: 'execution_failed', message },
@@ -140,7 +218,7 @@ export const mapWorkflowStatus = (status: WorkflowStatusRecord): RunSnapshot | u
     case 'CANCELLED':
       return { ...base, status: 'cancelled' };
     case 'SUCCESS': {
-      const envelope = parseTerminalEnvelope(status.output);
+      const envelope = parseTerminalEnvelope(status.output, executionPlan);
       if (envelope === undefined) {
         return failure(base, 'invalid_workflow_state');
       }

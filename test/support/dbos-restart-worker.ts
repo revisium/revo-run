@@ -2,16 +2,18 @@ import { randomUUID } from 'node:crypto';
 import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 
-import { compilePipeline, definePipeline } from '@revisium/revo-pipeline';
+import { compilePipeline, definePipeline, type JsonValue } from '@revisium/revo-pipeline';
 
 import { createRunManager, type RunSnapshot, type StartRunResult } from '../../src/index.js';
 import type { ExecutionInvocation } from '../../src/types.js';
 
 const mode = process.argv[2];
-const directory = process.argv[3];
-const databaseUrl = process.argv[4];
+const scenario = process.argv[3];
+const directory = process.argv[4];
+const databaseUrl = process.argv[5];
 if (
-  (mode !== 'first' && mode !== 'recover') ||
+  (mode !== 'first' && mode !== 'recover' && mode !== 'inspect') ||
+  (scenario !== 'pre-checkpoint' && scenario !== 'post-checkpoint') ||
   directory === undefined ||
   databaseUrl === undefined
 ) {
@@ -29,7 +31,8 @@ const writeJson = async (file: string, value: unknown): Promise<void> => {
     throw error;
   }
 };
-const compilation = compilePipeline(
+
+const preCheckpointCompilation = compilePipeline(
   definePipeline({
     schemaVersion: 1,
     entry: 'task',
@@ -45,12 +48,35 @@ const compilation = compilePipeline(
     ],
   }),
 );
+const postCheckpointCompilation = compilePipeline(
+  definePipeline({
+    schemaVersion: 1,
+    entry: 'first',
+    facts: [],
+    nodes: [
+      {
+        kind: 'task',
+        key: 'first',
+        outcomes: { completed: 'second', failed: 'failed', cancelled: 'failed', skipped: 'failed' },
+      },
+      {
+        kind: 'task',
+        key: 'second',
+        outcomes: { completed: 'done', failed: 'failed', cancelled: 'failed', skipped: 'failed' },
+      },
+      { kind: 'terminal', key: 'done', outcome: 'published' },
+      { kind: 'terminal', key: 'failed', outcome: 'failed' },
+    ],
+  }),
+);
+const compilation =
+  scenario === 'pre-checkpoint' ? preCheckpointCompilation : postCheckpointCompilation;
 if (!compilation.ok) {
   throw new Error('worker execution plan is invalid');
 }
 const executionPlan = compilation.template;
-const input = { value: 'durable input' };
-const requestedRunId = 'caller-supplied/restart-run';
+const input = { scenario, value: 'durable input' };
+const requestedRunId = `caller-supplied/restart-run-${scenario}`;
 
 const readText = async (file: string): Promise<string | undefined> => {
   try {
@@ -63,9 +89,13 @@ const readText = async (file: string): Promise<string | undefined> => {
   }
 };
 
+const readJson = async (file: string): Promise<unknown> => {
+  const source = await readText(file);
+  return source === undefined ? undefined : (JSON.parse(source) as unknown);
+};
+
 const readAccepted = async (): Promise<StartRunResult> => {
-  const source = await readFile(path('accepted.json'), 'utf8');
-  const value: unknown = JSON.parse(source);
+  const value = await readJson(path('accepted.json'));
   if (
     typeof value !== 'object' ||
     value === null ||
@@ -77,35 +107,90 @@ const readAccepted = async (): Promise<StartRunResult> => {
   return { runId: value.runId };
 };
 
+interface EffectRecord {
+  readonly executionId: string;
+  readonly output: JsonValue;
+}
+
+const isEffectRecord = (value: unknown): value is EffectRecord =>
+  typeof value === 'object' &&
+  value !== null &&
+  'executionId' in value &&
+  typeof value.executionId === 'string' &&
+  'output' in value;
+
+const isEffectMap = (value: unknown): value is Record<string, EffectRecord> =>
+  typeof value === 'object' &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.values(value).every(isEffectRecord);
+
+const isExecutionCounts = (value: unknown): value is Record<string, number> =>
+  typeof value === 'object' &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.values(value).every(
+    (count: unknown) => typeof count === 'number' && Number.isSafeInteger(count) && count >= 0,
+  );
+
+const incrementCount = async (file: string, nodeKey: string): Promise<void> => {
+  const value = await readJson(path(file));
+  const counts = isExecutionCounts(value) ? value : {};
+  counts[nodeKey] = (counts[nodeKey] ?? 0) + 1;
+  await writeJson(path(file), counts);
+};
+
+const readEffects = async (): Promise<Record<string, EffectRecord>> => {
+  const value = await readJson(path('external-effects.json'));
+  if (value === undefined) {
+    return {};
+  }
+  if (!isEffectMap(value)) {
+    throw new Error('external effects are invalid');
+  }
+  return value;
+};
+
+const recordExecution = async (invocation: ExecutionInvocation): Promise<EffectRecord> => {
+  await incrementCount('executions.json', invocation.nodeKey);
+
+  const output = {
+    executionId: invocation.executionId,
+    sequence: invocation.nodeKey === 'first' ? 1 : invocation.nodeKey === 'second' ? 2 : 0,
+  };
+  const effect = { executionId: invocation.executionId, output };
+  const effects = await readEffects();
+  effects[invocation.nodeKey] = effect;
+  await writeJson(path('external-effects.json'), effects);
+  return effect;
+};
+
 const manager = createRunManager({
   database: { url: databaseUrl },
   executor: {
     cancel: async () => ({ status: 'not_supported' }),
     reconcile: async (invocation) => {
-      const recordedExecutionId = await readText(path('external-effect.json'));
-      if (recordedExecutionId === undefined) {
+      await incrementCount('reconciliation-callbacks.json', invocation.nodeKey);
+      const effect = (await readEffects())[invocation.nodeKey];
+      if (effect === undefined) {
         return { status: 'not_found' };
       }
-      const value: unknown = JSON.parse(recordedExecutionId);
-      if (
-        typeof value !== 'object' ||
-        value === null ||
-        !('executionId' in value) ||
-        value.executionId !== invocation.executionId
-      ) {
+      if (effect.executionId !== invocation.executionId) {
         return { status: 'outcome_unknown' };
       }
-      return { status: 'completed', completion: { kind: 'task' } };
+      return { status: 'completed', completion: { kind: 'task', output: effect.output } };
     },
     execute: async (invocation: ExecutionInvocation) => {
-      const count = Number((await readText(path('executions.txt'))) ?? '0');
-      await writeFile(path('executions.txt'), String(count + 1));
-      await writeJson(path('external-effect.json'), { executionId: invocation.executionId });
-      await writeFile(path('effect-recorded'), 'true');
-      if (mode === 'first') {
+      const effect = await recordExecution(invocation);
+      const shouldInterrupt =
+        mode === 'first' &&
+        ((scenario === 'pre-checkpoint' && invocation.nodeKey === 'task') ||
+          (scenario === 'post-checkpoint' && invocation.nodeKey === 'second'));
+      if (shouldInterrupt) {
+        await writeFile(path('interruption-ready'), 'true');
         await new Promise<never>(() => undefined);
       }
-      return { status: 'completed', completion: { kind: 'task' } } as const;
+      return { status: 'completed', completion: { kind: 'task', output: effect.output } } as const;
     },
   },
 });
@@ -135,5 +220,5 @@ if (mode === 'first') {
 
 const accepted = await readAccepted();
 const final = await waitForTerminal(accepted.runId);
-await writeJson(path('final.json'), final);
+await writeJson(path(mode === 'inspect' ? 'inspected.json' : 'final.json'), final);
 await manager.stop();

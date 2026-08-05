@@ -66,6 +66,32 @@ if (!scriptCompilation.ok) {
   throw new Error('Script execution plan fixture is invalid.');
 }
 
+const sequentialTaskCompilation = compilePipeline(
+  definePipeline({
+    schemaVersion: 1,
+    entry: 'first',
+    facts: [],
+    nodes: [
+      {
+        kind: 'task',
+        key: 'first',
+        outcomes: { completed: 'second', failed: 'failed', cancelled: 'failed', skipped: 'failed' },
+      },
+      {
+        kind: 'task',
+        key: 'second',
+        outcomes: { completed: 'done', failed: 'failed', cancelled: 'failed', skipped: 'failed' },
+      },
+      { kind: 'terminal', key: 'done', outcome: 'published' },
+      { kind: 'terminal', key: 'failed', outcome: 'failed' },
+    ],
+  }),
+);
+if (!sequentialTaskCompilation.ok) {
+  throw new Error('Sequential task execution plan fixture is invalid.');
+}
+
 export const taskExecutionPlan: ExecutionPlan = taskCompilation.template;
 export const candidateExecutionPlan: ExecutionPlan = candidateCompilation.template;
 export const scriptExecutionPlan: ExecutionPlan = scriptCompilation.template;
+export const sequentialTaskExecutionPlan: ExecutionPlan = sequentialTaskCompilation.template;
