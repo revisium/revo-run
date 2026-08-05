@@ -1,0 +1,16 @@
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: revo_run_test
+      POSTGRES_PASSWORD: revo_run
+      POSTGRES_USER: revo_run
+    ports:
+      - '${REVO_RUN_TEST_POSTGRES_PORT:-55434}:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U revo_run -d revo_run_test']
+      interval: 2s
+      timeout: 2s
+      retries: 15

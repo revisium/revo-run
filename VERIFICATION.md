@@ -1,4 +1,12 @@
 # Verification Contract
 
-Run `pnpm verify`. It checks formatting, strict types, type-aware lint, build output, and shell
-syntax. Runtime and database verification will return with the first implementation slice.
+Run before requesting review:
+
+```bash
+pnpm db:test:up
+pnpm verify
+pnpm db:test:down
+```
+
+This checks formatting, strict types, type-aware lint, build output, shell syntax, and the real
+DBOS lifecycle against the disposable PostgreSQL configured in `.env.test`.
