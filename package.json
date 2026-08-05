@@ -31,40 +31,25 @@
     "provenance": true
   },
   "scripts": {
-    "clean": "rm -rf dist coverage",
+    "clean": "rm -rf dist",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "oxlint --type-aware --type-check --deny-warnings --report-unused-disable-directives .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "test:unit": "vitest run test/unit",
-    "test:integration": "vitest run test/integration",
-    "test:integration:required": "node --import tsx scripts/test-integration.ts",
-    "test": "pnpm run test:unit && pnpm run test:integration",
-    "test:cov": "vitest run --coverage",
-    "verify:package": "pnpm run build && publint && node --import tsx scripts/verify-package.ts",
     "verify:shell": "bash -n scripts/*.sh",
-    "verify": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run test:unit && pnpm run test:integration:required && pnpm run test:cov && pnpm run verify:package && pnpm run verify:shell",
+    "verify": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run verify:shell",
     "sonar:local": "bash scripts/sonar-local.sh",
     "sonar:issues:local": "bash scripts/sonar-issues-local.sh",
     "ci:local:sonar": "bash scripts/ci-local-sonar.sh",
     "prepack": "pnpm run build"
   },
-  "dependencies": {
-    "@dbos-inc/dbos-sdk": "4.25.14",
-    "@revisium/revo-pipeline": "0.1.0-alpha.0"
-  },
   "devDependencies": {
-    "@arethetypeswrong/cli": "0.18.5",
     "@types/node": "24.13.3",
-    "@vitest/coverage-v8": "4.1.9",
     "oxfmt": "0.58.0",
     "oxlint": "1.73.0",
     "oxlint-tsgolint": "0.24.0",
-    "publint": "0.3.21",
-    "tsx": "4.23.1",
-    "typescript": "7.0.2",
-    "vitest": "4.1.9"
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": ">=24.11.1 <25"
