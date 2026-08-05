@@ -57,10 +57,19 @@ const terminate = async (child: ChildProcess | undefined): Promise<void> => {
   await waitForExit(child);
 };
 const worker = join(import.meta.dirname, '../support/dbos-restart-worker.ts');
-const launchWorker = (mode: 'first' | 'recover', directory: string, connectionUrl: string) =>
-  spawn(process.execPath, ['--import', 'tsx', worker, mode, directory, connectionUrl], {
+type Scenario = 'pre-checkpoint' | 'post-checkpoint';
+const launchWorker = (
+  mode: 'first' | 'recover' | 'inspect',
+  scenario: Scenario,
+  directory: string,
+  connectionUrl: string,
+) =>
+  spawn(process.execPath, ['--import', 'tsx', worker, mode, scenario, directory, connectionUrl], {
     stdio: 'inherit',
   });
+
+const readJson = async (file: string): Promise<unknown> =>
+  JSON.parse(await readFile(file, 'utf8')) as unknown;
 
 const parseAccepted = (source: string): { readonly runId: string } => {
   const value: unknown = JSON.parse(source);
@@ -75,7 +84,7 @@ const parseAccepted = (source: string): { readonly runId: string } => {
   return { runId: value.runId };
 };
 
-const compilation = compilePipeline(
+const preCheckpointCompilation = compilePipeline(
   definePipeline({
     schemaVersion: 1,
     entry: 'task',
@@ -91,46 +100,116 @@ const compilation = compilePipeline(
     ],
   }),
 );
-if (!compilation.ok) {
-  throw new Error('integration execution plan is invalid');
+const postCheckpointCompilation = compilePipeline(
+  definePipeline({
+    schemaVersion: 1,
+    entry: 'first',
+    facts: [],
+    nodes: [
+      {
+        kind: 'task',
+        key: 'first',
+        outcomes: { completed: 'second', failed: 'failed', cancelled: 'failed', skipped: 'failed' },
+      },
+      {
+        kind: 'task',
+        key: 'second',
+        outcomes: { completed: 'done', failed: 'failed', cancelled: 'failed', skipped: 'failed' },
+      },
+      { kind: 'terminal', key: 'done', outcome: 'published' },
+      { kind: 'terminal', key: 'failed', outcome: 'failed' },
+    ],
+  }),
+);
+if (!preCheckpointCompilation.ok || !postCheckpointCompilation.ok) {
+  throw new Error('integration execution plans are invalid');
 }
 
 integration('DBOS-authoritative restart and replay', () => {
-  it('recovers durable plan/input and reconciles the caller run ID without duplicate effects', async () => {
-    if (databaseUrl === undefined) {
-      throw new Error('DATABASE_URL is required.');
-    }
-    assertIsolatedTestDatabase(databaseUrl);
-    const directory = await mkdtemp(join(tmpdir(), 'revo-run-restart-'));
-    let first: ChildProcess | undefined;
-    let recovered: ChildProcess | undefined;
-    try {
-      first = launchWorker('first', directory, databaseUrl);
-      const acceptedSource = await waitForFile(join(directory, 'accepted.json'));
-      await waitForFile(join(directory, 'effect-recorded'));
-      const accepted = parseAccepted(acceptedSource);
-      const runId = accepted.runId;
-      expect(runId).toBe('caller-supplied/restart-run');
+  it.each([
+    {
+      expectedCallbacks: { task: 2 },
+      expectedCounts: { task: 1 },
+      expectedOutcome: 'succeeded',
+      expectedOutputs: [{ nodeKey: 'task', value: { sequence: 0 } }],
+      plan: preCheckpointCompilation.template,
+      scenario: 'pre-checkpoint' as const,
+      title: 'adopts an external result interrupted before its first DBOS checkpoint',
+    },
+    {
+      expectedCallbacks: { first: 1, second: 2 },
+      expectedCounts: { first: 1, second: 1 },
+      expectedOutcome: 'published',
+      expectedOutputs: [
+        { nodeKey: 'first', value: { sequence: 1 } },
+        { nodeKey: 'second', value: { sequence: 2 } },
+      ],
+      plan: postCheckpointCompilation.template,
+      scenario: 'post-checkpoint' as const,
+      title: 'replays a checkpointed first output after interruption before terminal completion',
+    },
+  ])(
+    '$title',
+    async ({
+      expectedCallbacks,
+      expectedCounts,
+      expectedOutcome,
+      expectedOutputs,
+      plan,
+      scenario,
+    }) => {
+      if (databaseUrl === undefined) {
+        throw new Error('DATABASE_URL is required.');
+      }
+      assertIsolatedTestDatabase(databaseUrl);
+      const directory = await mkdtemp(join(tmpdir(), `revo-run-restart-${scenario}-`));
+      let first: ChildProcess | undefined;
+      let recovered: ChildProcess | undefined;
+      let inspector: ChildProcess | undefined;
+      try {
+        first = launchWorker('first', scenario, directory, databaseUrl);
+        const acceptedSource = await waitForFile(join(directory, 'accepted.json'));
+        await waitForFile(join(directory, 'interruption-ready'));
+        const accepted = parseAccepted(acceptedSource);
+        const runId = accepted.runId;
+        expect(runId).toBe(`caller-supplied/restart-run-${scenario}`);
 
-      first.kill('SIGKILL');
-      await waitForExit(first);
+        first.kill('SIGKILL');
+        await waitForExit(first);
 
-      recovered = launchWorker('recover', directory, databaseUrl);
-      await waitForExit(recovered);
+        recovered = launchWorker('recover', scenario, directory, databaseUrl);
+        await waitForExit(recovered);
 
-      const final: unknown = JSON.parse(await readFile(join(directory, 'final.json'), 'utf8'));
-      expect(final).toMatchObject({
-        executionPlan: compilation.template,
-        id: runId,
-        input: { value: 'durable input' },
-        result: { outcome: 'succeeded' },
-        status: 'succeeded',
-      });
-      expect(await readFile(join(directory, 'executions.txt'), 'utf8')).toBe('1');
-    } finally {
-      await terminate(first);
-      await terminate(recovered);
-      await rm(directory, { recursive: true, force: true });
-    }
-  }, 30_000);
+        const final = await readJson(join(directory, 'final.json'));
+        expect(final).toMatchObject({
+          executionPlan: plan,
+          id: runId,
+          input: { scenario, value: 'durable input' },
+          result: { outcome: expectedOutcome, outputs: expectedOutputs },
+          status: 'succeeded',
+        });
+        const executionsAfterRecovery = await readJson(join(directory, 'executions.json'));
+        const callbacksAfterRecovery = await readJson(
+          join(directory, 'reconciliation-callbacks.json'),
+        );
+        expect(executionsAfterRecovery).toEqual(expectedCounts);
+        expect(callbacksAfterRecovery).toEqual(expectedCallbacks);
+
+        inspector = launchWorker('inspect', scenario, directory, databaseUrl);
+        await waitForExit(inspector);
+
+        expect(await readJson(join(directory, 'inspected.json'))).toEqual(final);
+        expect(await readJson(join(directory, 'executions.json'))).toEqual(executionsAfterRecovery);
+        expect(await readJson(join(directory, 'reconciliation-callbacks.json'))).toEqual(
+          callbacksAfterRecovery,
+        );
+      } finally {
+        await terminate(first);
+        await terminate(recovered);
+        await terminate(inspector);
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+    40_000,
+  );
 });

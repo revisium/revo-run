@@ -107,6 +107,7 @@ try {
     .map((path) => readFileSync(join(packageRoot, path), 'utf8'))
     .join('\n');
   assert.match(declarations, /type ExecutionPlan = PipelineExecutionTemplate/);
+  assert.match(declarations, /readonly output\?: JsonValue/);
   assert.doesNotMatch(declarations, /@dbos-inc|DBOSConfig/);
   assert.doesNotMatch(
     declaration,
@@ -136,7 +137,10 @@ if (!compilation.ok) throw new Error('consumer fixture failed');
 const executionPlan: ExecutionPlan = compilation.template;
 const executor: RunExecutor = {
   cancel: async () => ({ status: 'not_supported' }),
-  execute: async () => ({ status: 'completed', completion: { kind: 'task' } }),
+  execute: async () => ({
+    status: 'completed',
+    completion: { kind: 'task', output: { nested: [true, 1, null] } },
+  }),
   reconcile: async () => ({ status: 'not_found' }),
 };
 const options: CreateRunManagerOptions = { database: { url: 'postgresql://test' }, executor };
@@ -184,7 +188,10 @@ const manager = module.createRunManager({
   database: { url: 'postgresql://test' },
   executor: {
     cancel: async () => ({ status: 'not_supported' }),
-    execute: async () => ({ status: 'completed', completion: { kind: 'task' } }),
+    execute: async () => ({
+      status: 'completed',
+      completion: { kind: 'task', output: { packed: true } },
+    }),
     reconcile: async () => ({ status: 'not_found' }),
   },
 });

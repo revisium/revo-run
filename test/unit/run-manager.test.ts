@@ -135,7 +135,11 @@ vi.mock('@dbos-inc/dbos-sdk', () => ({
 }));
 
 import { createRunManager, type ExecutionPlan, type RunExecutor } from '../../src/index.js';
-import { taskExecutionPlan } from '../support/execution-plan.js';
+import {
+  candidateExecutionPlan,
+  sequentialTaskExecutionPlan,
+  taskExecutionPlan,
+} from '../support/execution-plan.js';
 
 const executor = (): RunExecutor => ({
   cancel: vi.fn<RunExecutor['cancel']>(async () => ({ status: 'not_supported' })),
@@ -166,6 +170,9 @@ const status = (overrides: Readonly<Record<string, unknown>> = {}) => ({
   workflowName: 'revo-run.run.v2',
   ...overrides,
 });
+
+const isUnknownRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 describe('run manager public behavior', () => {
   it('uses one v2 workflow and returns the caller run ID unchanged after durable start', async () => {
@@ -383,6 +390,84 @@ describe('run manager public behavior', () => {
     });
   });
 
+  it('maps ordered task outputs and preserves a non-default successful outcome', async () => {
+    const arranged = arrangeManager();
+    dbos.setStatus(
+      'run-id',
+      status({
+        input: [sequentialTaskExecutionPlan, { request: true }],
+        output: {
+          kind: 'revo-run.terminal.v1',
+          result: {
+            outcome: 'published',
+            outputs: [
+              { nodeKey: 'first', value: { nested: [1, true, null] } },
+              { nodeKey: 'second', value: 'complete' },
+            ],
+          },
+          status: 'succeeded',
+        },
+        status: 'SUCCESS',
+        updatedAt: 2_000,
+      }),
+    );
+    await arranged.manager.start();
+
+    await expect(arranged.manager.getRun('run-id')).resolves.toMatchObject({
+      createdAt: new Date(1_000),
+      executionPlan: sequentialTaskExecutionPlan,
+      result: {
+        outcome: 'published',
+        outputs: [
+          { nodeKey: 'first', value: { nested: [1, true, null] } },
+          { nodeKey: 'second', value: 'complete' },
+        ],
+      },
+      status: 'succeeded',
+      updatedAt: new Date(2_000),
+    });
+  });
+
+  it('preserves special own string keys in a parsed task output', async () => {
+    const output: Record<string, unknown> = {};
+    Object.defineProperty(output, '__proto__', {
+      enumerable: true,
+      value: { safe: true },
+    });
+    const arranged = arrangeManager();
+    dbos.setStatus(
+      'run-id',
+      status({
+        output: {
+          kind: 'revo-run.terminal.v1',
+          result: { outcome: 'succeeded', outputs: [{ nodeKey: 'task', value: output }] },
+          status: 'succeeded',
+        },
+        status: 'SUCCESS',
+      }),
+    );
+    await arranged.manager.start();
+
+    const snapshot = await arranged.manager.getRun('run-id');
+    const result = snapshot?.result;
+    if (!isUnknownRecord(result) || !Array.isArray(result['outputs'])) {
+      throw new Error('Snapshot result has no task outputs.');
+    }
+    const outputs: readonly unknown[] = result['outputs'];
+    const first = outputs[0];
+    if (!isUnknownRecord(first)) {
+      throw new Error('Snapshot task output entry is invalid.');
+    }
+    const parsed = first['value'];
+
+    expect(parsed).toEqual({ ['__proto__']: { safe: true } });
+    if (!isUnknownRecord(parsed)) {
+      throw new Error('Snapshot task output value is invalid.');
+    }
+    expect(Object.hasOwn(parsed, '__proto__')).toBe(true);
+    expect(({} as { safe?: boolean }).safe).toBeUndefined();
+  });
+
   it.each([
     ['ERROR', 'workflow_failed'],
     ['MAX_RECOVERY_ATTEMPTS_EXCEEDED', 'recovery_exhausted'],
@@ -427,6 +512,99 @@ describe('run manager public behavior', () => {
       error: { code: 'invalid_workflow_state' },
       status: 'failed',
     });
+  });
+
+  it.each([
+    ['empty outputs', taskExecutionPlan, { outcome: 'succeeded', outputs: [] }],
+    [
+      'duplicate node keys',
+      taskExecutionPlan,
+      {
+        outcome: 'succeeded',
+        outputs: [
+          { nodeKey: 'task', value: 1 },
+          { nodeKey: 'task', value: 2 },
+        ],
+      },
+    ],
+    [
+      'foreign node key',
+      taskExecutionPlan,
+      { outcome: 'succeeded', outputs: [{ nodeKey: 'foreign', value: null }] },
+    ],
+    [
+      'candidate key',
+      candidateExecutionPlan,
+      { outcome: 'succeeded', outputs: [{ nodeKey: 'a', value: null }] },
+    ],
+    [
+      'consensus node key',
+      candidateExecutionPlan,
+      { outcome: 'succeeded', outputs: [{ nodeKey: 'review', value: null }] },
+    ],
+    [
+      'terminal node key',
+      taskExecutionPlan,
+      { outcome: 'succeeded', outputs: [{ nodeKey: 'done', value: null }] },
+    ],
+    ['extra result property', taskExecutionPlan, { extra: true, outcome: 'succeeded' }],
+    [
+      'extra output property',
+      taskExecutionPlan,
+      { outcome: 'succeeded', outputs: [{ extra: true, nodeKey: 'task', value: null }] },
+    ],
+    [
+      'missing output value',
+      taskExecutionPlan,
+      { outcome: 'succeeded', outputs: [{ nodeKey: 'task' }] },
+    ],
+  ])('rejects a successful result with %s', async (_name, plan, result) => {
+    const arranged = arrangeManager();
+    dbos.setStatus(
+      'run-id',
+      status({
+        input: [plan, { request: true }],
+        output: { kind: 'revo-run.terminal.v1', result, status: 'succeeded' },
+        status: 'SUCCESS',
+      }),
+    );
+    await arranged.manager.start();
+
+    await expect(arranged.manager.getRun('run-id')).resolves.toMatchObject({
+      error: { code: 'invalid_workflow_state' },
+      status: 'failed',
+    });
+  });
+
+  it('rejects adversarial output descriptors without invoking getters', async () => {
+    let getterCalls = 0;
+    const value = {};
+    Object.defineProperty(value, 'secret', {
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return 'private';
+      },
+    });
+    const arranged = arrangeManager();
+    dbos.setStatus(
+      'run-id',
+      status({
+        output: {
+          kind: 'revo-run.terminal.v1',
+          result: { outcome: 'succeeded', outputs: [{ nodeKey: 'task', value }] },
+          status: 'succeeded',
+        },
+        status: 'SUCCESS',
+      }),
+    );
+    await arranged.manager.start();
+
+    await expect(arranged.manager.getRun('run-id')).resolves.toMatchObject({
+      error: { code: 'invalid_workflow_state' },
+      status: 'failed',
+    });
+    expect(getterCalls).toBe(0);
   });
 
   it.each([

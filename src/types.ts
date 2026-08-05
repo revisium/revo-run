@@ -61,7 +61,7 @@ export type ExecutionInvocation =
     });
 
 export type ExecutionCompletion =
-  | { readonly kind: 'task' }
+  | { readonly kind: 'task'; readonly output?: JsonValue }
   | { readonly kind: 'candidate'; readonly verdict: CandidateVerdict['verdict'] };
 
 export type ExecutionResult =
