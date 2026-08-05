@@ -21,11 +21,6 @@ SONAR_HOST_URL="${SONAR_HOST_URL:-https://sonarcloud.io}"
 SONAR_SCANNER_VERSION="${SONAR_SCANNER_VERSION:-12.1.0.3225_8.0.1}"
 SONAR_QUALITYGATE_TIMEOUT="${SONAR_QUALITYGATE_TIMEOUT:-300}"
 
-if [[ ! -f coverage/lcov.info ]]; then
-  echo "Coverage was not found. Run pnpm test:cov or pnpm ci:local:sonar first." >&2
-  exit 1
-fi
-
 scanner_args=(
   "-Dsonar.qualitygate.wait=true"
   "-Dsonar.qualitygate.timeout=${SONAR_QUALITYGATE_TIMEOUT}"
