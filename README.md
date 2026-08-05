@@ -15,11 +15,20 @@ const manager = createRunManager({
 });
 
 await manager.start();
+
+const { runId } = await manager.startRun({
+  runId: requestedRunId,
+  executionPlan: compilation.template,
+  input: { subject: 'example' },
+});
+
+const run = await manager.getRun(runId);
 await manager.stop();
 ```
 
-The manager owns the process-local DBOS lifecycle. Run execution APIs will be added in subsequent
-vertical slices.
+`ExecutionPlan` is the `PipelineExecutionTemplate` produced by `@revisium/revo-pipeline`. The
+current vertical slice executes terminal-only pipelines; executable nodes will be added next. The
+manager owns the process-local DBOS lifecycle, and DBOS stores the plan, input, status, and result.
 
 Target responsibilities:
 
