@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { RunManager } from '../../src/index.js';
-import { terminalExecutionPlan } from '../support/terminal-execution-plan.js';
+import { taskExecutionPlan, terminalExecutionPlan } from '../support/terminal-execution-plan.js';
 import { startTestRunManager, waitForRunStatus } from '../support/test-run-manager.js';
 
 let manager: RunManager;
@@ -53,5 +53,25 @@ describe('durable run', () => {
     await manager.startRun(input);
 
     await expect(manager.startRun(input)).rejects.toThrow('Run ID is already in use.');
+  });
+
+  it('reports an unsupported executable pipeline as failed', async () => {
+    const runId = `unsupported-${randomUUID()}`;
+
+    await manager.startRun({
+      runId,
+      executionPlan: taskExecutionPlan(),
+      input: null,
+    });
+    await waitForRunStatus(manager, runId, 'failed');
+
+    await expect(manager.getRun(runId)).resolves.toMatchObject({
+      status: 'failed',
+      error: { code: 'workflow_failed' },
+    });
+  });
+
+  it('returns undefined for an unknown run', async () => {
+    await expect(manager.getRun(`missing-${randomUUID()}`)).resolves.toBeUndefined();
   });
 });
