@@ -94,8 +94,8 @@ const isCandidateVerdict = (value: unknown): value is CandidateVerdict['verdict'
   value === 'approve' || value === 'reject' || value === 'abstain';
 
 type JsonRecord = Readonly<Record<string, JsonValue>>;
-
-const isJsonRecord = (value: JsonValue): value is JsonRecord =>
+const OUTCOME_UNKNOWN = { status: 'outcome_unknown' } as const;
+const isJsonRecord = (value: unknown): value is JsonRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const snapshotExecutorRecord = (value: unknown): JsonRecord | undefined => {
@@ -106,49 +106,39 @@ const snapshotExecutorRecord = (value: unknown): JsonRecord | undefined => {
     return undefined;
   }
 };
-
-const normalizeExecutionRecord = (value: JsonRecord | undefined): ExecutionResult => {
-  if (value === undefined || !Object.hasOwn(value, 'status')) {
-    return { status: 'outcome_unknown' };
+const normalizeFailedExecution = (value: JsonRecord): ExecutionResult => {
+  const error = Object.hasOwn(value, 'error') ? value['error'] : undefined;
+  if (!isJsonRecord(error)) {
+    return OUTCOME_UNKNOWN;
   }
-  if (value['status'] === 'outcome_unknown') {
-    return { status: 'outcome_unknown' };
+  const message = Object.hasOwn(error, 'message')
+    ? normalizeExecutionFailureMessage(error['message'])
+    : undefined;
+  return Object.hasOwn(error, 'code') &&
+    error['code'] === 'execution_failed' &&
+    message !== undefined
+    ? { status: 'failed', error: { code: 'execution_failed', message } }
+    : OUTCOME_UNKNOWN;
+};
+const normalizeTaskCompletion = (completion: JsonRecord): ExecutionResult => {
+  if (Object.hasOwn(completion, 'verdict')) {
+    return OUTCOME_UNKNOWN;
   }
-  if (value['status'] === 'failed') {
-    const error = value['error'];
-    if (!Object.hasOwn(value, 'error') || error === undefined || !isJsonRecord(error)) {
-      return { status: 'outcome_unknown' };
-    }
-    const message = Object.hasOwn(error, 'message')
-      ? normalizeExecutionFailureMessage(error['message'])
-      : undefined;
-    if (
-      !Object.hasOwn(error, 'code') ||
-      error['code'] !== 'execution_failed' ||
-      message === undefined
-    ) {
-      return { status: 'outcome_unknown' };
-    }
-    return { status: 'failed', error: { code: 'execution_failed', message } };
+  if (!Object.hasOwn(completion, 'output')) {
+    return { status: 'completed', completion: { kind: 'task' } };
   }
-  if (value['status'] !== 'completed' || !Object.hasOwn(value, 'completion')) {
-    return { status: 'outcome_unknown' };
-  }
-  const completion = value['completion'];
-  if (completion === undefined || !isJsonRecord(completion) || !Object.hasOwn(completion, 'kind')) {
-    return { status: 'outcome_unknown' };
+  const output = completion['output'];
+  return output === undefined
+    ? OUTCOME_UNKNOWN
+    : { status: 'completed', completion: { kind: 'task', output } };
+};
+const normalizeCompletedExecution = (value: JsonRecord): ExecutionResult => {
+  const completion = Object.hasOwn(value, 'completion') ? value['completion'] : undefined;
+  if (!isJsonRecord(completion) || !Object.hasOwn(completion, 'kind')) {
+    return OUTCOME_UNKNOWN;
   }
   if (completion['kind'] === 'task') {
-    if (Object.hasOwn(completion, 'verdict')) {
-      return { status: 'outcome_unknown' };
-    }
-    if (!Object.hasOwn(completion, 'output')) {
-      return { status: 'completed', completion: { kind: 'task' } };
-    }
-    const output = completion['output'];
-    return output === undefined
-      ? { status: 'outcome_unknown' }
-      : { status: 'completed', completion: { kind: 'task', output } };
+    return normalizeTaskCompletion(completion);
   }
   if (
     completion['kind'] === 'candidate' &&
@@ -161,7 +151,17 @@ const normalizeExecutionRecord = (value: JsonRecord | undefined): ExecutionResul
       completion: { kind: 'candidate', verdict: completion['verdict'] },
     };
   }
-  return { status: 'outcome_unknown' };
+  return OUTCOME_UNKNOWN;
+};
+
+const normalizeExecutionRecord = (value: JsonRecord | undefined): ExecutionResult => {
+  if (value === undefined || !Object.hasOwn(value, 'status')) {
+    return OUTCOME_UNKNOWN;
+  }
+  if (value['status'] === 'failed') {
+    return normalizeFailedExecution(value);
+  }
+  return value['status'] === 'completed' ? normalizeCompletedExecution(value) : OUTCOME_UNKNOWN;
 };
 
 const normalizeExecutionResult = (value: unknown): ExecutionResult =>

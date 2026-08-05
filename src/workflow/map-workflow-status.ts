@@ -107,10 +107,7 @@ const parseSuccessResult = (
   return outputs === undefined ? undefined : { outcome: value['outcome'], outputs };
 };
 
-const parseTerminalEnvelope = (
-  value: unknown,
-  executionPlan: ExecutionPlan,
-): RunTerminalEnvelope | undefined => {
+const snapshotTerminalEnvelope = (value: unknown): JsonRecord | undefined => {
   let snapshot: JsonValue;
   try {
     snapshot = snapshotJsonValue(value, 'Workflow output');
@@ -125,31 +122,28 @@ const parseTerminalEnvelope = (
   ) {
     return undefined;
   }
-  if (snapshot['status'] === 'cancelled') {
-    if (!hasExactKeys(snapshot, ['kind', 'status'])) {
-      return undefined;
-    }
-    return { kind: RUN_TERMINAL_ENVELOPE, status: 'cancelled' };
-  }
-  if (snapshot['status'] === 'succeeded' && Object.hasOwn(snapshot, 'result')) {
-    if (!hasExactKeys(snapshot, ['kind', 'result', 'status'])) {
-      return undefined;
-    }
-    const result = parseSuccessResult(snapshot['result'], executionPlan);
-    return result === undefined
-      ? undefined
-      : { kind: RUN_TERMINAL_ENVELOPE, status: 'succeeded', result };
-  }
-  if (
-    snapshot['status'] !== 'failed' ||
-    !hasExactKeys(snapshot, ['error', 'kind', 'status']) ||
-    !Object.hasOwn(snapshot, 'error') ||
-    !isJsonRecord(snapshot['error']) ||
-    !Object.hasOwn(snapshot['error'], 'code')
-  ) {
+  return snapshot;
+};
+
+const parseCancelledEnvelope = (snapshot: JsonRecord): RunTerminalEnvelope | undefined =>
+  hasExactKeys(snapshot, ['kind', 'status'])
+    ? { kind: RUN_TERMINAL_ENVELOPE, status: 'cancelled' }
+    : undefined;
+
+const parseSucceededEnvelope = (
+  snapshot: JsonRecord,
+  executionPlan: ExecutionPlan,
+): RunTerminalEnvelope | undefined => {
+  if (!Object.hasOwn(snapshot, 'result') || !hasExactKeys(snapshot, ['kind', 'result', 'status'])) {
     return undefined;
   }
-  const error = snapshot['error'];
+  const result = parseSuccessResult(snapshot['result'], executionPlan);
+  return result === undefined
+    ? undefined
+    : { kind: RUN_TERMINAL_ENVELOPE, status: 'succeeded', result };
+};
+
+const parseTerminalError = (error: JsonRecord): RunTerminalEnvelope | undefined => {
   if (error['code'] === 'invalid_workflow_state' && hasExactKeys(error, ['code'])) {
     return {
       error: { code: 'invalid_workflow_state' },
@@ -158,20 +152,49 @@ const parseTerminalEnvelope = (
     };
   }
   if (
-    error['code'] === 'execution_failed' &&
-    hasExactKeys(error, ['code', 'message']) &&
-    Object.hasOwn(error, 'message')
+    error['code'] !== 'execution_failed' ||
+    !hasExactKeys(error, ['code', 'message']) ||
+    !Object.hasOwn(error, 'message')
   ) {
-    const message = normalizeExecutionFailureMessage(error['message']);
-    if (message !== undefined) {
-      return {
+    return undefined;
+  }
+  const message = normalizeExecutionFailureMessage(error['message']);
+  return message === undefined
+    ? undefined
+    : {
         error: { code: 'execution_failed', message },
         kind: RUN_TERMINAL_ENVELOPE,
         status: 'failed',
       };
-    }
+};
+
+const parseFailedEnvelope = (snapshot: JsonRecord): RunTerminalEnvelope | undefined => {
+  if (
+    !hasExactKeys(snapshot, ['error', 'kind', 'status']) ||
+    !Object.hasOwn(snapshot, 'error') ||
+    !isJsonRecord(snapshot['error']) ||
+    !Object.hasOwn(snapshot['error'], 'code')
+  ) {
+    return undefined;
   }
-  return undefined;
+  return parseTerminalError(snapshot['error']);
+};
+
+const parseTerminalEnvelope = (
+  value: unknown,
+  executionPlan: ExecutionPlan,
+): RunTerminalEnvelope | undefined => {
+  const snapshot = snapshotTerminalEnvelope(value);
+  if (snapshot === undefined) {
+    return undefined;
+  }
+  if (snapshot['status'] === 'cancelled') {
+    return parseCancelledEnvelope(snapshot);
+  }
+  if (snapshot['status'] === 'succeeded') {
+    return parseSucceededEnvelope(snapshot, executionPlan);
+  }
+  return snapshot['status'] === 'failed' ? parseFailedEnvelope(snapshot) : undefined;
 };
 
 const toDate = (value: number | undefined): Date | undefined => {
