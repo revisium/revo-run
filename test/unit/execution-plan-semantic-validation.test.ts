@@ -18,6 +18,7 @@ const executionPlan = (
   root: PipelineNode,
   options: {
     readonly pipelines?: ExecutionPlan['pipelines'];
+    readonly bindings?: ExecutionPlan['bindings'];
     readonly policies?: Partial<ExecutionPlan['policies']>;
     readonly rootPipelineId?: string;
   } = {},
@@ -25,7 +26,7 @@ const executionPlan = (
   schemaVersion: 1,
   rootPipelineId: options.rootPipelineId ?? 'main',
   pipelines: { ...options.pipelines, main: { root } },
-  bindings: [],
+  bindings: options.bindings ?? [],
   policies: { ...defaultPolicies, ...options.policies },
 });
 
@@ -48,14 +49,25 @@ const subpipeline = (key: string, pipelineId: string): PipelineNode => ({
 
 describe('execution plan semantic validation', () => {
   it('accepts explicit bounded repetition', () => {
-    const plan = executionPlan({
-      kind: 'repeat',
-      key: 'review',
-      maximumIterations: 3,
-      continueOn: ['retry'],
-      completeOn: ['completed'],
-      body: { kind: 'task', key: 'work' },
-    });
+    const plan = executionPlan(
+      {
+        kind: 'repeat',
+        key: 'review',
+        maximumIterations: 3,
+        continueOn: ['retry'],
+        completeOn: ['completed'],
+        body: { kind: 'task', key: 'work' },
+      },
+      {
+        bindings: [
+          {
+            kind: 'script',
+            target: { pipelineId: 'main', nodePath: 'review/work' },
+            script: { id: 'example.run', version: '1.0.0' },
+          },
+        ],
+      },
+    );
 
     expect(ExecutionPlanValidator.Check(plan)).toBe(true);
   });
@@ -185,5 +197,85 @@ describe('execution plan semantic validation', () => {
     });
 
     expect(ExecutionPlanValidator.Check(plan)).toBe(false);
+  });
+
+  it('rejects duplicate node paths', () => {
+    const plan = executionPlan({
+      kind: 'sequence',
+      children: [
+        { kind: 'task', key: 'work' },
+        { kind: 'task', key: 'work' },
+      ],
+    });
+
+    expect(validationError(plan)).toBe('duplicate_node_path');
+  });
+
+  it('rejects duplicate executor bindings', () => {
+    const binding = {
+      kind: 'script',
+      target: { pipelineId: 'main', nodePath: 'work' },
+      script: { id: 'example.run', version: '1.0.0' },
+    } as const;
+    const plan: ExecutionPlan = {
+      ...executionPlan({ kind: 'task', key: 'work' }),
+      bindings: [binding, binding],
+    };
+
+    expect(validationError(plan)).toBe('duplicate_executor_binding');
+  });
+
+  it('rejects a task without an executor binding', () => {
+    const plan = executionPlan({ kind: 'task', key: 'work' });
+
+    expect(validationError(plan)).toBe('missing_executor_binding');
+  });
+
+  it('rejects an executor binding whose node does not exist', () => {
+    const plan = executionPlan(end, {
+      bindings: [
+        {
+          kind: 'script',
+          target: { pipelineId: 'main', nodePath: 'missing' },
+          script: { id: 'example.run', version: '1.0.0' },
+        },
+      ],
+    });
+
+    expect(validationError(plan)).toBe('binding_target_not_found');
+  });
+
+  it('rejects an executor binding whose pipeline does not exist', () => {
+    const plan = executionPlan(end, {
+      bindings: [
+        {
+          kind: 'script',
+          target: { pipelineId: 'missing', nodePath: 'work' },
+          script: { id: 'example.run', version: '1.0.0' },
+        },
+      ],
+    });
+
+    expect(validationError(plan)).toBe('binding_target_not_found');
+  });
+
+  it('rejects an executor binding that targets a control node', () => {
+    const plan = executionPlan(
+      {
+        kind: 'sequence',
+        children: [{ kind: 'delay', key: 'cooldown', durationMs: 1_000 }, end],
+      },
+      {
+        bindings: [
+          {
+            kind: 'script',
+            target: { pipelineId: 'main', nodePath: 'cooldown' },
+            script: { id: 'example.run', version: '1.0.0' },
+          },
+        ],
+      },
+    );
+
+    expect(validationError(plan)).toBe('binding_target_not_task');
   });
 });

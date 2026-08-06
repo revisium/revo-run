@@ -1,10 +1,9 @@
 import type { WorkflowStatus } from '@dbos-inc/dbos-sdk';
 import { describe, expect, it } from 'vitest';
 
-import { mapRunSnapshot } from '../../src/runtime/map-run-snapshot.js';
-import { terminalExecutionPlan } from '../support/terminal-execution-plan.js';
-
-const workflowName = 'revo-run.run.v1';
+import { runWorkflowName } from '../../src/dbos/dbos-names.js';
+import { mapRunSnapshot } from '../../src/dbos/read-model/map-run-snapshot.js';
+import { terminalExecutionPlan } from '../support/execution-plan.fixture.js';
 
 const workflowStatus = (overrides: Partial<WorkflowStatus> = {}): WorkflowStatus => ({
   applicationID: 'test',
@@ -16,7 +15,7 @@ const workflowStatus = (overrides: Partial<WorkflowStatus> = {}): WorkflowStatus
   updatedAt: 2,
   workflowClassName: '',
   workflowID: 'run-id',
-  workflowName,
+  workflowName: runWorkflowName,
   ...overrides,
 });
 
@@ -34,7 +33,7 @@ describe('run snapshot mapping', () => {
       dbosStatus === 'SUCCESS' ? { status: 'succeeded', outcome: 'succeeded' } : undefined;
 
     expect(
-      mapRunSnapshot(workflowStatus({ output, status: dbosStatus }), workflowName),
+      mapRunSnapshot(workflowStatus({ output, status: dbosStatus }), runWorkflowName),
     ).toMatchObject({
       id: 'run-id',
       status: runStatus,
@@ -47,7 +46,7 @@ describe('run snapshot mapping', () => {
     expect(
       mapRunSnapshot(
         workflowStatus({ error: 'execution failed', output: undefined, status: 'ERROR' }),
-        workflowName,
+        runWorkflowName,
       ),
     ).toMatchObject({
       error: { code: 'workflow_failed', message: 'execution failed' },
@@ -59,7 +58,7 @@ describe('run snapshot mapping', () => {
           output: undefined,
           status: 'MAX_RECOVERY_ATTEMPTS_EXCEEDED',
         }),
-        workflowName,
+        runWorkflowName,
       ),
     ).toMatchObject({
       error: { code: 'recovery_exhausted', message: 'recovery failed' },
@@ -74,7 +73,7 @@ describe('run snapshot mapping', () => {
           workflowStatus({
             output: { status: terminalStatus, outcome: `terminal-${terminalStatus}` },
           }),
-          workflowName,
+          runWorkflowName,
         ),
       ).toMatchObject({
         status: terminalStatus,
@@ -94,7 +93,7 @@ describe('run snapshot mapping', () => {
     expect(
       mapRunSnapshot(
         workflowStatus({ output: { status: 'succeeded', outcome: 'completed', output } }),
-        workflowName,
+        runWorkflowName,
       ),
     ).toMatchObject({ result: { outcome: 'completed', output } });
   });
@@ -103,7 +102,7 @@ describe('run snapshot mapping', () => {
     const executionPlan = { ...terminalExecutionPlan(), schemaVersion: 2 };
 
     expect(() =>
-      mapRunSnapshot(workflowStatus({ input: [{ executionPlan, input: null }] }), workflowName),
+      mapRunSnapshot(workflowStatus({ input: [{ executionPlan, input: null }] }), runWorkflowName),
     ).toThrow('Run workflow input is invalid.');
   });
 
@@ -111,7 +110,7 @@ describe('run snapshot mapping', () => {
     const executionPlan = { ...terminalExecutionPlan(), rootPipelineId: 'missing' };
 
     expect(() =>
-      mapRunSnapshot(workflowStatus({ input: [{ executionPlan, input: null }] }), workflowName),
+      mapRunSnapshot(workflowStatus({ input: [{ executionPlan, input: null }] }), runWorkflowName),
     ).toThrow('Run workflow input is invalid.');
   });
 
@@ -123,22 +122,22 @@ describe('run snapshot mapping', () => {
     expect(() =>
       mapRunSnapshot(
         workflowStatus({ output: { status: 'succeeded', outcome: 'completed', output } }),
-        workflowName,
+        runWorkflowName,
       ),
     ).toThrow('Run workflow output is invalid.');
   });
 
   it('rejects foreign workflows and malformed durable values', () => {
-    expect(() => mapRunSnapshot(workflowStatus({ workflowName: 'foreign' }), workflowName)).toThrow(
-      'Workflow is not a Revo run.',
-    );
-    expect(() => mapRunSnapshot(workflowStatus({ input: [] }), workflowName)).toThrow(
+    expect(() =>
+      mapRunSnapshot(workflowStatus({ workflowName: 'foreign' }), runWorkflowName),
+    ).toThrow('Workflow is not a Revo run.');
+    expect(() => mapRunSnapshot(workflowStatus({ input: [] }), runWorkflowName)).toThrow(
       'Run workflow input is invalid.',
     );
-    expect(() => mapRunSnapshot(workflowStatus({ output: null }), workflowName)).toThrow(
+    expect(() => mapRunSnapshot(workflowStatus({ output: null }), runWorkflowName)).toThrow(
       'Run workflow output is invalid.',
     );
-    expect(() => mapRunSnapshot(workflowStatus({ status: 'UNKNOWN' }), workflowName)).toThrow(
+    expect(() => mapRunSnapshot(workflowStatus({ status: 'UNKNOWN' }), runWorkflowName)).toThrow(
       'Unknown DBOS workflow status: UNKNOWN.',
     );
   });

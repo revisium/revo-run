@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ExecutionPlanValidator } from '../../src/validation/execution-plan.validator.js';
-import { terminalExecutionPlan } from '../support/terminal-execution-plan.js';
+import { terminalExecutionPlan } from '../support/execution-plan.fixture.js';
 
 describe('execution plan validation', () => {
   it('accepts a complete supported execution plan', () => {

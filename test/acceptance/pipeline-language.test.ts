@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { ExecutionPlanValidator } from '../../src/validation/execution-plan.validator.js';
 import { plannedPipelineScenarios } from './capability-matrix.js';
+import { implementedPipelineScenarios } from './implemented-scenarios.js';
+
+const implementedNames = new Set(implementedPipelineScenarios.map(({ name }) => name));
+const pendingPipelineScenarios = plannedPipelineScenarios.filter(
+  ({ name }) => !implementedNames.has(name),
+);
 
 describe('pipeline capability matrix', () => {
   it('uses unique scenario names and explicit expectations', () => {
@@ -63,11 +69,18 @@ describe('pipeline capability matrix', () => {
       scriptExecution: 3,
       subpipeline: 3,
       subscription: 5,
-      validation: 20,
+      validation: 21,
     });
   });
 
-  describe.each(plannedPipelineScenarios)('$name', () => {
+  it('marks only pending scenarios with an implementation blocker', () => {
+    expect(implementedPipelineScenarios.every(({ blockedBy }) => blockedBy === undefined)).toBe(
+      true,
+    );
+    expect(pendingPipelineScenarios.every(({ blockedBy }) => blockedBy !== undefined)).toBe(true);
+  });
+
+  describe.each(pendingPipelineScenarios)('$name', () => {
     it.todo('executes the planned scenario'); // NOSONAR: blocked capability contract.
   });
 });

@@ -11,6 +11,7 @@ import {
   expectNodeExecutions,
   expectOutputValue,
   expectRunStatus,
+  expectSecretResolved,
   fromNodeOutput,
   output,
   routeOutcomes,
@@ -27,7 +28,6 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'dataFlow',
     name: 'passes a versioned entity reference without embedding entity data in the plan',
-    blockedBy: 'runRuntime',
     plan: executionPlan(
       sequence(
         task('analyze', {
@@ -49,7 +49,6 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'dataFlow',
     name: 'passes a durable artifact reference between node executions',
-    blockedBy: 'runRuntime',
     plan: executionPlan(
       sequence(
         task('implement'),
@@ -90,7 +89,6 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'dataFlow',
     name: 'resolves a secret only at the executor boundary and never persists its value',
-    blockedBy: 'runRuntime',
     plan: executionPlan(
       sequence(
         task('deploy', { input: { credential: secret({ name: 'production-token' }) } }),
@@ -100,7 +98,11 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
     ),
     steps: [
       startRun(),
+      expectNodeInput('main/deploy', {
+        credential: { kind: 'secret', reference: { name: 'production-token' } },
+      }),
       completeNode('main/deploy'),
+      expectSecretResolved('resolved-production-token'),
       { kind: 'expectSecretAbsent', value: 'resolved-production-token' },
       expectRunStatus('succeeded'),
     ],
@@ -108,7 +110,6 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'dataFlow',
     name: 'keeps reference-shaped executor JSON inert',
-    blockedBy: 'runRuntime',
     plan: executionPlan(
       sequence(
         task('produce'),
@@ -151,7 +152,6 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'dataFlow',
     name: 'fails a task safely when a referenced secret cannot be resolved',
-    blockedBy: 'runRuntime',
     plan: executionPlan(
       routeOutcomes(task('deploy', { input: { credential: secret({ name: 'missing-token' }) } }), {
         completed: end('succeeded'),
@@ -170,7 +170,6 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'dataFlow',
     name: 'fails deterministically when a pinned entity version is unavailable',
-    blockedBy: 'runRuntime',
     plan: executionPlan(
       routeOutcomes(
         task('analyze', {
@@ -197,7 +196,6 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'dataFlow',
     name: 'stores a large node result as an artifact reference',
-    blockedBy: 'runRuntime',
     plan: executionPlan(sequence(task('analyze'), end('succeeded')), {
       bindings: [agentBinding('analyze', 'analyst')],
     }),
@@ -233,7 +231,6 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'dataFlow',
     name: 'uses an explicitly pinned artifact as task input',
-    blockedBy: 'runRuntime',
     plan: executionPlan(
       sequence(
         task('inspect', {

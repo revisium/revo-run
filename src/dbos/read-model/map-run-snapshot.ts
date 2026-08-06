@@ -1,10 +1,10 @@
 import type { WorkflowStatus } from '@dbos-inc/dbos-sdk';
 
-import type { RunError, RunSnapshot, RunStatus } from '../contracts/run/run.js';
+import type { RunError, RunSnapshot, RunStatus } from '../../contracts/run/run.js';
 import {
   parseRunWorkflowInput,
   parseRunWorkflowResult,
-} from '../validation/parse-run-workflow-data.js';
+} from '../../validation/parse-run-workflow-data.js';
 
 const mapStatus = (status: string): RunStatus => {
   switch (status) {

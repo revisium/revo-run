@@ -3,7 +3,6 @@ import type { RunWorkflowResult } from '../contracts/workflow/run-workflow-resul
 import { ExecutionPlanValidator } from './execution-plan.validator.js';
 import {
   RunWorkflowArgumentsValidator,
-  RunWorkflowInputValidator,
   RunWorkflowResultValidator,
 } from './run-workflow.validator.js';
 
@@ -18,15 +17,6 @@ export const parseRunWorkflowInput = (value: unknown[] | undefined): RunWorkflow
   }
 
   return input;
-};
-
-export const validateRunWorkflowInput = (value: RunWorkflowInput): void => {
-  if (
-    !RunWorkflowInputValidator.Check(value) ||
-    !ExecutionPlanValidator.Check(value.executionPlan)
-  ) {
-    throw new Error('Run workflow input is invalid.');
-  }
 };
 
 export const parseRunWorkflowResult = (value: unknown): RunWorkflowResult => {

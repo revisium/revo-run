@@ -4,10 +4,15 @@ Durable run orchestration for Revo.
 
 ## Current scope
 
-The current alpha executes an execution plan whose root is an `end` node without output mappings.
-DBOS persists the workflow input, status, result, and timestamps in PostgreSQL.
+The current alpha executes deterministic `sequence`, `outcomeSwitch`, `branch`, `subpipeline`,
+`task`, and `end` nodes. Task effects run as DBOS steps. DBOS persists workflow input, task
+results, events, terminal result, status, and timestamps in PostgreSQL.
 
-The public runtime API contains `createRunManager`, `start`, `stop`, `startRun`, and `getRun`.
+The public runtime API contains `createRunManager`, lifecycle methods, `startRun`, `getRun`,
+`getRunDetails`, and `subscribeRunEvents`.
+
+DBOS has one process-global runtime. Create one `RunManager` per process and share it across
+consumers.
 
 ## Example
 
@@ -23,6 +28,14 @@ const manager = createRunManager({
   database: {
     url: databaseUrl,
   },
+  executor: {
+    async execute(request, { signal }) {
+      // Resolve entity, artifact, and secret references inside this boundary.
+      // Dispatch request.binding to an agent or script adapter and pass signal
+      // to the underlying operation so DBOS step timeouts can cancel it.
+      return { kind: 'completed', outcome: 'completed' };
+    },
+  },
 });
 
 await manager.start();
@@ -35,13 +48,21 @@ const { runId } = await manager.startRun({
     pipelines: {
       main: {
         root: {
-          kind: 'end',
-          status: 'succeeded',
-          outcome: 'completed',
+          kind: 'sequence',
+          children: [
+            { kind: 'task', key: 'work' },
+            { kind: 'end', status: 'succeeded', outcome: 'completed' },
+          ],
         },
       },
     },
-    bindings: [],
+    bindings: [
+      {
+        kind: 'script',
+        target: { pipelineId: 'main', nodePath: 'work' },
+        script: { id: 'example.run', version: '1.0.0' },
+      },
+    ],
     policies: {
       defaultTaskTimeoutMs: 3_600_000,
       maximumActiveNodeExecutions: 10,
@@ -54,5 +75,6 @@ const { runId } = await manager.startRun({
 });
 
 const run = await manager.getRun(runId);
+const details = await manager.getRunDetails(runId);
 await manager.stop();
 ```

@@ -1,5 +1,6 @@
 import Schema from 'typebox/schema';
 
+import { pipelineNodePath } from '../contracts/pipeline/node-path.js';
 import type { PipelineNode } from '../contracts/pipeline/pipeline-node.js';
 import { ExecutionPlanSchema } from '../contracts/run/execution-plan.js';
 import type { ExecutionPlan } from '../contracts/run/execution-plan.js';
@@ -7,7 +8,12 @@ import type { ExecutionPlan } from '../contracts/run/execution-plan.js';
 const schemaValidator = Schema.Compile(ExecutionPlanSchema);
 
 export type ExecutionPlanValidationErrorCode =
+  | 'binding_target_not_found'
+  | 'binding_target_not_task'
+  | 'duplicate_executor_binding'
+  | 'duplicate_node_path'
   | 'invalid_execution_plan'
+  | 'missing_executor_binding'
   | 'node_depth_exceeded'
   | 'pipeline_not_found'
   | 'root_pipeline_not_found'
@@ -19,17 +25,25 @@ export type ExecutionPlanValidationResult =
   | { readonly valid: false; readonly code: ExecutionPlanValidationErrorCode };
 
 type PipelineInspection =
-  | { readonly valid: true; readonly dependencies: ReadonlySet<string> }
-  | { readonly valid: false; readonly code: 'node_depth_exceeded' };
+  | {
+      readonly valid: true;
+      readonly dependencies: ReadonlySet<string>;
+      readonly nodeKinds: ReadonlyMap<string, PipelineNode['kind']>;
+    }
+  | {
+      readonly valid: false;
+      readonly code: 'duplicate_node_path' | 'node_depth_exceeded';
+    };
 
 type PipelineGraphInspection =
   | {
       readonly valid: true;
       readonly dependencies: ReadonlyMap<string, ReadonlySet<string>>;
+      readonly nodeKinds: ReadonlyMap<string, ReadonlyMap<string, PipelineNode['kind']>>;
     }
   | {
       readonly valid: false;
-      readonly code: 'node_depth_exceeded' | 'pipeline_not_found';
+      readonly code: 'duplicate_node_path' | 'node_depth_exceeded' | 'pipeline_not_found';
     };
 
 const optionalNode = (node: PipelineNode | undefined): readonly PipelineNode[] =>
@@ -64,9 +78,12 @@ const childNodes = (node: PipelineNode): readonly PipelineNode[] => {
 
 const inspectPipeline = (root: PipelineNode, maximumDepth: number): PipelineInspection => {
   const dependencies = new Set<string>();
-  const pending: Array<{ readonly node: PipelineNode; readonly depth: number }> = [
-    { node: root, depth: 1 },
-  ];
+  const nodeKinds = new Map<string, PipelineNode['kind']>();
+  const pending: Array<{
+    readonly node: PipelineNode;
+    readonly depth: number;
+    readonly parentPath: string;
+  }> = [{ node: root, depth: 1, parentPath: '' }];
 
   while (pending.length > 0) {
     const current = pending.pop();
@@ -76,19 +93,27 @@ const inspectPipeline = (root: PipelineNode, maximumDepth: number): PipelineInsp
     if (current.depth > maximumDepth) {
       return { valid: false, code: 'node_depth_exceeded' };
     }
+    const path = pipelineNodePath(current.node, current.parentPath);
+    if (path !== current.parentPath && nodeKinds.has(path)) {
+      return { valid: false, code: 'duplicate_node_path' };
+    }
+    if (path !== current.parentPath) {
+      nodeKinds.set(path, current.node.kind);
+    }
     if (current.node.kind === 'subpipeline') {
       dependencies.add(current.node.pipelineId);
     }
     for (const child of childNodes(current.node)) {
-      pending.push({ node: child, depth: current.depth + 1 });
+      pending.push({ node: child, depth: current.depth + 1, parentPath: path });
     }
   }
 
-  return { valid: true, dependencies };
+  return { valid: true, dependencies, nodeKinds };
 };
 
 const inspectPipelineGraph = (plan: ExecutionPlan): PipelineGraphInspection => {
   const dependencies = new Map<string, ReadonlySet<string>>();
+  const nodeKinds = new Map<string, ReadonlyMap<string, PipelineNode['kind']>>();
 
   for (const [pipelineId, pipeline] of Object.entries(plan.pipelines)) {
     const inspection = inspectPipeline(pipeline.root, plan.policies.maximumNodeNestingDepth);
@@ -101,9 +126,48 @@ const inspectPipelineGraph = (plan: ExecutionPlan): PipelineGraphInspection => {
       }
     }
     dependencies.set(pipelineId, inspection.dependencies);
+    nodeKinds.set(pipelineId, inspection.nodeKinds);
   }
 
-  return { valid: true, dependencies };
+  return { valid: true, dependencies, nodeKinds };
+};
+
+const bindingKey = (pipelineId: string, nodePath: string): string => `${pipelineId}\0${nodePath}`;
+
+const validateBindings = (
+  plan: ExecutionPlan,
+  nodeKinds: ReadonlyMap<string, ReadonlyMap<string, PipelineNode['kind']>>,
+): ExecutionPlanValidationErrorCode | undefined => {
+  const bindingTargets = new Set<string>();
+
+  for (const { target } of plan.bindings) {
+    const targetKey = bindingKey(target.pipelineId, target.nodePath);
+    if (bindingTargets.has(targetKey)) {
+      return 'duplicate_executor_binding';
+    }
+
+    bindingTargets.add(targetKey);
+  }
+
+  for (const { target } of plan.bindings) {
+    const kind = nodeKinds.get(target.pipelineId)?.get(target.nodePath);
+    if (kind === undefined) {
+      return 'binding_target_not_found';
+    }
+    if (kind !== 'task') {
+      return 'binding_target_not_task';
+    }
+  }
+
+  for (const [pipelineId, pipelineNodeKinds] of nodeKinds) {
+    for (const [nodePath, kind] of pipelineNodeKinds) {
+      if (kind === 'task' && !bindingTargets.has(bindingKey(pipelineId, nodePath))) {
+        return 'missing_executor_binding';
+      }
+    }
+  }
+
+  return undefined;
 };
 
 const topologicalOrder = (
@@ -172,6 +236,11 @@ const validateSemantics = (plan: ExecutionPlan): ExecutionPlanValidationResult =
   const graph = inspectPipelineGraph(plan);
   if (!graph.valid) {
     return graph;
+  }
+
+  const bindingError = validateBindings(plan, graph.nodeKinds);
+  if (bindingError !== undefined) {
+    return { valid: false, code: bindingError };
   }
 
   const order = topologicalOrder(graph.dependencies);

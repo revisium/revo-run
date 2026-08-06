@@ -23,7 +23,7 @@ export type ScenarioBlocker = 'pipelineContract' | 'runManagerApi' | 'runRuntime
 export interface RunScenario {
   readonly capability: ScenarioCapability;
   readonly name: string;
-  readonly blockedBy: ScenarioBlocker;
+  readonly blockedBy?: ScenarioBlocker;
   readonly plan: ExecutionPlan;
   readonly steps: readonly ScenarioStep[];
 }
@@ -171,6 +171,10 @@ export type ScenarioStep =
       readonly value: string;
     }
   | {
+      readonly kind: 'expectSecretResolved';
+      readonly value: string;
+    }
+  | {
       readonly kind: 'expectRunDetails';
       readonly nodePaths: readonly string[];
     }
@@ -188,7 +192,3 @@ export type ScenarioStep =
     };
 
 export const scenario = (value: RunScenario): RunScenario => value;
-
-export const runScenario = async (value: RunScenario): Promise<void> => {
-  throw new Error(`Scenario is not implemented: ${value.name}`);
-};
