@@ -10,7 +10,7 @@ const workflowStatus = (overrides: Partial<WorkflowStatus> = {}): WorkflowStatus
   applicationID: 'test',
   createdAt: 1,
   input: [{ executionPlan: terminalExecutionPlan(), input: null }],
-  output: { outcome: 'succeeded' },
+  output: { status: 'succeeded', outcome: 'succeeded' },
   priority: 0,
   status: 'SUCCESS',
   updatedAt: 2,
@@ -30,7 +30,8 @@ describe('run snapshot mapping', () => {
     ['ERROR', 'failed'],
     ['MAX_RECOVERY_ATTEMPTS_EXCEEDED', 'failed'],
   ])('maps DBOS status %s to %s', (dbosStatus, runStatus) => {
-    const output = dbosStatus === 'SUCCESS' ? { outcome: 'succeeded' } : undefined;
+    const output =
+      dbosStatus === 'SUCCESS' ? { status: 'succeeded', outcome: 'succeeded' } : undefined;
 
     expect(
       mapRunSnapshot(workflowStatus({ output, status: dbosStatus }), workflowName),
@@ -63,6 +64,68 @@ describe('run snapshot mapping', () => {
     ).toMatchObject({
       error: { code: 'recovery_exhausted', message: 'recovery failed' },
     });
+  });
+
+  it.each(['cancelled', 'failed'] as const)(
+    'uses the pipeline terminal status %s after successful workflow completion',
+    (terminalStatus) => {
+      expect(
+        mapRunSnapshot(
+          workflowStatus({
+            output: { status: terminalStatus, outcome: `terminal-${terminalStatus}` },
+          }),
+          workflowName,
+        ),
+      ).toMatchObject({
+        status: terminalStatus,
+        result: { outcome: `terminal-${terminalStatus}` },
+      });
+    },
+  );
+
+  it('preserves normalized output values without reinterpreting nested JSON', () => {
+    const output = {
+      result: {
+        kind: 'json',
+        value: { kind: 'secret', reference: { name: 'production-token' } },
+      },
+    } as const;
+
+    expect(
+      mapRunSnapshot(
+        workflowStatus({ output: { status: 'succeeded', outcome: 'completed', output } }),
+        workflowName,
+      ),
+    ).toMatchObject({ result: { outcome: 'completed', output } });
+  });
+
+  it('rejects an unsupported persisted execution plan schema', () => {
+    const executionPlan = { ...terminalExecutionPlan(), schemaVersion: 2 };
+
+    expect(() =>
+      mapRunSnapshot(workflowStatus({ input: [{ executionPlan, input: null }] }), workflowName),
+    ).toThrow('Run workflow input is invalid.');
+  });
+
+  it('rejects a persisted execution plan whose root pipeline is missing', () => {
+    const executionPlan = { ...terminalExecutionPlan(), rootPipelineId: 'missing' };
+
+    expect(() =>
+      mapRunSnapshot(workflowStatus({ input: [{ executionPlan, input: null }] }), workflowName),
+    ).toThrow('Run workflow input is invalid.');
+  });
+
+  it('rejects a secret as a normalized executor output value', () => {
+    const output = {
+      credential: { kind: 'secret', reference: { name: 'production-token' } },
+    };
+
+    expect(() =>
+      mapRunSnapshot(
+        workflowStatus({ output: { status: 'succeeded', outcome: 'completed', output } }),
+        workflowName,
+      ),
+    ).toThrow('Run workflow output is invalid.');
   });
 
   it('rejects foreign workflows and malformed durable values', () => {

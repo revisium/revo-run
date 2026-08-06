@@ -55,6 +55,19 @@ describe('durable run', () => {
     await expect(manager.startRun(input)).rejects.toThrow('Run ID is already in use.');
   });
 
+  it('rejects a missing root pipeline before durable admission', async () => {
+    const runId = `missing-root-${randomUUID()}`;
+    const executionPlan = {
+      ...terminalExecutionPlan(),
+      rootPipelineId: 'missing',
+    };
+
+    await expect(manager.startRun({ runId, executionPlan, input: null })).rejects.toThrow(
+      'Run workflow input is invalid.',
+    );
+    await expect(manager.getRun(runId)).resolves.toBeUndefined();
+  });
+
   it('reports an unsupported executable pipeline as failed', async () => {
     const runId = `unsupported-${randomUUID()}`;
 

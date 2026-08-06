@@ -1,47 +1,35 @@
-import { compilePipeline, definePipeline } from '@revisium/revo-pipeline';
-
 import type { ExecutionPlan } from '../../src/index.js';
 
-export const terminalExecutionPlan = (): ExecutionPlan => {
-  const compilation = compilePipeline(
-    definePipeline({
-      schemaVersion: 1,
-      entry: 'finish',
-      facts: [],
-      nodes: [{ kind: 'terminal', key: 'finish', outcome: 'succeeded' }],
-    }),
-  );
-  if (!compilation.ok) {
-    throw new Error('Terminal pipeline compilation failed.');
-  }
+const policies = {
+  defaultTaskTimeoutMs: 60_000,
+  maximumActiveNodeExecutions: 1,
+  maximumNodeNestingDepth: 2,
+  maximumSubpipelineDepth: 1,
+  maximumTotalNodeExecutions: 1,
+} as const;
 
-  return compilation.template;
-};
+export const terminalExecutionPlan = (): ExecutionPlan => ({
+  schemaVersion: 1,
+  rootPipelineId: 'main',
+  pipelines: {
+    main: { root: { kind: 'end', status: 'succeeded', outcome: 'succeeded' } },
+  },
+  bindings: [],
+  policies,
+});
 
-export const taskExecutionPlan = (): ExecutionPlan => {
-  const compilation = compilePipeline(
-    definePipeline({
-      schemaVersion: 1,
-      entry: 'work',
-      facts: [],
-      nodes: [
-        {
-          kind: 'task',
-          key: 'work',
-          outcomes: {
-            cancelled: 'finish',
-            completed: 'finish',
-            failed: 'finish',
-            skipped: 'finish',
-          },
-        },
-        { kind: 'terminal', key: 'finish', outcome: 'succeeded' },
-      ],
-    }),
-  );
-  if (!compilation.ok) {
-    throw new Error('Task pipeline compilation failed.');
-  }
-
-  return compilation.template;
-};
+export const taskExecutionPlan = (): ExecutionPlan => ({
+  schemaVersion: 1,
+  rootPipelineId: 'main',
+  pipelines: {
+    main: { root: { kind: 'task', key: 'work' } },
+  },
+  bindings: [
+    {
+      kind: 'script',
+      target: { pipelineId: 'main', nodePath: 'work' },
+      script: { id: 'test.unsupported', version: '1.0.0' },
+    },
+  ],
+  policies,
+});

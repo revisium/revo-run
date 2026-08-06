@@ -1,0 +1,238 @@
+import Type from 'typebox';
+
+import {
+  IdentifierSchema,
+  JsonPointerSchema,
+  PositiveIntegerSchema,
+} from '../schema-primitives.js';
+import { InputSourceSchema, TerminalOutputSourceSchema } from './data-reference.js';
+import type { PipelineNode } from './pipeline-node.js';
+import { RecoveryPolicySchema, RetryPolicySchema } from './task-policy.js';
+
+const InputMappingSchema = Type.Record(IdentifierSchema, InputSourceSchema, {
+  additionalProperties: false,
+});
+
+const TerminalOutputMappingSchema = Type.Record(IdentifierSchema, TerminalOutputSourceSchema, {
+  additionalProperties: false,
+});
+
+const RemainingBranchPolicySchema = Type.Union([Type.Literal('cancel'), Type.Literal('drain')]);
+
+const SuccessfulOutcomesSchema = Type.Array(IdentifierSchema, {
+  minItems: 1,
+  uniqueItems: true,
+});
+
+const PipelineNodeType = Type.Cyclic(
+  {
+    TaskNode: Type.Object(
+      {
+        kind: Type.Literal('task'),
+        key: IdentifierSchema,
+        input: Type.Optional(InputMappingSchema),
+        retry: Type.Optional(RetryPolicySchema),
+        recovery: Type.Optional(RecoveryPolicySchema),
+        timeoutMs: Type.Optional(PositiveIntegerSchema),
+      },
+      { additionalProperties: false },
+    ),
+    SequenceNode: Type.Object(
+      {
+        kind: Type.Literal('sequence'),
+        children: Type.Array(Type.Ref('PipelineNode'), { minItems: 1 }),
+      },
+      { additionalProperties: false },
+    ),
+    OutcomeSwitchNode: Type.Object(
+      {
+        kind: Type.Literal('outcomeSwitch'),
+        source: Type.Ref('PipelineNode'),
+        cases: Type.Record(IdentifierSchema, Type.Ref('PipelineNode'), {
+          additionalProperties: false,
+          minProperties: 1,
+        }),
+        default: Type.Optional(Type.Ref('PipelineNode')),
+      },
+      { additionalProperties: false },
+    ),
+    BranchNode: Type.Object(
+      {
+        kind: Type.Literal('branch'),
+        key: IdentifierSchema,
+        value: InputSourceSchema,
+        cases: Type.Record(IdentifierSchema, Type.Ref('PipelineNode'), {
+          additionalProperties: false,
+          minProperties: 1,
+        }),
+        default: Type.Optional(Type.Ref('PipelineNode')),
+      },
+      { additionalProperties: false },
+    ),
+    ParallelNode: Type.Object(
+      {
+        kind: Type.Literal('parallel'),
+        key: IdentifierSchema,
+        branches: Type.Record(IdentifierSchema, Type.Ref('PipelineNode'), {
+          additionalProperties: false,
+          minProperties: 1,
+        }),
+        join: Type.Union([
+          Type.Object(
+            {
+              kind: Type.Literal('all'),
+              successfulOutcomes: SuccessfulOutcomesSchema,
+              remaining: RemainingBranchPolicySchema,
+            },
+            { additionalProperties: false },
+          ),
+          Type.Object(
+            {
+              kind: Type.Literal('any'),
+              successfulOutcomes: SuccessfulOutcomesSchema,
+              remaining: RemainingBranchPolicySchema,
+            },
+            { additionalProperties: false },
+          ),
+          Type.Object(
+            {
+              kind: Type.Literal('threshold'),
+              count: PositiveIntegerSchema,
+              successfulOutcomes: SuccessfulOutcomesSchema,
+              remaining: RemainingBranchPolicySchema,
+            },
+            { additionalProperties: false },
+          ),
+        ]),
+      },
+      { additionalProperties: false },
+    ),
+    ConsensusNode: Type.Object(
+      {
+        kind: Type.Literal('consensus'),
+        key: IdentifierSchema,
+        participants: Type.Record(IdentifierSchema, Type.Ref('TaskNode'), {
+          additionalProperties: false,
+          minProperties: 1,
+        }),
+        policy: Type.Union([
+          Type.Object({ kind: Type.Literal('unanimous') }, { additionalProperties: false }),
+          Type.Object(
+            { kind: Type.Literal('quorum'), count: PositiveIntegerSchema },
+            { additionalProperties: false },
+          ),
+          Type.Object(
+            {
+              kind: Type.Literal('threshold'),
+              approve: PositiveIntegerSchema,
+              reject: PositiveIntegerSchema,
+            },
+            { additionalProperties: false },
+          ),
+        ]),
+        remaining: RemainingBranchPolicySchema,
+        timeoutMs: Type.Optional(PositiveIntegerSchema),
+      },
+      { additionalProperties: false },
+    ),
+    HumanGateNode: Type.Object(
+      {
+        kind: Type.Literal('humanGate'),
+        key: IdentifierSchema,
+        answers: Type.Array(IdentifierSchema, { minItems: 1, uniqueItems: true }),
+        decision: Type.Union([
+          Type.Object({ kind: Type.Literal('firstAnswer') }, { additionalProperties: false }),
+          Type.Object(
+            {
+              kind: Type.Literal('matchingAnswers'),
+              count: PositiveIntegerSchema,
+              onConflict: Type.Union([Type.Literal('conflict'), Type.Literal('wait')]),
+            },
+            { additionalProperties: false },
+          ),
+        ]),
+        eligibleGroup: Type.Optional(IdentifierSchema),
+        timeoutMs: Type.Optional(PositiveIntegerSchema),
+      },
+      { additionalProperties: false },
+    ),
+    RepeatNode: Type.Object(
+      {
+        kind: Type.Literal('repeat'),
+        key: IdentifierSchema,
+        maximumIterations: PositiveIntegerSchema,
+        continueOn: Type.Array(IdentifierSchema, { minItems: 1, uniqueItems: true }),
+        completeOn: Type.Array(IdentifierSchema, { minItems: 1, uniqueItems: true }),
+        initialInput: Type.Optional(InputMappingSchema),
+        nextInput: Type.Optional(InputMappingSchema),
+        body: Type.Ref('PipelineNode'),
+      },
+      { additionalProperties: false },
+    ),
+    SubpipelineNode: Type.Object(
+      {
+        kind: Type.Literal('subpipeline'),
+        key: IdentifierSchema,
+        pipelineId: IdentifierSchema,
+        input: Type.Optional(InputMappingSchema),
+      },
+      { additionalProperties: false },
+    ),
+    MapNode: Type.Object(
+      {
+        kind: Type.Literal('map'),
+        key: IdentifierSchema,
+        items: InputSourceSchema,
+        itemKeyPath: JsonPointerSchema,
+        maximumItems: PositiveIntegerSchema,
+        concurrency: PositiveIntegerSchema,
+        failure: Type.Union([
+          Type.Object(
+            {
+              kind: Type.Literal('failFast'),
+              remaining: RemainingBranchPolicySchema,
+            },
+            { additionalProperties: false },
+          ),
+          Type.Object({ kind: Type.Literal('collect') }, { additionalProperties: false }),
+        ]),
+        body: Type.Ref('PipelineNode'),
+      },
+      { additionalProperties: false },
+    ),
+    DelayNode: Type.Object(
+      { kind: Type.Literal('delay'), key: IdentifierSchema, durationMs: PositiveIntegerSchema },
+      { additionalProperties: false },
+    ),
+    EndNode: Type.Object(
+      {
+        kind: Type.Literal('end'),
+        status: Type.Union([
+          Type.Literal('cancelled'),
+          Type.Literal('failed'),
+          Type.Literal('succeeded'),
+        ]),
+        outcome: IdentifierSchema,
+        output: Type.Optional(TerminalOutputMappingSchema),
+      },
+      { additionalProperties: false },
+    ),
+    PipelineNode: Type.Union([
+      Type.Ref('BranchNode'),
+      Type.Ref('ConsensusNode'),
+      Type.Ref('DelayNode'),
+      Type.Ref('EndNode'),
+      Type.Ref('HumanGateNode'),
+      Type.Ref('MapNode'),
+      Type.Ref('OutcomeSwitchNode'),
+      Type.Ref('ParallelNode'),
+      Type.Ref('RepeatNode'),
+      Type.Ref('SequenceNode'),
+      Type.Ref('SubpipelineNode'),
+      Type.Ref('TaskNode'),
+    ]),
+  },
+  'PipelineNode',
+);
+
+export const PipelineNodeSchema = Type.Unsafe<PipelineNode>(PipelineNodeType);

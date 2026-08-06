@@ -1,5 +1,5 @@
-import type { RunSnapshot } from '../run/run.js';
-import type { StartRunInput, StartRunResult } from '../run/start-run.js';
+import type { RunSnapshot } from '../contracts/run/run.js';
+import type { StartRunInput, StartRunResult } from '../contracts/run/start-run.js';
 import { DbosRuntime } from '../runtime/dbos-runtime.js';
 
 export class RunManager {

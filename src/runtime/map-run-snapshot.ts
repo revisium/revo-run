@@ -1,7 +1,10 @@
 import type { WorkflowStatus } from '@dbos-inc/dbos-sdk';
 
-import type { RunError, RunSnapshot, RunStatus } from '../run/run.js';
-import { parseRunWorkflowInput, parseRunWorkflowResult } from './parse-run-workflow-data.js';
+import type { RunError, RunSnapshot, RunStatus } from '../contracts/run/run.js';
+import {
+  parseRunWorkflowInput,
+  parseRunWorkflowResult,
+} from '../validation/parse-run-workflow-data.js';
 
 const mapStatus = (status: string): RunStatus => {
   switch (status) {
@@ -64,7 +67,15 @@ export const mapRunSnapshot = (status: WorkflowStatus, workflowName: string): Ru
   };
 
   if (status.status === 'SUCCESS') {
-    return { ...snapshot, result: parseRunWorkflowResult(status.output) };
+    const result = parseRunWorkflowResult(status.output);
+    return {
+      ...snapshot,
+      status: result.status,
+      result: {
+        outcome: result.outcome,
+        ...(result.output === undefined ? {} : { output: result.output }),
+      },
+    };
   }
 
   const error = mapError(status);

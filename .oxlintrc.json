@@ -11,6 +11,14 @@
     "typeCheck": true
   },
   "plugins": ["typescript", "vitest"],
+  "overrides": [
+    {
+      "files": ["test/acceptance/**/*.test.ts"],
+      "rules": {
+        "vitest/no-disabled-tests": "off"
+      }
+    }
+  ],
   "rules": {
     "curly": ["error", "all"],
     "typescript/no-explicit-any": "error",

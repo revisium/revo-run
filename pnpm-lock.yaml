@@ -11,9 +11,9 @@ importers:
       '@dbos-inc/dbos-sdk':
         specifier: 4.25.14
         version: 4.25.14
-      '@revisium/revo-pipeline':
-        specifier: 0.1.0-alpha.0
-        version: 0.1.0-alpha.0
+      typebox:
+        specifier: 1.3.10
+        version: 1.3.10
     devDependencies:
       '@types/node':
         specifier: 24.13.3
@@ -354,10 +354,6 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [win32]
-
-  '@revisium/revo-pipeline@0.1.0-alpha.0':
-    resolution: {integrity: sha512-Clge2ZL0vcs2jaJ0YG3SjKgOaAOZsEt5tDjY7Nwt+p/VTdNAp+HIzLIBAuvpEdri9KuYx02WGIN5jjqUi012Mw==}
-    engines: {node: '>=24.11.1 <25'}
 
   '@rolldown/binding-android-arm64@1.2.2':
     resolution: {integrity: sha512-l7x215OGvo1s52JWmR8U/DAVzEDWBCIbTm28aeJV/WDTSHgcKXaZTuBT0hJMs5NggilfJTW3clZVvd24yfKJxA==}
@@ -988,6 +984,9 @@ packages:
     resolution: {integrity: sha512-Ne+eE4r0/iWnpAxD852z3A+N0Bt5RN//NjJwRd2VFHEmrywxf5vsZlh4R6lixl6B+wz/8d+maTSAkN1FIkI3LQ==}
     engines: {node: '>=10'}
 
+  typebox@1.3.10:
+    resolution: {integrity: sha512-L0MT00X96q0P30f1NrGULgaSbmu8hfTjWbLULeVoM+j5u0jR5wyefoDquX2NmRa39f0KiNIBo1wWSaVvHJTZlA==}
+
   typescript@7.0.2:
     resolution: {integrity: sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==}
     engines: {node: '>=16.20.0'}
@@ -1283,8 +1282,6 @@ snapshots:
 
   '@oxlint/binding-win32-x64-msvc@1.73.0':
     optional: true
-
-  '@revisium/revo-pipeline@0.1.0-alpha.0': {}
 
   '@rolldown/binding-android-arm64@1.2.2':
     optional: true
@@ -1787,6 +1784,8 @@ snapshots:
   tinyrainbow@3.1.1: {}
 
   type-fest@0.20.2: {}
+
+  typebox@1.3.10: {}
 
   typescript@7.0.2:
     optionalDependencies:
