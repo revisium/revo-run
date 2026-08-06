@@ -1,36 +1,23 @@
-import { decidePipeline } from '@revisium/revo-pipeline';
-import type { PipelineFacts } from '@revisium/revo-pipeline';
-
-import type { RunResult } from '../run/run.js';
-import type { RunWorkflowInput } from './run-workflow-input.js';
-
-const emptyFacts: PipelineFacts = {
-  candidateVerdicts: [],
-  gateResolutions: [],
-  nodes: [],
-  values: [],
-};
+import type { RunWorkflowInput } from '../contracts/workflow/run-workflow-input.js';
+import type { RunWorkflowResult } from '../contracts/workflow/run-workflow-result.js';
 
 export const runPipelineWorkflow = async ({
   executionPlan,
-}: RunWorkflowInput): Promise<RunResult> => {
-  const activation = decidePipeline(executionPlan.pipeline, emptyFacts);
-  if (activation.kind !== 'activate') {
-    throw new Error('Execution plan does not have a single terminal entry.');
+}: RunWorkflowInput): Promise<RunWorkflowResult> => {
+  const pipeline = Object.hasOwn(executionPlan.pipelines, executionPlan.rootPipelineId)
+    ? executionPlan.pipelines[executionPlan.rootPipelineId]
+    : undefined;
+  if (pipeline === undefined) {
+    throw new Error('Execution plan does not contain its root pipeline.');
   }
 
-  const [nodeKey, ...otherNodeKeys] = activation.nodeKeys;
-  if (nodeKey === undefined || otherNodeKeys.length > 0) {
-    throw new Error('Execution plan does not have a single terminal entry.');
+  if (pipeline.root.kind !== 'end') {
+    throw new Error('Pipeline execution is not implemented yet.');
   }
 
-  const decision = decidePipeline(executionPlan.pipeline, {
-    ...emptyFacts,
-    nodes: [{ key: nodeKey, state: 'enabled' }],
-  });
-  if (decision.kind !== 'terminal') {
-    throw new Error('Execution plan is not terminal-only.');
+  if (pipeline.root.output !== undefined) {
+    throw new Error('Terminal output mappings are not implemented yet.');
   }
 
-  return { outcome: decision.outcome };
+  return { status: pipeline.root.status, outcome: pipeline.root.outcome };
 };

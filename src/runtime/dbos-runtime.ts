@@ -1,8 +1,9 @@
 import { DBOS } from '@dbos-inc/dbos-sdk';
-import type { JsonValue } from '@revisium/revo-pipeline';
 
-import type { ExecutionPlan } from '../run/execution-plan.js';
-import type { RunSnapshot } from '../run/run.js';
+import type { JsonValue } from '../contracts/json-value.js';
+import type { ExecutionPlan } from '../contracts/run/execution-plan.js';
+import type { RunSnapshot } from '../contracts/run/run.js';
+import { validateRunWorkflowInput } from '../validation/parse-run-workflow-data.js';
 import type { RegisteredRunWorkflow } from './dbos-workflow-registry.js';
 import { mapRunSnapshot } from './map-run-snapshot.js';
 
@@ -31,6 +32,8 @@ export class DbosRuntime {
   }
 
   async startRun(runId: string, executionPlan: ExecutionPlan, input: JsonValue): Promise<void> {
+    validateRunWorkflowInput({ executionPlan, input });
+
     if ((await DBOS.getWorkflowStatus(runId)) !== null) {
       throw new Error('Run ID is already in use.');
     }
