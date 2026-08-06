@@ -81,6 +81,11 @@ export const expectEvent = (
   options: Omit<ExpectedRunEvent, 'type'> = {},
 ): ScenarioStep => ({ kind: 'expectEvent', event: { type, ...options } });
 
+export const expectSecretResolved = (value: string): ScenarioStep => ({
+  kind: 'expectSecretResolved',
+  value,
+});
+
 export const answerGate = (
   path: string,
   answer: string,

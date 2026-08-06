@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { RunManager } from '../../src/index.js';
-import { taskExecutionPlan, terminalExecutionPlan } from '../support/terminal-execution-plan.js';
-import { startTestRunManager, waitForRunStatus } from '../support/test-run-manager.js';
+import { taskExecutionPlan, terminalExecutionPlan } from '../support/execution-plan.fixture.js';
+import { startTestRunManager, waitForRunStatus } from '../support/run-manager.fixture.js';
 
 let manager: RunManager;
 
@@ -63,12 +63,25 @@ describe('durable run', () => {
     };
 
     await expect(manager.startRun({ runId, executionPlan, input: null })).rejects.toThrow(
-      'Run workflow input is invalid.',
+      'root_pipeline_not_found',
     );
     await expect(manager.getRun(runId)).resolves.toBeUndefined();
   });
 
-  it('reports an unsupported executable pipeline as failed', async () => {
+  it('rejects a missing task binding before durable admission', async () => {
+    const runId = `missing-binding-${randomUUID()}`;
+    const executionPlan = {
+      ...taskExecutionPlan(),
+      bindings: [],
+    };
+
+    await expect(manager.startRun({ runId, executionPlan, input: null })).rejects.toThrow(
+      'missing_executor_binding',
+    );
+    await expect(manager.getRun(runId)).resolves.toBeUndefined();
+  });
+
+  it('reports a pipeline without a terminal route as failed', async () => {
     const runId = `unsupported-${randomUUID()}`;
 
     await manager.startRun({
@@ -80,7 +93,7 @@ describe('durable run', () => {
 
     await expect(manager.getRun(runId)).resolves.toMatchObject({
       status: 'failed',
-      error: { code: 'workflow_failed' },
+      result: { outcome: 'invalid' },
     });
   });
 

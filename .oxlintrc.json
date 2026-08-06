@@ -13,6 +13,52 @@
   "plugins": ["typescript", "vitest"],
   "overrides": [
     {
+      "files": ["src/pipeline/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@dbos-inc/dbos-sdk",
+                "message": "Pipeline code must depend on ports, not the DBOS SDK."
+              },
+              {
+                "name": "typebox/schema",
+                "message": "Runtime schema compilation belongs under src/validation."
+              }
+            ],
+            "patterns": [
+              {
+                "regex": "^(?:\\.\\./)+dbos(?:/|$)",
+                "message": "Pipeline code must not import DBOS implementations."
+              },
+              {
+                "group": ["@dbos-inc/dbos-sdk/**"],
+                "message": "Pipeline code must not import DBOS implementations."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/contracts/**/*.ts", "src/dbos/**/*.ts", "src/manager/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "typebox/schema",
+                "message": "Runtime schema compilation belongs under src/validation."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["test/acceptance/**/*.test.ts"],
       "rules": {
         "vitest/no-disabled-tests": "off",

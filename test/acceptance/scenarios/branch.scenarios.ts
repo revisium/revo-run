@@ -18,7 +18,6 @@ export const branchScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'dataFlow',
     name: 'selects a branch from a completed node output',
-    blockedBy: 'runRuntime',
     plan: executionPlan(
       sequence(
         task('classify'),
@@ -52,7 +51,6 @@ export const branchScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'dataFlow',
     name: 'uses an explicit default branch for an uncovered value',
-    blockedBy: 'pipelineContract',
     plan: executionPlan(
       sequence(task('classify'), {
         kind: 'branch',
@@ -65,7 +63,7 @@ export const branchScenarios: readonly RunScenario[] = [
     ),
     steps: [
       startRun(),
-      completeNode('main/classify', 'completed', { risk: 'unknown' }),
+      completeNode('main/classify', 'completed', { risk: 'constructor' }),
       expectEvent('pipeline.branchDefaulted', { path: 'main/route' }),
       expectRunStatus('succeeded'),
     ],

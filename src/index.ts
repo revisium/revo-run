@@ -1,6 +1,14 @@
 export { createRunManager } from './manager/create-run-manager.js';
 export type { JsonPrimitive, JsonValue } from './contracts/json-value.js';
 export type { RunManager } from './manager/run-manager.js';
+export type { ExecutorInput, ExecutorInputValue } from './contracts/executor/executor-input.js';
+export type {
+  RunExecutor,
+  RunExecutorContext,
+  RunExecutorRequest,
+  RunExecutorResult,
+} from './contracts/executor/run-executor.js';
+export type { RunNodeExecution } from './contracts/executor/run-node-execution.js';
 export type {
   GetNextPipelineAction,
   PipelineAction,
@@ -56,4 +64,6 @@ export type {
 export type { ExecutionPlan } from './contracts/run/execution-plan.js';
 export type { ExecutionPolicies } from './contracts/run/execution-policy.js';
 export type { RunError, RunResult, RunSnapshot, RunStatus } from './contracts/run/run.js';
+export type { RunDetails } from './contracts/run/run-details.js';
+export type { RunEvent } from './contracts/run/run-event.js';
 export type { StartRunInput, StartRunResult } from './contracts/run/start-run.js';

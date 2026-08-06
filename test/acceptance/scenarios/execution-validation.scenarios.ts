@@ -16,7 +16,6 @@ export const executionValidationScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'validation',
     name: 'fails an unhandled custom task outcome instead of treating it as success',
-    blockedBy: 'pipelineContract',
     plan: executionPlan(sequence(task('review'), end('succeeded')), {
       bindings: [agentBinding('review', 'reviewer')],
     }),
@@ -26,5 +25,19 @@ export const executionValidationScenarios: readonly RunScenario[] = [
       expectEvent('pipeline.invalidState', { path: 'main/review' }),
       expectRunStatus('failed'),
     ],
+  }),
+  scenario({
+    capability: 'validation',
+    name: 'does not select inherited outcome routes',
+    plan: executionPlan(
+      {
+        kind: 'outcomeSwitch',
+        source: task('review'),
+        cases: { completed: end('succeeded') },
+        default: end('succeeded', { outcome: 'defaulted' }),
+      },
+      { bindings: [agentBinding('review', 'reviewer')] },
+    ),
+    steps: [startRun(), completeNode('main/review', 'constructor'), expectRunStatus('succeeded')],
   }),
 ];

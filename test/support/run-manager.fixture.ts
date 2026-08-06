@@ -2,10 +2,14 @@ import { vi } from 'vitest';
 
 import { createRunManager } from '../../src/index.js';
 import type { RunManager, RunStatus } from '../../src/index.js';
+import { noopRunExecutor } from './executor/noop-run-executor.js';
 import { testDatabaseUrl } from './test-environment.js';
 
 export const startTestRunManager = async (): Promise<RunManager> => {
-  const manager = createRunManager({ database: { url: testDatabaseUrl() } });
+  const manager = createRunManager({
+    database: { url: testDatabaseUrl() },
+    executor: noopRunExecutor,
+  });
   await manager.start();
   return manager;
 };

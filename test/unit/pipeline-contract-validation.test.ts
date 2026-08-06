@@ -8,7 +8,7 @@ import {
 } from '../../src/contracts/pipeline/pipeline-action.js';
 import { PipelineProgressSchema } from '../../src/contracts/pipeline/pipeline-progress.js';
 import { StartRunInputSchema } from '../../src/contracts/run/start-run.js';
-import { terminalExecutionPlan } from '../support/terminal-execution-plan.js';
+import { terminalExecutionPlan } from '../support/execution-plan.fixture.js';
 
 const pipelineProgressValidator = Schema.Compile(PipelineProgressSchema);
 const pipelineActionValidator = Schema.Compile(PipelineActionSchema);

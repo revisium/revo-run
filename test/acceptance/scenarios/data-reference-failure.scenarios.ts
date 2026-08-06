@@ -17,7 +17,6 @@ export const dataReferenceFailureScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'dataFlow',
     name: 'fails deterministically when a referenced output key is missing',
-    blockedBy: 'runRuntime',
     plan: executionPlan(
       sequence(
         task('produce'),
@@ -46,7 +45,6 @@ export const dataReferenceFailureScenarios: readonly RunScenario[] = [
   scenario({
     capability: 'dataFlow',
     name: 'fails deterministically when a referenced JSON pointer is missing',
-    blockedBy: 'runRuntime',
     plan: executionPlan(
       sequence(
         task('produce'),
