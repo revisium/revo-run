@@ -13,7 +13,7 @@ const isJsonRecord = (value: JsonValue): value is Readonly<Record<string, JsonVa
 
 const childValue = (value: JsonValue, token: string): JsonPointerResult => {
   if (isJsonArray(value)) {
-    if (!/^(?:0|[1-9][0-9]*)$/.test(token)) {
+    if (!/^(?:0|[1-9]\d*)$/.test(token)) {
       return { found: false };
     }
 
