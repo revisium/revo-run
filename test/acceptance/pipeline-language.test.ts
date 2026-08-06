@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { ExecutionPlanValidator } from '../../src/validation/execution-plan.validator.js';
-import { runScenario } from '../dsl/run-scenario.js';
 import { plannedPipelineScenarios } from './capability-matrix.js';
 
 describe('pipeline capability matrix', () => {
@@ -68,9 +67,7 @@ describe('pipeline capability matrix', () => {
     });
   });
 
-  describe.each(plannedPipelineScenarios)('$name', (scenario) => {
-    it.skip('executes the planned scenario', async () => {
-      await runScenario(scenario);
-    });
+  describe.each(plannedPipelineScenarios)('$name', () => {
+    it.todo('executes the planned scenario'); // NOSONAR: blocked capability contract.
   });
 });

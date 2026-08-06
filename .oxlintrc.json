@@ -15,7 +15,8 @@
     {
       "files": ["test/acceptance/**/*.test.ts"],
       "rules": {
-        "vitest/no-disabled-tests": "off"
+        "vitest/no-disabled-tests": "off",
+        "vitest/warn-todo": "off"
       }
     }
   ],
