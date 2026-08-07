@@ -18,7 +18,8 @@ export type ExecutionPlanValidationErrorCode =
   | 'pipeline_not_found'
   | 'root_pipeline_not_found'
   | 'subpipeline_cycle'
-  | 'subpipeline_depth_exceeded';
+  | 'subpipeline_depth_exceeded'
+  | 'unreachable_parallel_threshold';
 
 export type ExecutionPlanValidationResult =
   | { readonly valid: true; readonly plan: ExecutionPlan }
@@ -32,7 +33,10 @@ type PipelineInspection =
     }
   | {
       readonly valid: false;
-      readonly code: 'duplicate_node_path' | 'node_depth_exceeded';
+      readonly code:
+        | 'duplicate_node_path'
+        | 'node_depth_exceeded'
+        | 'unreachable_parallel_threshold';
     };
 
 type PipelineGraphInspection =
@@ -43,7 +47,11 @@ type PipelineGraphInspection =
     }
   | {
       readonly valid: false;
-      readonly code: 'duplicate_node_path' | 'node_depth_exceeded' | 'pipeline_not_found';
+      readonly code:
+        | 'duplicate_node_path'
+        | 'node_depth_exceeded'
+        | 'pipeline_not_found'
+        | 'unreachable_parallel_threshold';
     };
 
 const optionalNode = (node: PipelineNode | undefined): readonly PipelineNode[] =>
@@ -76,35 +84,68 @@ const childNodes = (node: PipelineNode): readonly PipelineNode[] => {
   return node;
 };
 
+interface PendingPipelineNode {
+  readonly node: PipelineNode;
+  readonly depth: number;
+  readonly parentPath: string;
+}
+
+type PipelineInspectionError = Extract<PipelineInspection, { readonly valid: false }>;
+
+type PipelineNodeInspection =
+  | { readonly valid: true; readonly path: string }
+  | PipelineInspectionError;
+
+const hasUnreachableThreshold = (node: PipelineNode): boolean =>
+  node.kind === 'parallel' &&
+  node.join.kind === 'threshold' &&
+  node.join.count > Object.keys(node.branches).length;
+
+const inspectPipelineNode = (
+  current: PendingPipelineNode,
+  maximumDepth: number,
+  dependencies: Set<string>,
+  nodeKinds: Map<string, PipelineNode['kind']>,
+): PipelineNodeInspection => {
+  if (current.depth > maximumDepth) {
+    return { valid: false, code: 'node_depth_exceeded' };
+  }
+
+  const path = pipelineNodePath(current.node, current.parentPath);
+  if (path !== current.parentPath && nodeKinds.has(path)) {
+    return { valid: false, code: 'duplicate_node_path' };
+  }
+  if (path !== current.parentPath) {
+    nodeKinds.set(path, current.node.kind);
+  }
+  if (current.node.kind === 'subpipeline') {
+    dependencies.add(current.node.pipelineId);
+  }
+  if (hasUnreachableThreshold(current.node)) {
+    return { valid: false, code: 'unreachable_parallel_threshold' };
+  }
+
+  return { valid: true, path };
+};
+
 const inspectPipeline = (root: PipelineNode, maximumDepth: number): PipelineInspection => {
   const dependencies = new Set<string>();
   const nodeKinds = new Map<string, PipelineNode['kind']>();
-  const pending: Array<{
-    readonly node: PipelineNode;
-    readonly depth: number;
-    readonly parentPath: string;
-  }> = [{ node: root, depth: 1, parentPath: '' }];
+  const pending: PendingPipelineNode[] = [{ node: root, depth: 1, parentPath: '' }];
 
   while (pending.length > 0) {
     const current = pending.pop();
     if (current === undefined) {
       continue;
     }
-    if (current.depth > maximumDepth) {
-      return { valid: false, code: 'node_depth_exceeded' };
+
+    const inspection = inspectPipelineNode(current, maximumDepth, dependencies, nodeKinds);
+    if (!inspection.valid) {
+      return inspection;
     }
-    const path = pipelineNodePath(current.node, current.parentPath);
-    if (path !== current.parentPath && nodeKinds.has(path)) {
-      return { valid: false, code: 'duplicate_node_path' };
-    }
-    if (path !== current.parentPath) {
-      nodeKinds.set(path, current.node.kind);
-    }
-    if (current.node.kind === 'subpipeline') {
-      dependencies.add(current.node.pipelineId);
-    }
+
     for (const child of childNodes(current.node)) {
-      pending.push({ node: child, depth: current.depth + 1, parentPath: path });
+      pending.push({ node: child, depth: current.depth + 1, parentPath: inspection.path });
     }
   }
 

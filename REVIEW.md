@@ -7,6 +7,11 @@ DBOS workflow input, step output, workflow result, and streams are the durable e
 Reject a second scheduler, progress store, or result store unless a missing DBOS capability is
 demonstrated first.
 
+Sequential `await` is intentional in the DBOS state-machine files listed by the exact
+`no-await-in-loop` override in `.oxlintrc.json`: call order determines durable function IDs,
+admission, and capacity reuse. Do not expand that override to ordinary application or read-model
+code without demonstrating the same requirement.
+
 Treat an authored TypeScript file above 300 lines as a review signal. Split it by capability or
 responsibility unless keeping a cohesive declarative contract together is demonstrably clearer.
 Do not satisfy this guidance with arbitrary line-based fragments.

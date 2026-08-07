@@ -74,5 +74,50 @@ const timeoutPlan: ExecutionPlan = {
   policies,
 };
 
-export const recoveryExecutionPlan = (scenario: string): ExecutionPlan =>
-  scenario === 'timeout' ? timeoutPlan : sequencePlan;
+const parallelPlan: ExecutionPlan = {
+  schemaVersion: 1,
+  rootPipelineId: 'main',
+  pipelines: {
+    main: {
+      root: {
+        kind: 'sequence',
+        children: [
+          {
+            kind: 'parallel',
+            key: 'work',
+            branches: { a: { kind: 'task', key: 'a' }, b: { kind: 'task', key: 'b' } },
+            join: {
+              kind: 'all',
+              successfulOutcomes: ['completed'],
+              remaining: 'drain',
+            },
+          },
+          { kind: 'end', status: 'succeeded', outcome: 'completed' },
+        ],
+      },
+    },
+  },
+  bindings: [
+    {
+      kind: 'script',
+      target: { pipelineId: 'main', nodePath: 'work/a' },
+      script: { id: 'test.a', version: '1.0.0' },
+    },
+    {
+      kind: 'script',
+      target: { pipelineId: 'main', nodePath: 'work/b' },
+      script: { id: 'test.b', version: '1.0.0' },
+    },
+  ],
+  policies: { ...policies, maximumActiveNodeExecutions: 2 },
+};
+
+export const recoveryExecutionPlan = (scenario: string): ExecutionPlan => {
+  if (scenario === 'timeout') {
+    return timeoutPlan;
+  }
+  if (scenario === 'parallel') {
+    return parallelPlan;
+  }
+  return sequencePlan;
+};

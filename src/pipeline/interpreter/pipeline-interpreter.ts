@@ -3,8 +3,12 @@ import type { PipelineNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
 import type { RunWorkflowResult } from '../../contracts/workflow/run-workflow-result.js';
 import { InputResolver } from '../data/input-resolver.js';
+import type {
+  ParallelBranchResult,
+  ParallelBranchRunner,
+} from '../parallel/parallel-branch-runner.js';
+import { ParallelNodeExecutor } from '../parallel/parallel-node-executor.js';
 import type { PipelineExecutionContext, ExecuteNodeEffect } from './interpreter-context.js';
-import { NodeExecutionBudget } from './node-execution-budget.js';
 import { runtimePath } from './node-path.js';
 import type { PipelineEventSink } from './pipeline-event-sink.js';
 import type { NodeExecutionResult } from './pipeline-node-result.js';
@@ -13,10 +17,16 @@ import { TaskNodeExecutor } from './task-node-executor.js';
 
 export class PipelineInterpreter {
   private readonly events: PipelineEventSink;
+  private readonly parallel: ParallelNodeExecutor;
   private readonly tasks: TaskNodeExecutor;
 
-  constructor(executeEffect: ExecuteNodeEffect, events: PipelineEventSink) {
+  constructor(
+    executeEffect: ExecuteNodeEffect,
+    executeBranches: ParallelBranchRunner,
+    events: PipelineEventSink,
+  ) {
     this.events = events;
+    this.parallel = new ParallelNodeExecutor(executeBranches, events);
     this.tasks = new TaskNodeExecutor(executeEffect, events);
   }
 
@@ -33,10 +43,26 @@ export class PipelineInterpreter {
       pipelineInput: { kind: 'value', value: { kind: 'json', value: runInput } },
       runtimePath: plan.rootPipelineId,
       outputs: new Map(),
-      executionBudget: new NodeExecutionBudget(plan.policies.maximumTotalNodeExecutions),
+      maximumParallelism: plan.policies.maximumActiveNodeExecutions,
     };
 
     return this.executePipeline(context);
+  }
+
+  async executeBranchScope(
+    node: PipelineNode,
+    context: PipelineExecutionContext,
+    parentPath: string,
+    branchKey: string,
+    inheritedOutputPaths: ReadonlySet<string>,
+  ): Promise<ParallelBranchResult> {
+    const result = await this.executeNode(node, context, parentPath);
+
+    return {
+      key: branchKey,
+      outcome: result.kind === 'continued' ? result.outcome : result.result.outcome,
+      outputs: [...context.outputs].filter(([path]) => !inheritedOutputPaths.has(path)),
+    };
   }
 
   private async executePipeline(context: PipelineExecutionContext): Promise<RunWorkflowResult> {
@@ -70,16 +96,17 @@ export class PipelineInterpreter {
       case 'outcomeSwitch':
         return this.executeOutcomeSwitch(node, context, parentPath);
       case 'branch':
-        return this.executeBranch(node, context, nodePath);
+        return this.executeConditionalBranch(node, context, nodePath);
       case 'subpipeline':
         return this.executeSubpipeline(node, context, nodePath);
+      case 'parallel':
+        return this.parallel.execute(node, context, nodePath);
       case 'end':
         return this.executeEnd(node, context);
       case 'consensus':
       case 'delay':
       case 'humanGate':
       case 'map':
-      case 'parallel':
       case 'repeat':
         return this.invalidNode(runtimePath(context, nodePath), 'node_kind_not_implemented');
     }
@@ -104,7 +131,7 @@ export class PipelineInterpreter {
   ): Promise<NodeExecutionResult> {
     const child = children[index];
     if (child === undefined) {
-      return this.invalidNode(runtimePath(context, parentPath), 'terminal_not_reached');
+      return continuedExecution('completed', runtimePath(context, parentPath));
     }
 
     const result = await this.executeNode(child, context, parentPath);
@@ -136,7 +163,7 @@ export class PipelineInterpreter {
       : this.executeNode(route, context, parentPath);
   }
 
-  private async executeBranch(
+  private async executeConditionalBranch(
     node: Extract<PipelineNode, { readonly kind: 'branch' }>,
     context: PipelineExecutionContext,
     nodePath: string,

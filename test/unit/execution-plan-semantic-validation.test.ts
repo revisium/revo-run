@@ -211,6 +211,22 @@ describe('execution plan semantic validation', () => {
     expect(validationError(plan)).toBe('duplicate_node_path');
   });
 
+  it('rejects a parallel threshold above the branch count', () => {
+    const plan = executionPlan({
+      kind: 'parallel',
+      key: 'review',
+      branches: { first: end, second: end },
+      join: {
+        kind: 'threshold',
+        count: 3,
+        successfulOutcomes: ['completed'],
+        remaining: 'drain',
+      },
+    });
+
+    expect(validationError(plan)).toBe('unreachable_parallel_threshold');
+  });
+
   it('rejects duplicate executor bindings', () => {
     const binding = {
       kind: 'script',

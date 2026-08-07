@@ -106,6 +106,12 @@ class AcceptanceScenarioRunner {
       case 'expectEvent':
         await this.expectEvent(step.event.type, step.event.path);
         return;
+      case 'expectMaximumActiveExecutions':
+        await this.executor.expectMaximumActiveExecutions(step.count);
+        return;
+      case 'expectRunDetails':
+        await this.expectRunDetails(step.nodePaths);
+        return;
       case 'expectSecretAbsent':
         await this.expectSecretAbsent(step.value);
         return;
@@ -124,9 +130,7 @@ class AcceptanceScenarioRunner {
       case 'expectExecutionCount':
       case 'expectHumanGateWaiting':
       case 'expectIteration':
-      case 'expectMaximumActiveExecutions':
       case 'expectNoDuplicateExecution':
-      case 'expectRunDetails':
       case 'expectSubscriptionError':
       case 'reconcileNode':
       case 'resolveUnknownOutcome':
@@ -161,23 +165,24 @@ class AcceptanceScenarioRunner {
       await this.executor.failInputResolution(path, errorCode);
     }
 
-    await vi.waitFor(async () => {
-      const events = await this.eventsAfterTerminal();
-      assert(
-        events.some(
-          (event) =>
-            event.type === 'inputResolution.failed' &&
-            event.path === path &&
-            event.errorCode === errorCode,
-        ),
-      );
-    });
+    const events = await this.eventsAfterTerminal();
+    assert(
+      events.some(
+        (event) =>
+          event.type === 'inputResolution.failed' &&
+          event.path === path &&
+          event.errorCode === errorCode,
+      ),
+    );
   }
 
   private async expectRunStatus(status: RunStatus): Promise<void> {
-    await vi.waitFor(async () => {
-      assert.equal((await this.manager.getRun(this.runId))?.status, status);
-    });
+    await vi.waitFor(
+      async () => {
+        assert.equal((await this.manager.getRun(this.runId))?.status, status);
+      },
+      { timeout: 5_000 },
+    );
   }
 
   private async expectOutputValue(path: string, key: string, value: unknown): Promise<void> {
@@ -215,6 +220,16 @@ class AcceptanceScenarioRunner {
     );
   }
 
+  private async expectRunDetails(nodePaths: readonly string[]): Promise<void> {
+    await vi.waitFor(
+      async () => {
+        const actual = (await this.details()).nodeExecutions.map(({ request }) => request.path);
+        assert.deepStrictEqual(new Set(actual), new Set(nodePaths));
+      },
+      { timeout: 5_000 },
+    );
+  }
+
   private async expectSecretAbsent(value: string): Promise<void> {
     await this.waitForTerminal();
     const stored = JSON.stringify({
@@ -239,10 +254,13 @@ class AcceptanceScenarioRunner {
   }
 
   private async waitForTerminal(): Promise<void> {
-    await vi.waitFor(async () => {
-      const run = await this.manager.getRun(this.runId);
-      assert(run !== undefined && terminal(run.status));
-    });
+    await vi.waitFor(
+      async () => {
+        const run = await this.manager.getRun(this.runId);
+        assert(run !== undefined && terminal(run.status));
+      },
+      { timeout: 5_000 },
+    );
   }
 
   private async collectEvents(): Promise<readonly RunEvent[]> {

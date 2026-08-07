@@ -8,6 +8,7 @@ import type { RunEvent } from '../contracts/run/run-event.js';
 import type { RunSnapshot } from '../contracts/run/run.js';
 import { parseRunEvent } from '../validation/run-event.validator.js';
 import { runEventStreamName, runWorkflowName } from './dbos-names.js';
+import { loadRunNodeExecutions } from './read-model/load-run-node-executions.js';
 import { mapRunDetails } from './read-model/map-run-details.js';
 import { mapRunSnapshot } from './read-model/map-run-snapshot.js';
 import type { WorkflowRegistry } from './workflow-registry.js';
@@ -69,8 +70,7 @@ export class DbosRunRuntime {
       return undefined;
     }
 
-    const steps = await DBOS.listWorkflowSteps(runId);
-    return mapRunDetails(run, steps ?? []);
+    return mapRunDetails(run, await loadRunNodeExecutions(runId));
   }
 
   async *subscribeRunEvents(runId: string): AsyncGenerator<RunEvent> {

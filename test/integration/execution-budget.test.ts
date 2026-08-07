@@ -4,7 +4,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { createRunManager } from '../../src/index.js';
 import type { RunEvent, RunExecutor, RunManager } from '../../src/index.js';
-import { agentBinding, end, executionPlan, sequence, task } from '../dsl/pipeline-builder.js';
+import {
+  agentBinding,
+  end,
+  executionPlan,
+  routeOutcomes,
+  sequence,
+  task,
+} from '../dsl/pipeline-builder.js';
 import { waitForRunStatus } from '../support/run-manager.fixture.js';
 import { testDatabaseUrl } from '../support/test-environment.js';
 
@@ -58,5 +65,48 @@ describe('execution budget', () => {
         errorCode: 'maximum_total_node_executions_exceeded',
       }),
     );
+  });
+
+  it('shares the execution limit across parallel branch workflows', async () => {
+    const dispatched: string[] = [];
+    const executor: RunExecutor = {
+      execute: async ({ path }) => {
+        dispatched.push(path);
+        return { kind: 'completed', outcome: 'completed' };
+      },
+    };
+    manager = createRunManager({
+      database: { url: testDatabaseUrl() },
+      executor,
+    });
+    await manager.start();
+
+    const runId = `parallel-budget-${randomUUID()}`;
+    await manager.startRun({
+      runId,
+      executionPlan: executionPlan(
+        routeOutcomes(
+          {
+            kind: 'parallel',
+            key: 'work',
+            branches: { first: task('first'), second: task('second') },
+            join: {
+              kind: 'all',
+              successfulOutcomes: ['completed'],
+              remaining: 'drain',
+            },
+          },
+          { completed: end('succeeded'), failed: end('failed') },
+        ),
+        {
+          bindings: [agentBinding('work/first', 'worker'), agentBinding('work/second', 'worker')],
+          policies: { maximumTotalNodeExecutions: 1 },
+        },
+      ),
+      input: null,
+    });
+    await waitForRunStatus(manager, runId, 'failed');
+
+    expect(dispatched).toHaveLength(1);
   });
 });

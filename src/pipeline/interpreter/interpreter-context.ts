@@ -2,9 +2,8 @@ import type { RunExecutorRequest } from '../../contracts/executor/run-executor.j
 import type { RunNodeExecution } from '../../contracts/executor/run-node-execution.js';
 import type { JsonValue } from '../../contracts/json-value.js';
 import type { NodeOutput } from '../../contracts/pipeline/node-output.js';
+import type { PipelineInputScope } from '../../contracts/pipeline/pipeline-input.js';
 import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
-import type { PipelineInputScope } from '../data/input-resolver.js';
-import type { NodeExecutionBudget } from './node-execution-budget.js';
 
 export interface PipelineExecutionContext {
   readonly plan: ExecutionPlan;
@@ -14,10 +13,12 @@ export interface PipelineExecutionContext {
   readonly pipelineInput: PipelineInputScope;
   readonly runtimePath: string;
   readonly outputs: Map<string, NodeOutput>;
-  readonly executionBudget: NodeExecutionBudget;
+  readonly maximumParallelism: number;
 }
 
 export type ExecuteNodeEffect = (
   request: RunExecutorRequest,
   timeoutMs: number,
-) => Promise<RunNodeExecution | { readonly kind: 'timedOut' }>;
+) => Promise<
+  RunNodeExecution | { readonly kind: 'executionLimitExceeded' } | { readonly kind: 'timedOut' }
+>;

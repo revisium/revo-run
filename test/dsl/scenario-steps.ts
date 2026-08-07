@@ -20,6 +20,11 @@ export const expectNodeInput = (path: string, value: JsonValue): ScenarioStep =>
   value,
 });
 
+export const expectRunDetails = (...nodePaths: readonly string[]): ScenarioStep => ({
+  kind: 'expectRunDetails',
+  nodePaths,
+});
+
 export const expectOutputValue = (
   path: string,
   outputKey: string,

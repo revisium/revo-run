@@ -43,6 +43,16 @@
       }
     },
     {
+      "files": [
+        "src/dbos/coordination/run-coordinator-client.ts",
+        "src/dbos/coordination/run-workflow-coordinator.ts",
+        "src/dbos/parallel/dbos-parallel-branch-runner.ts"
+      ],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
+    },
+    {
       "files": ["src/contracts/**/*.ts", "src/dbos/**/*.ts", "src/manager/**/*.ts"],
       "rules": {
         "no-restricted-imports": [

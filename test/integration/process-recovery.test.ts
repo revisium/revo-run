@@ -7,7 +7,13 @@ import { describe, expect, it } from 'vitest';
 import { testDatabaseUrl } from '../support/test-environment.js';
 
 interface WorkerMessage {
-  readonly kind: 'dispatched' | 'error' | 'stopped' | 'terminal' | 'timeoutSignalled';
+  readonly kind:
+    | 'checkpointed'
+    | 'dispatched'
+    | 'error'
+    | 'stopped'
+    | 'terminal'
+    | 'timeoutSignalled';
   readonly message?: string;
   readonly path?: string;
   readonly status?: string;
@@ -123,6 +129,31 @@ describe('process recovery', () => {
       expect(recoveredProcess.dispatched('main/work')).toBe(0);
 
       recoveredProcess.complete('main/after-timeout');
+      await recoveredProcess.waitFor({ kind: 'terminal', status: 'succeeded' });
+      await recoveredProcess.waitFor({ kind: 'stopped' });
+    } finally {
+      await firstProcess.kill();
+      await recoveredProcess?.kill();
+    }
+  }, 30_000);
+
+  it('recovers parallel branches without repeating a checkpointed effect', async () => {
+    const runId = `parallel-recovery-${randomUUID()}`;
+    const firstProcess = new RecoveryProcess('start', runId, 'parallel');
+    let recoveredProcess: RecoveryProcess | undefined;
+
+    try {
+      await firstProcess.waitFor({ kind: 'dispatched', path: 'main/work/a' });
+      await firstProcess.waitFor({ kind: 'dispatched', path: 'main/work/b' });
+      firstProcess.complete('main/work/a');
+      await firstProcess.waitFor({ kind: 'checkpointed', path: 'main/work/a' });
+      await firstProcess.kill();
+
+      recoveredProcess = new RecoveryProcess('recover', runId, 'parallel');
+      await recoveredProcess.waitFor({ kind: 'dispatched', path: 'main/work/b' });
+      expect(recoveredProcess.dispatched('main/work/a')).toBe(0);
+
+      recoveredProcess.complete('main/work/b');
       await recoveredProcess.waitFor({ kind: 'terminal', status: 'succeeded' });
       await recoveredProcess.waitFor({ kind: 'stopped' });
     } finally {
