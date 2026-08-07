@@ -12,7 +12,10 @@ read models live in `src/dbos`.
 
 - `src/manager`: consumer-facing lifecycle and run operations;
 - `src/pipeline/interpreter`: deterministic graph traversal and node semantics;
+- `src/pipeline/parallel`: DBOS-independent parallel join semantics and branch port;
 - `src/pipeline/data`: input and output reference resolution;
+- `src/dbos/coordination`: durable run messages, event ordering, and total-execution admission;
+- `src/dbos/parallel`: child-workflow scheduling behind the pipeline branch port;
 - `src/dbos/workflows`: durable workflow entrypoints;
 - `src/dbos/steps`: checkpointed external effects;
 - `src/dbos/streams`: durable run events;

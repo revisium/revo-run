@@ -2,15 +2,12 @@ import type { ExecutorInput, ExecutorInputValue } from '../../contracts/executor
 import type { JsonValue } from '../../contracts/json-value.js';
 import type { InputSource, TerminalOutputSource } from '../../contracts/pipeline/data-reference.js';
 import type { NodeOutput, OutputValue } from '../../contracts/pipeline/node-output.js';
+import type { PipelineInputScope } from '../../contracts/pipeline/pipeline-input.js';
 import type {
   InputMapping,
   TerminalOutputMapping,
 } from '../../contracts/pipeline/pipeline-node.js';
 import { readJsonPointer } from './json-pointer.js';
-
-export type PipelineInputScope =
-  | { readonly kind: 'value'; readonly value: ExecutorInputValue }
-  | { readonly kind: 'mapping'; readonly values: ExecutorInput };
 
 export interface InputResolutionContext {
   readonly runInput: JsonValue;

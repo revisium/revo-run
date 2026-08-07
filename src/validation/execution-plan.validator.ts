@@ -18,7 +18,8 @@ export type ExecutionPlanValidationErrorCode =
   | 'pipeline_not_found'
   | 'root_pipeline_not_found'
   | 'subpipeline_cycle'
-  | 'subpipeline_depth_exceeded';
+  | 'subpipeline_depth_exceeded'
+  | 'unreachable_parallel_threshold';
 
 export type ExecutionPlanValidationResult =
   | { readonly valid: true; readonly plan: ExecutionPlan }
@@ -32,7 +33,10 @@ type PipelineInspection =
     }
   | {
       readonly valid: false;
-      readonly code: 'duplicate_node_path' | 'node_depth_exceeded';
+      readonly code:
+        | 'duplicate_node_path'
+        | 'node_depth_exceeded'
+        | 'unreachable_parallel_threshold';
     };
 
 type PipelineGraphInspection =
@@ -43,7 +47,11 @@ type PipelineGraphInspection =
     }
   | {
       readonly valid: false;
-      readonly code: 'duplicate_node_path' | 'node_depth_exceeded' | 'pipeline_not_found';
+      readonly code:
+        | 'duplicate_node_path'
+        | 'node_depth_exceeded'
+        | 'pipeline_not_found'
+        | 'unreachable_parallel_threshold';
     };
 
 const optionalNode = (node: PipelineNode | undefined): readonly PipelineNode[] =>
@@ -102,6 +110,13 @@ const inspectPipeline = (root: PipelineNode, maximumDepth: number): PipelineInsp
     }
     if (current.node.kind === 'subpipeline') {
       dependencies.add(current.node.pipelineId);
+    }
+    if (
+      current.node.kind === 'parallel' &&
+      current.node.join.kind === 'threshold' &&
+      current.node.join.count > Object.keys(current.node.branches).length
+    ) {
+      return { valid: false, code: 'unreachable_parallel_threshold' };
     }
     for (const child of childNodes(current.node)) {
       pending.push({ node: child, depth: current.depth + 1, parentPath: path });

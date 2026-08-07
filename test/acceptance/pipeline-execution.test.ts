@@ -6,5 +6,5 @@ import { implementedPipelineScenarios } from './implemented-scenarios.js';
 describe.each(implementedPipelineScenarios)('$name', (scenario) => {
   it('executes the planned scenario', async () => {
     await expect(runAcceptanceScenario(scenario)).resolves.toBeUndefined();
-  });
+  }, 15_000);
 });

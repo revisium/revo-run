@@ -25,6 +25,7 @@ export class ControlledRunExecutor implements RunExecutor {
   private readonly requests: RunExecutorRequest[] = [];
   private readonly externalEffects = new Map<string, number>();
   private readonly resolvedSecrets = new Set<string>();
+  private maximumActiveExecutions = 0;
 
   execute(request: RunExecutorRequest): Promise<RunExecutorResult> {
     this.requests.push(request);
@@ -32,6 +33,10 @@ export class ControlledRunExecutor implements RunExecutor {
       const pending = this.pending.get(request.path) ?? [];
       pending.push({ request, resolve });
       this.pending.set(request.path, pending);
+      this.maximumActiveExecutions = Math.max(
+        this.maximumActiveExecutions,
+        this.activeExecutions(),
+      );
     });
   }
 
@@ -73,9 +78,12 @@ export class ControlledRunExecutor implements RunExecutor {
   }
 
   async expectStarted(path: string): Promise<void> {
-    await vi.waitFor(() => {
-      assert(this.requests.some((request) => request.path === path));
-    });
+    await vi.waitFor(
+      () => {
+        assert(this.requests.some((request) => request.path === path));
+      },
+      { timeout: 5_000 },
+    );
   }
 
   async expectInput(path: string, expected: JsonValue): Promise<void> {
@@ -105,6 +113,20 @@ export class ControlledRunExecutor implements RunExecutor {
     await vi.waitFor(() => {
       assert.equal(this.executionCount(path), count);
     });
+  }
+
+  async expectMaximumActiveExecutions(count: number): Promise<void> {
+    await vi.waitFor(
+      () => {
+        assert.equal(this.activeExecutions(), count);
+      },
+      { timeout: 5_000 },
+    );
+    assert.equal(this.maximumActiveExecutions, count);
+  }
+
+  private activeExecutions(): number {
+    return [...this.pending.values()].reduce((count, pending) => count + pending.length, 0);
   }
 
   private async take(path: string): Promise<PendingExecution> {

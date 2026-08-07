@@ -63,6 +63,7 @@ const manager = createRunManager({
   executor,
 });
 const runId = environment('REVO_RUN_TEST_RUN_ID');
+const checkpointed = new Set<string>();
 
 process.on('message', (message: WorkerCommand) => {
   if (message.kind === 'complete') {
@@ -81,6 +82,15 @@ if (environment('REVO_RUN_TEST_MODE') === 'start') {
 }
 
 const watchTerminalRun = async (): Promise<void> => {
+  const details = await manager.getRunDetails(runId);
+  for (const execution of details?.nodeExecutions ?? []) {
+    const path = execution.request.path;
+    if (!checkpointed.has(path)) {
+      checkpointed.add(path);
+      send({ kind: 'checkpointed', path });
+    }
+  }
+
   const run = await manager.getRun(runId);
   if (run !== undefined && run.status !== 'pending' && run.status !== 'running') {
     send({ kind: 'terminal', status: run.status });

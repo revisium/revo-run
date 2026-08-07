@@ -4,9 +4,13 @@ Durable run orchestration for Revo.
 
 ## Current scope
 
-The current alpha executes deterministic `sequence`, `outcomeSwitch`, `branch`, `subpipeline`,
-`task`, and `end` nodes. Task effects run as DBOS steps. DBOS persists workflow input, task
-results, events, terminal result, status, and timestamps in PostgreSQL.
+The current alpha executes deterministic `sequence`, `outcomeSwitch`, `branch`, `parallel`,
+`subpipeline`, `task`, and `end` nodes. Parallel nodes support `all`, `any`, and `threshold`
+joins with `remaining: 'drain'`; cancel joins are not implemented yet. Parallel branches are DBOS
+child workflows, and plan-wide active and total execution limits apply across nested branches.
+
+Task effects run as DBOS steps. DBOS persists workflow input, task results, events, child-workflow
+progress, terminal result, status, and timestamps in PostgreSQL.
 
 The public runtime API contains `createRunManager`, lifecycle methods, `startRun`, `getRun`,
 `getRunDetails`, and `subscribeRunEvents`.

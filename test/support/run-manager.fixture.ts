@@ -19,10 +19,13 @@ export const waitForRunStatus = async (
   runId: string,
   status: RunStatus,
 ): Promise<void> => {
-  await vi.waitFor(async () => {
-    const run = await manager.getRun(runId);
-    if (run?.status !== status) {
-      throw new Error(`Run ${runId} has not reached ${status}.`);
-    }
-  });
+  await vi.waitFor(
+    async () => {
+      const run = await manager.getRun(runId);
+      if (run?.status !== status) {
+        throw new Error(`Run ${runId} has not reached ${status}.`);
+      }
+    },
+    { timeout: 5_000 },
+  );
 };

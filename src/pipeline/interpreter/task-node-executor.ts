@@ -44,19 +44,18 @@ export class TaskNodeExecutor {
       binding,
       input: input.value,
     } as const;
-    if (!context.executionBudget.reserve()) {
+    const execution = await this.executeEffect(
+      request,
+      node.timeoutMs ?? context.plan.policies.defaultTaskTimeoutMs,
+    );
+
+    if (execution.kind === 'executionLimitExceeded') {
       await this.events.write('pipeline.invalidState', {
         path: runtimePath(context, nodePath),
         errorCode: 'maximum_total_node_executions_exceeded',
       });
       return { kind: 'finished', result: { status: 'failed', outcome: 'invalid' } };
     }
-
-    const execution = await this.executeEffect(
-      request,
-      node.timeoutMs ?? context.plan.policies.defaultTaskTimeoutMs,
-    );
-
     if (execution.kind === 'timedOut') {
       await this.events.write('nodeExecution.timedOut', {
         path: runtimePath(context, nodePath),

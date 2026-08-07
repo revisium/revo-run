@@ -5,3 +5,13 @@ import { RunWorkflowResultSchema } from '../contracts/workflow/run-workflow-resu
 
 export const RunWorkflowArgumentsValidator = Schema.Compile(RunWorkflowArgumentsSchema);
 export const RunWorkflowResultValidator = Schema.Compile(RunWorkflowResultSchema);
+
+export const RunWorkflowArgumentsParser = {
+  parse(value: unknown): unknown {
+    if (!RunWorkflowArgumentsValidator.Check(value)) {
+      throw new Error('Run workflow input is invalid.');
+    }
+
+    return value;
+  },
+};
