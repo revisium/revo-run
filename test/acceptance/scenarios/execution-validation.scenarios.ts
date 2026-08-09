@@ -14,8 +14,10 @@ import {
 
 export const executionValidationScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'validation',
+    intentId: 'rr-021',
+    category: 'validation',
     name: 'fails an unhandled custom task outcome instead of treating it as success',
+    requiredCapabilities: ['unhandledOutcomeFailure'],
     plan: executionPlan(sequence(task('review'), end('succeeded')), {
       bindings: [agentBinding('review', 'reviewer')],
     }),
@@ -27,8 +29,10 @@ export const executionValidationScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-022',
+    category: 'validation',
     name: 'does not select inherited outcome routes',
+    requiredCapabilities: ['ownPropertyOutcomeRouting'],
     plan: executionPlan(
       {
         kind: 'outcomeSwitch',

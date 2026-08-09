@@ -18,8 +18,10 @@ import {
 
 export const parallelJoinScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'parallelExecution',
+    intentId: 'rr-025',
+    category: 'parallelExecution',
     name: 'waits for every successful branch at an all join',
+    requiredCapabilities: ['parallelAllJoin'],
     plan: executionPlan(
       sequence(
         {
@@ -54,8 +56,10 @@ export const parallelJoinScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'parallelExecution',
+    intentId: 'rr-026',
+    category: 'parallelExecution',
     name: 'runs a multi-step pipeline as one parallel branch',
+    requiredCapabilities: ['parallelBranchComposition'],
     plan: executionPlan(
       sequence(
         {
@@ -92,8 +96,10 @@ export const parallelJoinScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'parallelExecution',
+    intentId: 'rr-027',
+    category: 'parallelExecution',
     name: 'fails an all join when one branch fails and drains the remainder',
+    requiredCapabilities: ['parallelAllJoinFailure', 'parallelBranchDrain'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -124,8 +130,10 @@ export const parallelJoinScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'parallelExecution',
+    intentId: 'rr-028',
+    category: 'parallelExecution',
     name: 'drains remaining branches after an any join succeeds',
+    requiredCapabilities: ['parallelAnyJoin', 'parallelBranchDrain'],
     plan: executionPlan(
       sequence(
         {
@@ -156,8 +164,10 @@ export const parallelJoinScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'parallelExecution',
+    intentId: 'rr-029',
+    category: 'parallelExecution',
     name: 'fails an any join after every branch fails',
+    requiredCapabilities: ['parallelAnyJoinFailure'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -188,8 +198,10 @@ export const parallelJoinScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'parallelExecution',
+    intentId: 'rr-030',
+    category: 'parallelExecution',
     name: 'drains every branch before completing a threshold join',
+    requiredCapabilities: ['parallelThresholdJoin', 'parallelBranchDrain'],
     plan: executionPlan(
       sequence(
         {
@@ -223,8 +235,10 @@ export const parallelJoinScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-031',
+    category: 'dataFlow',
     name: 'publishes a branch input failure through the run event stream',
+    requiredCapabilities: ['parallelInputFailure'],
     plan: executionPlan(
       routeOutcomes(
         {

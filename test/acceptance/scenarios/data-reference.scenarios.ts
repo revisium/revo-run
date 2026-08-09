@@ -26,8 +26,10 @@ import {
 
 export const dataReferenceScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-058',
+    category: 'dataFlow',
     name: 'passes a versioned entity reference without embedding entity data in the plan',
+    requiredCapabilities: ['entityReferenceInput'],
     plan: executionPlan(
       sequence(
         task('analyze', {
@@ -47,8 +49,10 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-059',
+    category: 'dataFlow',
     name: 'passes a durable artifact reference between node executions',
+    requiredCapabilities: ['artifactReferenceDataFlow'],
     plan: executionPlan(
       sequence(
         task('implement'),
@@ -87,8 +91,10 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-060',
+    category: 'dataFlow',
     name: 'resolves a secret only at the executor boundary and never persists its value',
+    requiredCapabilities: ['secretBoundaryResolution'],
     plan: executionPlan(
       sequence(
         task('deploy', { input: { credential: secret({ name: 'production-token' }) } }),
@@ -108,8 +114,10 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-061',
+    category: 'dataFlow',
     name: 'keeps reference-shaped executor JSON inert',
+    requiredCapabilities: ['inertReferenceShapedJson'],
     plan: executionPlan(
       sequence(
         task('produce'),
@@ -150,8 +158,10 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-062',
+    category: 'dataFlow',
     name: 'fails a task safely when a referenced secret cannot be resolved',
+    requiredCapabilities: ['unresolvedSecretFailure'],
     plan: executionPlan(
       routeOutcomes(task('deploy', { input: { credential: secret({ name: 'missing-token' }) } }), {
         completed: end('succeeded'),
@@ -168,8 +178,10 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-063',
+    category: 'dataFlow',
     name: 'fails deterministically when a pinned entity version is unavailable',
+    requiredCapabilities: ['missingEntityVersionFailure'],
     plan: executionPlan(
       routeOutcomes(
         task('analyze', {
@@ -194,8 +206,10 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-064',
+    category: 'dataFlow',
     name: 'stores a large node result as an artifact reference',
+    requiredCapabilities: ['artifactOutput'],
     plan: executionPlan(sequence(task('analyze'), end('succeeded')), {
       bindings: [agentBinding('analyze', 'analyst')],
     }),
@@ -229,8 +243,10 @@ export const dataReferenceScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-065',
+    category: 'dataFlow',
     name: 'uses an explicitly pinned artifact as task input',
+    requiredCapabilities: ['pinnedArtifactInput'],
     plan: executionPlan(
       sequence(
         task('inspect', {

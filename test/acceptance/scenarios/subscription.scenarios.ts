@@ -16,9 +16,10 @@ import {
 
 export const subscriptionScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'subscription',
+    intentId: 'rr-080',
+    category: 'subscription',
     name: 'resumes a run subscription from its last durable cursor',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['runEventSubscription'],
     plan: executionPlan(sequence(task('work'), end('succeeded')), {
       bindings: [agentBinding('work', 'developer')],
     }),
@@ -34,9 +35,10 @@ export const subscriptionScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'subscription',
+    intentId: 'rr-081',
+    category: 'subscription',
     name: 'publishes a durable terminal failure event',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['terminalFailureEvent'],
     plan: executionPlan(
       routeOutcomes(task('work'), { completed: end('succeeded'), failed: end('failed') }),
       {
@@ -53,9 +55,10 @@ export const subscriptionScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'subscription',
+    intentId: 'rr-082',
+    category: 'subscription',
     name: 'rejects a subscription cursor that does not belong to the run',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['subscriptionCursorValidation'],
     plan: executionPlan(end('succeeded')),
     steps: [
       startRun(),
@@ -64,9 +67,10 @@ export const subscriptionScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'subscription',
+    intentId: 'rr-083',
+    category: 'subscription',
     name: 'exposes every nested execution through current run details',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['runDetailsProjection'],
     plan: executionPlan(
       sequence(
         {
@@ -93,9 +97,10 @@ export const subscriptionScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'subscription',
+    intentId: 'rr-084',
+    category: 'subscription',
     name: 'resumes a durable subscription cursor after a manager restart',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['subscriptionRecovery', 'managerRestartRecovery'],
     plan: executionPlan(sequence(task('work'), end('succeeded')), {
       bindings: [agentBinding('work', 'developer')],
     }),

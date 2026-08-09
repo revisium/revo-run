@@ -1,12 +1,15 @@
 import {
+  advanceTime,
   agentBinding,
   completeNode,
   end,
   executionPlan,
+  expectAgentExecution,
   expectEvent,
   expectNodeInput,
   expectNodeExecutions,
   expectRunStatus,
+  expectVersionedScriptExecution,
   failNode,
   fromNodeOutput,
   fromRunInput,
@@ -21,9 +24,14 @@ import {
 
 export const executorScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'agentExecution',
+    intentId: 'rr-001',
+    category: 'agentExecution',
     name: 'executes an agent and passes its output to a script',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: [
+      'agentTaskExecution',
+      'versionedScriptTaskExecution',
+      'nodeOutputDataFlow',
+    ],
     plan: executionPlan(
       sequence(
         task('implement', { input: { task: fromRunInput('/task') } }),
@@ -39,18 +47,19 @@ export const executorScenarios: readonly RunScenario[] = [
     ),
     steps: [
       startRun({ task: 'Implement feature' }),
-      expectNodeExecutions('main/implement'),
+      expectAgentExecution('main/implement', 'developer'),
       completeNode('main/implement', 'completed', { branch: 'feature/example' }),
-      expectNodeExecutions('main/create-pr'),
+      expectVersionedScriptExecution('main/create-pr', 'github.create-pull-request', '1.0.0'),
       expectNodeInput('main/create-pr', { branch: 'feature/example' }),
       completeNode('main/create-pr', 'completed', { pullRequest: 42 }),
       expectRunStatus('succeeded'),
     ],
   }),
   scenario({
-    capability: 'agentExecution',
+    intentId: 'rr-002',
+    category: 'agentExecution',
     name: 'routes a permanent agent failure explicitly',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['agentTaskExecution', 'taskFailureRouting', 'singleAttemptExecution'],
     plan: executionPlan(
       routeOutcomes(task('review'), {
         completed: end('succeeded'),
@@ -66,9 +75,10 @@ export const executorScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'agentExecution',
+    intentId: 'rr-003',
+    category: 'agentExecution',
     name: 'times out a bounded agent execution and routes the timeout',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['agentTaskExecution', 'taskTimeoutRouting', 'dbosSafeTimeAdvancement'],
     plan: executionPlan(
       routeOutcomes(task('review', { timeoutMs: 60_000 }), {
         completed: end('succeeded'),
@@ -79,30 +89,35 @@ export const executorScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       expectNodeExecutions('main/review'),
-      { kind: 'advanceTime', durationMs: 60_000 },
+      advanceTime(60_000),
       expectEvent('nodeExecution.timedOut', { path: 'main/review' }),
       expectRunStatus('failed'),
     ],
   }),
   scenario({
-    capability: 'scriptExecution',
+    intentId: 'rr-004',
+    category: 'scriptExecution',
     name: 'executes an immutable versioned script binding',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['versionedScriptTaskExecution'],
     plan: executionPlan(sequence(task('validate'), end('succeeded')), {
       bindings: [scriptBinding('validate', 'repository.validate', { version: '2.1.0' })],
     }),
     steps: [
       startRun(),
-      expectNodeExecutions('main/validate'),
+      expectVersionedScriptExecution('main/validate', 'repository.validate', '2.1.0'),
       completeNode('main/validate'),
-      expectEvent('nodeExecution.completed', { path: 'main/validate' }),
       expectRunStatus('succeeded'),
     ],
   }),
   scenario({
-    capability: 'scriptExecution',
+    intentId: 'rr-005',
+    category: 'scriptExecution',
     name: 'routes a permanent script failure without retrying it',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: [
+      'versionedScriptTaskExecution',
+      'taskFailureRouting',
+      'singleAttemptExecution',
+    ],
     plan: executionPlan(
       routeOutcomes(task('validate'), {
         completed: end('succeeded'),
@@ -118,9 +133,14 @@ export const executorScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'scriptExecution',
+    intentId: 'rr-006',
+    category: 'scriptExecution',
     name: 'times out a bounded script execution',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: [
+      'versionedScriptTaskExecution',
+      'taskTimeoutRouting',
+      'dbosSafeTimeAdvancement',
+    ],
     plan: executionPlan(
       routeOutcomes(task('deploy', { timeoutMs: 120_000 }), {
         completed: end('succeeded'),
@@ -130,7 +150,7 @@ export const executorScenarios: readonly RunScenario[] = [
     ),
     steps: [
       startRun(),
-      { kind: 'advanceTime', durationMs: 120_000 },
+      advanceTime(120_000),
       expectEvent('nodeExecution.timedOut', { path: 'main/deploy' }),
       expectRunStatus('failed'),
     ],

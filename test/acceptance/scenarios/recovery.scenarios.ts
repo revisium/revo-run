@@ -29,9 +29,14 @@ const reconcileOrFail = {
 
 export const recoveryScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'recovery',
+    intentId: 'rr-011',
+    category: 'recovery',
     name: 'adopts a reconciled external effect after a crash before its checkpoint',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: [
+      'effectReconciliation',
+      'managerRestartRecovery',
+      'deduplicatedExecution',
+    ],
     plan: executionPlan(sequence(task('merge', { recovery: reconcileOrAsk }), end('succeeded')), {
       bindings: [scriptBinding('merge', 'github.merge')],
     }),
@@ -50,9 +55,15 @@ export const recoveryScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'recovery',
+    intentId: 'rr-012',
+    category: 'recovery',
     name: 'requires attributed human resolution when reconciliation returns unknown',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: [
+      'effectReconciliation',
+      'unknownOutcomeResolution',
+      'managerRestartRecovery',
+      'deduplicatedExecution',
+    ],
     plan: executionPlan(sequence(task('publish', { recovery: reconcileOrAsk }), end('succeeded')), {
       bindings: [scriptBinding('publish', 'package.publish')],
     }),
@@ -74,9 +85,10 @@ export const recoveryScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'recovery',
+    intentId: 'rr-013',
+    category: 'recovery',
     name: 'fails deterministically when an unknown effect is configured to fail',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['effectReconciliation', 'unknownOutcomeFailure'],
     plan: executionPlan(
       routeOutcomes(task('notify', { recovery: reconcileOrFail }), {
         completed: end('succeeded'),
@@ -94,9 +106,10 @@ export const recoveryScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'recovery',
+    intentId: 'rr-014',
+    category: 'recovery',
     name: 'executes an effect once after restarting before the effect begins',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['managerRestartRecovery', 'deduplicatedExecution'],
     plan: executionPlan(sequence(task('commit', { recovery: reconcileOrAsk }), end('succeeded')), {
       bindings: [scriptBinding('commit', 'git.commit')],
     }),
@@ -110,9 +123,10 @@ export const recoveryScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'recovery',
+    intentId: 'rr-015',
+    category: 'recovery',
     name: 'fails after exhausting bounded reconciliation attempts',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['effectReconciliation', 'reconciliationAttemptLimit'],
     plan: executionPlan(
       routeOutcomes(task('deploy', { recovery: reconcileOrFail }), {
         completed: end('succeeded'),
@@ -132,9 +146,10 @@ export const recoveryScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'recovery',
+    intentId: 'rr-016',
+    category: 'recovery',
     name: 'retries safely after reconciliation proves the external effect is absent',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['effectReconciliation', 'deduplicatedExecution'],
     plan: executionPlan(sequence(task('publish', { recovery: reconcileOrAsk }), end('succeeded')), {
       bindings: [scriptBinding('publish', 'package.publish')],
     }),

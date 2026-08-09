@@ -1,4 +1,5 @@
 import {
+  advanceTime,
   agentBinding,
   end,
   executionPlan,
@@ -26,9 +27,10 @@ const consensusBindings = [
 
 export const consensusScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'consensus',
+    intentId: 'rr-036',
+    category: 'consensus',
     name: 'approves a unanimous consensus after every participant approves',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['consensusExecution', 'normalizedConsensusVote', 'unanimousConsensus'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -51,9 +53,14 @@ export const consensusScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'consensus',
+    intentId: 'rr-037',
+    category: 'consensus',
     name: 'rejects a unanimous consensus as soon as one participant rejects',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: [
+      'consensusExecution',
+      'normalizedConsensusVote',
+      'earlyConsensusRejection',
+    ],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -75,9 +82,10 @@ export const consensusScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'consensus',
+    intentId: 'rr-038',
+    category: 'consensus',
     name: 'reports an insufficient quorum when too many participants abstain',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['consensusExecution', 'normalizedConsensusVote', 'consensusQuorum'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -107,9 +115,14 @@ export const consensusScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'consensus',
+    intentId: 'rr-039',
+    category: 'consensus',
     name: 'applies independent approve and reject thresholds',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: [
+      'consensusExecution',
+      'normalizedConsensusVote',
+      'independentConsensusThresholds',
+    ],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -138,9 +151,14 @@ export const consensusScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'consensus',
+    intentId: 'rr-040',
+    category: 'consensus',
     name: 'rejects duplicate and unknown participant votes',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: [
+      'consensusExecution',
+      'normalizedConsensusVote',
+      'consensusVoteValidation',
+    ],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -174,9 +192,10 @@ export const consensusScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'consensus',
+    intentId: 'rr-041',
+    category: 'consensus',
     name: 'fails consensus when a participant execution fails',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['consensusExecution', 'consensusParticipantFailureWithoutVote'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -198,9 +217,14 @@ export const consensusScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'consensus',
+    intentId: 'rr-042',
+    category: 'consensus',
     name: 'routes consensus timeout without waiting forever',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: [
+      'consensusExecution',
+      'consensusTimeoutRouting',
+      'dbosSafeTimeAdvancement',
+    ],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -217,7 +241,7 @@ export const consensusScenarios: readonly RunScenario[] = [
     ),
     steps: [
       startRun(),
-      { kind: 'advanceTime', durationMs: 300_000 },
+      advanceTime(300_000),
       expectEvent('consensus.timedOut', { path: 'main/review' }),
       expectRunStatus('failed'),
     ],

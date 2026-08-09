@@ -1,0 +1,55 @@
+import type { ScenarioIntentId } from '../dsl/run-scenario.js';
+import { coordinationIntentTrace } from './scenario-intents/coordination-intents.js';
+import { enterpriseIntentTrace } from './scenario-intents/enterprise-intents.js';
+import { executionIntentTrace } from './scenario-intents/execution-intents.js';
+
+export const approvedScenarioIntents = [
+  ...executionIntentTrace,
+  ...coordinationIntentTrace,
+  ...enterpriseIntentTrace,
+] as const;
+
+export const provenExecutableIntentIds = [
+  'rr-001',
+  'rr-002',
+  'rr-004',
+  'rr-005',
+  'rr-021',
+  'rr-022',
+  'rr-023',
+  'rr-024',
+  'rr-025',
+  'rr-026',
+  'rr-027',
+  'rr-028',
+  'rr-029',
+  'rr-030',
+  'rr-031',
+  'rr-032',
+  'rr-033',
+  'rr-051',
+  'rr-052',
+  'rr-053',
+  'rr-058',
+  'rr-059',
+  'rr-060',
+  'rr-061',
+  'rr-062',
+  'rr-063',
+  'rr-064',
+  'rr-065',
+  'rr-066',
+  'rr-067',
+  'rr-079',
+  'rr-086',
+  'rr-087',
+  'rr-088',
+  'rr-091',
+  'rr-092',
+  'rr-100',
+  'rr-101',
+  'rr-102',
+  'rr-103',
+] as const satisfies readonly ScenarioIntentId[];
+
+export const maximumPendingScenarioCount = 63;

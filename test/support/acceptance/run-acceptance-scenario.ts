@@ -71,6 +71,12 @@ class AcceptanceScenarioRunner {
       case 'expectNodeExecutions':
         await Promise.all(step.paths.map((path) => this.executor.expectStarted(path)));
         return;
+      case 'expectAgentExecution':
+        await this.executor.expectAgentExecution(step.path, step.roleId);
+        return;
+      case 'expectVersionedScriptExecution':
+        await this.executor.expectVersionedScriptExecution(step.path, step.scriptId, step.version);
+        return;
       case 'expectNodeInput':
         await this.executor.expectInput(step.path, step.value);
         return;
@@ -109,6 +115,9 @@ class AcceptanceScenarioRunner {
       case 'expectMaximumActiveExecutions':
         await this.executor.expectMaximumActiveExecutions(step.count);
         return;
+      case 'expectExecutionCount':
+        await this.executor.expectExecutionCount(step.path, step.count);
+        return;
       case 'expectRunDetails':
         await this.expectRunDetails(step.nodePaths);
         return;
@@ -125,9 +134,8 @@ class AcceptanceScenarioRunner {
       case 'cancelRun':
       case 'completeConsensusParticipant':
       case 'crashManager':
-      case 'expectCommandRejected':
+      case 'expectCommandResult':
       case 'expectCursorOrder':
-      case 'expectExecutionCount':
       case 'expectHumanGateWaiting':
       case 'expectIteration':
       case 'expectNoDuplicateExecution':

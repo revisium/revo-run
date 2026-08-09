@@ -1,29 +1,21 @@
-import type { ExecutionPlan, JsonValue, NodeOutput, OutputValue } from '../../src/index.js';
-
-export type ScenarioCapability =
-  | 'agentExecution'
-  | 'cancellation'
-  | 'concurrency'
-  | 'consensus'
-  | 'dataFlow'
-  | 'delay'
-  | 'humanGate'
-  | 'map'
-  | 'parallelExecution'
-  | 'recovery'
-  | 'repeat'
-  | 'retry'
-  | 'scriptExecution'
-  | 'subpipeline'
-  | 'subscription'
-  | 'validation';
-
-export type ScenarioBlocker = 'pipelineContract' | 'runManagerApi' | 'runRuntime';
+import type {
+  ConsensusVote,
+  ExecutionPlan,
+  JsonValue,
+  NodeOutput,
+  OutputValue,
+} from '../../src/index.js';
+import type {
+  RequiredScenarioCapabilities,
+  ScenarioCategory,
+  ScenarioIntentId,
+} from './scenario-capability.js';
 
 export interface RunScenario {
-  readonly capability: ScenarioCapability;
+  readonly intentId: ScenarioIntentId;
+  readonly category: ScenarioCategory;
   readonly name: string;
-  readonly blockedBy?: ScenarioBlocker;
+  readonly requiredCapabilities: RequiredScenarioCapabilities;
   readonly plan: ExecutionPlan;
   readonly steps: readonly ScenarioStep[];
 }
@@ -43,6 +35,17 @@ export type ScenarioStep =
   | {
       readonly kind: 'expectNodeExecutions';
       readonly paths: readonly string[];
+    }
+  | {
+      readonly kind: 'expectAgentExecution';
+      readonly path: string;
+      readonly roleId: string;
+    }
+  | {
+      readonly kind: 'expectVersionedScriptExecution';
+      readonly path: string;
+      readonly scriptId: string;
+      readonly version: string;
     }
   | {
       readonly kind: 'expectNodeInput';
@@ -84,10 +87,7 @@ export type ScenarioStep =
     }
   | {
       readonly kind: 'completeConsensusParticipant';
-      readonly path: string;
-      readonly participantId: string;
-      readonly vote: 'abstain' | 'approve' | 'reject';
-      readonly executionId: string;
+      readonly vote: ConsensusVote;
     }
   | {
       readonly kind: 'answerHumanGate';
@@ -98,9 +98,8 @@ export type ScenarioStep =
       readonly commandId: string;
     }
   | {
-      readonly kind: 'expectCommandRejected';
-      readonly commandId: string;
-      readonly reason: string;
+      readonly kind: 'expectCommandResult';
+      readonly result: ScenarioCommandResult;
     }
   | {
       readonly kind: 'expectHumanGateWaiting';
@@ -192,3 +191,18 @@ export type ScenarioStep =
     };
 
 export const scenario = (value: RunScenario): RunScenario => value;
+
+export type ScenarioCommandResult =
+  | { readonly status: 'accepted'; readonly commandId: string }
+  | {
+      readonly status: 'rejected';
+      readonly commandId: string;
+      readonly reason: ScenarioCommandRejectionReason;
+    };
+
+export type ScenarioCommandRejectionReason =
+  | 'actor_already_answered'
+  | 'actor_not_eligible'
+  | 'gate_already_resolved'
+  | 'invalid_gate_answer'
+  | 'run_already_terminal';

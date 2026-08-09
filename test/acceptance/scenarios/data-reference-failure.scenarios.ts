@@ -15,8 +15,10 @@ import {
 
 export const dataReferenceFailureScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-066',
+    category: 'dataFlow',
     name: 'fails deterministically when a referenced output key is missing',
+    requiredCapabilities: ['missingOutputKeyFailure'],
     plan: executionPlan(
       sequence(
         task('produce'),
@@ -43,8 +45,10 @@ export const dataReferenceFailureScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-067',
+    category: 'dataFlow',
     name: 'fails deterministically when a referenced JSON pointer is missing',
+    requiredCapabilities: ['missingJsonPointerFailure'],
     plan: executionPlan(
       sequence(
         task('produce'),

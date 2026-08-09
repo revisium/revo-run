@@ -21,9 +21,10 @@ import {
 
 export const repeatScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'repeat',
+    intentId: 'rr-054',
+    category: 'repeat',
     name: 'passes the previous iteration output into the next review iteration',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['repeatIterationDataFlow'],
     plan: executionPlan(
       sequence(
         {
@@ -73,9 +74,10 @@ export const repeatScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'repeat',
+    intentId: 'rr-055',
+    category: 'repeat',
     name: 'supports a bounded repeat nested inside another repeat',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['nestedRepeat'],
     plan: executionPlan(
       sequence(
         {
@@ -108,9 +110,10 @@ export const repeatScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'repeat',
+    intentId: 'rr-056',
+    category: 'repeat',
     name: 'routes an exhausted repeat after reaching its iteration limit',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['repeatExhaustionRouting'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -134,9 +137,10 @@ export const repeatScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'repeat',
+    intentId: 'rr-057',
+    category: 'repeat',
     name: 'rejects an unbounded repeat during plan validation',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['boundedRepeatValidation'],
     plan: executionPlan({
       kind: 'repeat',
       key: 'review',

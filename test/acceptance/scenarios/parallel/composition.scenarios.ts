@@ -17,8 +17,10 @@ import {
 
 export const parallelCompositionScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-032',
+    category: 'dataFlow',
     name: 'makes parallel branch outputs available after the join',
+    requiredCapabilities: ['parallelOutputDataFlow'],
     plan: executionPlan(
       sequence(
         {
@@ -58,8 +60,10 @@ export const parallelCompositionScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'parallelExecution',
+    intentId: 'rr-033',
+    category: 'parallelExecution',
     name: 'applies the run parallelism limit across nested parallel branches',
+    requiredCapabilities: ['planWideConcurrencyLimit', 'nestedParallelExecution'],
     plan: executionPlan(
       sequence(
         {
