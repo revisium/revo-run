@@ -21,9 +21,10 @@ import {
 
 export const mapScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'map',
+    intentId: 'rr-068',
+    category: 'map',
     name: 'maps a bounded task over dynamically supplied entities',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['boundedMapExecution'],
     plan: executionPlan(
       sequence(
         {
@@ -55,9 +56,10 @@ export const mapScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'map',
+    intentId: 'rr-069',
+    category: 'map',
     name: 'completes an empty map without scheduling child executions',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['emptyMapCompletion'],
     plan: executionPlan(
       sequence(
         {
@@ -81,9 +83,10 @@ export const mapScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'map',
+    intentId: 'rr-070',
+    category: 'map',
     name: 'encodes data-controlled map item keys in runtime paths',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['mapPathEncoding'],
     plan: executionPlan(
       sequence(
         {
@@ -108,9 +111,10 @@ export const mapScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'map',
+    intentId: 'rr-071',
+    category: 'map',
     name: 'rejects map input that exceeds its declared item bound',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['mapItemBound'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -135,9 +139,10 @@ export const mapScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'map',
+    intentId: 'rr-072',
+    category: 'map',
     name: 'cancels remaining map items after one item fails in fail-fast mode',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['mapFailFast'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -163,9 +168,10 @@ export const mapScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'map',
+    intentId: 'rr-073',
+    category: 'map',
     name: 'enforces map-local concurrency independently of item count',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['mapConcurrencyLimit'],
     plan: executionPlan(
       sequence(
         {
@@ -193,9 +199,10 @@ export const mapScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'map',
+    intentId: 'rr-074',
+    category: 'map',
     name: 'collects failed map items and exposes a deterministic aggregate outcome',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['mapFailureAggregation'],
     plan: executionPlan(
       routeOutcomes(
         {

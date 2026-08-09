@@ -86,10 +86,24 @@ export class ControlledRunExecutor implements RunExecutor {
     );
   }
 
+  async expectAgentExecution(path: string, roleId: string): Promise<void> {
+    const request = await this.requestAt(path);
+    assert.equal(request.binding.kind, 'agent');
+    assert.equal(request.binding.roleId, roleId);
+  }
+
+  async expectVersionedScriptExecution(
+    path: string,
+    scriptId: string,
+    version: string,
+  ): Promise<void> {
+    const request = await this.requestAt(path);
+    assert.equal(request.binding.kind, 'script');
+    assert.deepStrictEqual(request.binding.script, { id: scriptId, version });
+  }
+
   async expectInput(path: string, expected: JsonValue): Promise<void> {
-    await this.expectStarted(path);
-    const request = this.requests.findLast((candidate) => candidate.path === path);
-    assert(request !== undefined);
+    const request = await this.requestAt(path);
     assert.deepStrictEqual(visibleInput(request.input), expected);
   }
 
@@ -127,6 +141,13 @@ export class ControlledRunExecutor implements RunExecutor {
 
   private activeExecutions(): number {
     return [...this.pending.values()].reduce((count, pending) => count + pending.length, 0);
+  }
+
+  private async requestAt(path: string): Promise<RunExecutorRequest> {
+    await this.expectStarted(path);
+    const request = this.requests.findLast((candidate) => candidate.path === path);
+    assert(request !== undefined);
+    return request;
   }
 
   private async take(path: string): Promise<PendingExecution> {

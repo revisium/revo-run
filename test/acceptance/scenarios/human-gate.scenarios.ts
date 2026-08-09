@@ -1,7 +1,9 @@
 import {
+  advanceTime,
   answerGate,
   end,
   executionPlan,
+  expectCommandRejected,
   expectEvent,
   expectRunStatus,
   routeOutcomes,
@@ -12,9 +14,10 @@ import {
 
 export const humanGateScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'humanGate',
+    intentId: 'rr-043',
+    category: 'humanGate',
     name: 'continues after answering a human gate following a manager restart',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['humanGateRecovery', 'managerRestartRecovery'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -36,9 +39,10 @@ export const humanGateScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'humanGate',
+    intentId: 'rr-044',
+    category: 'humanGate',
     name: 'accepts an idempotent gate command once and rejects a conflicting command',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['humanGateCommandIdempotency', 'commandRejection'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -55,18 +59,15 @@ export const humanGateScenarios: readonly RunScenario[] = [
       answerGate('main/approval', 'approved', 'alice', 'gate-answer-same'),
       answerGate('main/approval', 'approved', 'alice', 'gate-answer-same'),
       answerGate('main/approval', 'rejected', 'alice', 'gate-answer-conflict'),
-      {
-        kind: 'expectCommandRejected',
-        commandId: 'gate-answer-conflict',
-        reason: 'gate_already_resolved',
-      },
+      expectCommandRejected('gate-answer-conflict', 'gate_already_resolved'),
       expectRunStatus('succeeded'),
     ],
   }),
   scenario({
-    capability: 'humanGate',
+    intentId: 'rr-045',
+    category: 'humanGate',
     name: 'requires distinct authorized approvers for separation of duties',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['separationOfDuties', 'commandRejection'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -87,11 +88,7 @@ export const humanGateScenarios: readonly RunScenario[] = [
       answerGate('main/production-approval', 'approved', 'alice', 'approval-alice-2', [
         'production-approvers',
       ]),
-      {
-        kind: 'expectCommandRejected',
-        commandId: 'approval-alice-2',
-        reason: 'actor_already_answered',
-      },
+      expectCommandRejected('approval-alice-2', 'actor_already_answered'),
       answerGate('main/production-approval', 'approved', 'bob', 'approval-bob-1', [
         'production-approvers',
       ]),
@@ -99,9 +96,10 @@ export const humanGateScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'humanGate',
+    intentId: 'rr-046',
+    category: 'humanGate',
     name: 'rejects an answer from an ineligible actor',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['humanGateAuthorization', 'commandRejection'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -119,18 +117,15 @@ export const humanGateScenarios: readonly RunScenario[] = [
       answerGate('main/production-approval', 'approved', 'mallory', 'approval-mallory-1', [
         'developers',
       ]),
-      {
-        kind: 'expectCommandRejected',
-        commandId: 'approval-mallory-1',
-        reason: 'actor_not_eligible',
-      },
+      expectCommandRejected('approval-mallory-1', 'actor_not_eligible'),
       expectRunStatus('running'),
     ],
   }),
   scenario({
-    capability: 'humanGate',
+    intentId: 'rr-047',
+    category: 'humanGate',
     name: 'routes conflicting multi-approver answers by an explicit gate policy',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['humanGateConflictPolicy'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -160,9 +155,10 @@ export const humanGateScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'humanGate',
+    intentId: 'rr-048',
+    category: 'humanGate',
     name: 'rejects an answer outside the gate answer vocabulary',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['humanGateAnswerValidation', 'commandRejection'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -177,18 +173,15 @@ export const humanGateScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       answerGate('main/approval', 'maybe', 'alice', 'gate-invalid-1'),
-      {
-        kind: 'expectCommandRejected',
-        commandId: 'gate-invalid-1',
-        reason: 'invalid_gate_answer',
-      },
+      expectCommandRejected('gate-invalid-1', 'invalid_gate_answer'),
       expectRunStatus('running'),
     ],
   }),
   scenario({
-    capability: 'humanGate',
+    intentId: 'rr-049',
+    category: 'humanGate',
     name: 'routes an unanswered human gate after its deadline',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['humanGateDeadlineRouting', 'dbosSafeTimeAdvancement'],
     plan: executionPlan(
       routeOutcomes(
         {
@@ -208,15 +201,16 @@ export const humanGateScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       { kind: 'expectHumanGateWaiting', path: 'main/approval' },
-      { kind: 'advanceTime', durationMs: 86_400_000 },
+      advanceTime(86_400_000),
       expectEvent('humanGate.timedOut', { path: 'main/approval' }),
       expectRunStatus('succeeded'),
     ],
   }),
   scenario({
-    capability: 'humanGate',
+    intentId: 'rr-050',
+    category: 'humanGate',
     name: 'cancels a run while it is waiting at a human gate',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['humanGateCancellation'],
     plan: executionPlan(
       routeOutcomes(
         {

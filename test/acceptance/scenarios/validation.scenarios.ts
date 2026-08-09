@@ -16,9 +16,10 @@ import {
 
 export const validationScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'validation',
+    intentId: 'rr-085',
+    category: 'validation',
     name: 'rejects an unsupported execution plan schema version',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['planSchemaVersionValidation'],
     plan: executionPlan(end('succeeded')),
     steps: [
       startRunWithPlanSchemaVersion(2),
@@ -26,9 +27,10 @@ export const validationScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-086',
+    category: 'validation',
     name: 'rejects an execution plan whose root pipeline is missing',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['rootPipelineValidation'],
     plan: {
       ...executionPlan(end('succeeded')),
       rootPipelineId: 'missing',
@@ -36,25 +38,28 @@ export const validationScenarios: readonly RunScenario[] = [
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'root_pipeline_not_found' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-087',
+    category: 'validation',
     name: 'rejects a task without exactly one executor binding',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['singleTaskBindingValidation'],
     plan: executionPlan(task('work')),
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'missing_executor_binding' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-088',
+    category: 'validation',
     name: 'rejects duplicate executor bindings for one task',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['duplicateTaskBindingValidation'],
     plan: executionPlan(task('work'), {
       bindings: [agentBinding('work', 'developer'), scriptBinding('work', 'work.execute')],
     }),
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'duplicate_executor_binding' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-089',
+    category: 'validation',
     name: 'rejects a plan whose repeat bound exceeds the total execution bound',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['repeatExecutionBoundValidation'],
     plan: executionPlan(
       {
         kind: 'repeat',
@@ -72,9 +77,10 @@ export const validationScenarios: readonly RunScenario[] = [
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'execution_bound_exceeded' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-090',
+    category: 'validation',
     name: 'rejects a branch without a required default route',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['branchDefaultValidation'],
     plan: executionPlan({
       kind: 'branch',
       key: 'route',
@@ -84,18 +90,20 @@ export const validationScenarios: readonly RunScenario[] = [
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'missing_branch_default' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-091',
+    category: 'validation',
     name: 'rejects an executor binding that targets a missing node path',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['bindingTargetValidation'],
     plan: executionPlan(end('succeeded'), {
       bindings: [agentBinding('missing', 'developer')],
     }),
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'binding_target_not_found' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-092',
+    category: 'validation',
     name: 'rejects an executor binding that targets a control node',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['bindingTargetValidation'],
     plan: executionPlan(
       sequence({ kind: 'delay', key: 'cooldown', durationMs: 1_000 }, end('succeeded')),
       {
@@ -105,18 +113,20 @@ export const validationScenarios: readonly RunScenario[] = [
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'binding_target_not_task' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-093',
+    category: 'validation',
     name: 'rejects duplicate sibling node keys',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['uniqueNodeKeyValidation'],
     plan: executionPlan(sequence(task('work'), task('work'), end('succeeded')), {
       bindings: [agentBinding('work', 'developer')],
     }),
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'duplicate_node_key' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-094',
+    category: 'validation',
     name: 'rejects duplicate addressable keys across parallel branches',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['uniqueNodeKeyValidation'],
     plan: executionPlan({
       kind: 'parallel',
       key: 'checks',
@@ -133,25 +143,28 @@ export const validationScenarios: readonly RunScenario[] = [
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'duplicate_node_key' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-095',
+    category: 'validation',
     name: 'rejects reserved characters in a node key',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['identifierValidation'],
     plan: executionPlan(task('invalid/key'), {
       bindings: [agentBinding('invalid/key', 'developer')],
     }),
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'invalid_node_key' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-096',
+    category: 'validation',
     name: 'rejects reserved characters in the root pipeline id',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['identifierValidation'],
     plan: executionPlan(end('succeeded'), { rootPipelineId: 'invalid/root' }),
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'invalid_pipeline_id' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-097',
+    category: 'validation',
     name: 'rejects duplicate runtime map item keys',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['uniqueMapItemKeyValidation'],
     plan: executionPlan(
       {
         kind: 'map',
@@ -173,9 +186,10 @@ export const validationScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-098',
+    category: 'validation',
     name: 'rejects an unreachable consensus threshold',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['consensusThresholdValidation'],
     plan: executionPlan(
       {
         kind: 'consensus',
@@ -194,9 +208,10 @@ export const validationScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-099',
+    category: 'validation',
     name: 'rejects a composed map and repeat bound above the total execution limit',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['composedExecutionBoundValidation'],
     plan: executionPlan(
       {
         kind: 'map',

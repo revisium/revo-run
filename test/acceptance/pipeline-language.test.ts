@@ -2,14 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { ExecutionPlanValidator } from '../../src/validation/execution-plan.validator.js';
 import { plannedPipelineScenarios } from './capability-matrix.js';
-import { implementedPipelineScenarios } from './implemented-scenarios.js';
 
-const implementedNames = new Set(implementedPipelineScenarios.map(({ name }) => name));
-const pendingPipelineScenarios = plannedPipelineScenarios.filter(
-  ({ name }) => !implementedNames.has(name),
-);
+describe('pipeline language', () => {
+  it('does not use hand-maintained scenario blockers', () => {
+    expect(plannedPipelineScenarios.some((scenario) => 'blockedBy' in scenario)).toBe(false);
+  });
 
-describe('pipeline capability matrix', () => {
   it('uses unique scenario names and explicit expectations', () => {
     const names = plannedPipelineScenarios.map(({ name }) => name);
 
@@ -43,15 +41,12 @@ describe('pipeline capability matrix', () => {
     }
   });
 
-  it('covers every approved capability with an explicit scenario count', () => {
-    const counts = Object.groupBy(plannedPipelineScenarios, ({ capability }) => capability);
+  it('covers every approved category with an explicit scenario count', () => {
+    const counts = Object.groupBy(plannedPipelineScenarios, ({ category }) => category);
 
     expect(
       Object.fromEntries(
-        Object.entries(counts).map(([capability, scenarios]) => [
-          capability,
-          scenarios?.length ?? 0,
-        ]),
+        Object.entries(counts).map(([category, scenarios]) => [category, scenarios?.length ?? 0]),
       ),
     ).toEqual({
       agentExecution: 3,
@@ -71,16 +66,5 @@ describe('pipeline capability matrix', () => {
       subscription: 5,
       validation: 21,
     });
-  });
-
-  it('marks only pending scenarios with an implementation blocker', () => {
-    expect(implementedPipelineScenarios.every(({ blockedBy }) => blockedBy === undefined)).toBe(
-      true,
-    );
-    expect(pendingPipelineScenarios.every(({ blockedBy }) => blockedBy !== undefined)).toBe(true);
-  });
-
-  describe.each(pendingPipelineScenarios)('$name', () => {
-    it.todo('executes the planned scenario'); // NOSONAR: blocked capability contract.
   });
 });

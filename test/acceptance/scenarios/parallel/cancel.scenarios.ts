@@ -16,9 +16,10 @@ import {
 
 export const parallelCancelScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'parallelExecution',
+    intentId: 'rr-034',
+    category: 'parallelExecution',
     name: 'cancels remaining branches after a threshold join succeeds',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['parallelThresholdJoin', 'parallelBranchCancellation'],
     plan: executionPlan(
       sequence(
         {
@@ -51,9 +52,10 @@ export const parallelCancelScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'parallelExecution',
+    intentId: 'rr-035',
+    category: 'parallelExecution',
     name: 'fails a threshold join when the threshold becomes unreachable',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['parallelThresholdUnreachable'],
     plan: executionPlan(
       routeOutcomes(
         {

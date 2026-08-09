@@ -1,5 +1,6 @@
-import type { JsonValue, NodeOutput, OutputValue } from '../../src/index.js';
-import type { ExpectedRunEvent, ScenarioStep } from './scenario.js';
+import type { ConsensusVote, JsonValue, NodeOutput, OutputValue } from '../../src/index.js';
+import { advanceLogicalTime } from './scenario-time.js';
+import type { ExpectedRunEvent, ScenarioCommandRejectionReason, ScenarioStep } from './scenario.js';
 
 export const startRun = (input: JsonValue = null): ScenarioStep => ({ kind: 'startRun', input });
 
@@ -13,6 +14,18 @@ export const expectNodeExecutions = (...paths: readonly string[]): ScenarioStep 
   kind: 'expectNodeExecutions',
   paths,
 });
+
+export const expectAgentExecution = (path: string, roleId: string): ScenarioStep => ({
+  kind: 'expectAgentExecution',
+  path,
+  roleId,
+});
+
+export const expectVersionedScriptExecution = (
+  path: string,
+  scriptId: string,
+  version: string,
+): ScenarioStep => ({ kind: 'expectVersionedScriptExecution', path, scriptId, version });
 
 export const expectNodeInput = (path: string, value: JsonValue): ScenarioStep => ({
   kind: 'expectNodeInput',
@@ -106,15 +119,30 @@ export const answerGate = (
   commandId,
 });
 
+export const expectCommandAccepted = (commandId: string): ScenarioStep => ({
+  kind: 'expectCommandResult',
+  result: { status: 'accepted', commandId },
+});
+
+export const expectCommandRejected = (
+  commandId: string,
+  reason: ScenarioCommandRejectionReason,
+): ScenarioStep => ({
+  kind: 'expectCommandResult',
+  result: { status: 'rejected', commandId, reason },
+});
+
 export const vote = (
   path: string,
   participantId: string,
-  value: 'abstain' | 'approve' | 'reject',
+  value: ConsensusVote['vote'],
   executionId: string,
 ): ScenarioStep => ({
   kind: 'completeConsensusParticipant',
-  path,
-  participantId,
-  vote: value,
-  executionId,
+  vote: { nodePath: path, participantId, vote: value, executionId },
 });
+
+export const advanceTime = (durationMs: number): ScenarioStep => {
+  advanceLogicalTime(0, durationMs);
+  return { kind: 'advanceTime', durationMs };
+};

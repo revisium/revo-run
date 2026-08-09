@@ -9,18 +9,20 @@ import {
 
 export const validationDepthScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'validation',
+    intentId: 'rr-100',
+    category: 'validation',
     name: 'rejects structural nodes beyond the configured nesting bound',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['structuralNestingValidation'],
     plan: executionPlan(sequence(sequence(end('succeeded'))), {
       policies: { maximumNodeNestingDepth: 2 },
     }),
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'node_depth_exceeded' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-101',
+    category: 'validation',
     name: 'rejects subpipeline composition beyond the configured depth bound',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['subpipelineDepthValidation'],
     plan: executionPlan(
       { kind: 'subpipeline', key: 'child', pipelineId: 'child' },
       {
@@ -34,16 +36,18 @@ export const validationDepthScenarios: readonly RunScenario[] = [
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'subpipeline_depth_exceeded' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-102',
+    category: 'validation',
     name: 'rejects direct subpipeline recursion',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['subpipelineRecursionValidation'],
     plan: executionPlan({ kind: 'subpipeline', key: 'self', pipelineId: 'main' }),
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'subpipeline_cycle' }],
   }),
   scenario({
-    capability: 'validation',
+    intentId: 'rr-103',
+    category: 'validation',
     name: 'rejects indirect subpipeline recursion',
-    blockedBy: 'pipelineContract',
+    requiredCapabilities: ['subpipelineRecursionValidation'],
     plan: executionPlan(
       { kind: 'subpipeline', key: 'child', pipelineId: 'child' },
       {

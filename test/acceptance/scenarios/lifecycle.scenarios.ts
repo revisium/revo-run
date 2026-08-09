@@ -1,4 +1,5 @@
 import {
+  advanceTime,
   agentBinding,
   completeNode,
   end,
@@ -16,40 +17,47 @@ import {
 
 export const lifecycleScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'delay',
+    intentId: 'rr-075',
+    category: 'delay',
     name: 'survives a manager restart while waiting for a durable delay',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: [
+      'durableDelayRecovery',
+      'managerRestartRecovery',
+      'dbosSafeTimeAdvancement',
+    ],
     plan: executionPlan(
       sequence({ kind: 'delay', key: 'cooldown', durationMs: 60_000 }, end('succeeded')),
     ),
     steps: [
       startRun(),
-      { kind: 'advanceTime', durationMs: 30_000 },
+      advanceTime(30_000),
       { kind: 'crashManager', moment: 'whileWaiting' },
       { kind: 'restartManager' },
-      { kind: 'advanceTime', durationMs: 30_000 },
+      advanceTime(30_000),
       expectRunStatus('succeeded'),
     ],
   }),
   scenario({
-    capability: 'delay',
+    intentId: 'rr-076',
+    category: 'delay',
     name: 'cancels a durable delay without waiting for its deadline',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['durableDelayCancellation', 'dbosSafeTimeAdvancement'],
     plan: executionPlan(
       sequence({ kind: 'delay', key: 'cooldown', durationMs: 60_000 }, end('succeeded')),
     ),
     steps: [
       startRun(),
       { kind: 'cancelRun', actorId: 'operator', commandId: 'cancel-delay-1' },
-      { kind: 'advanceTime', durationMs: 60_000 },
+      advanceTime(60_000),
       expectEvent('delay.cancelled', { path: 'main/cooldown' }),
       expectRunStatus('cancelled'),
     ],
   }),
   scenario({
-    capability: 'cancellation',
+    intentId: 'rr-077',
+    category: 'cancellation',
     name: 'cancels every active parallel child without leaving detached work',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['parallelCancellation'],
     plan: executionPlan(
       sequence(
         {
@@ -83,9 +91,10 @@ export const lifecycleScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'recovery',
+    intentId: 'rr-078',
+    category: 'recovery',
     name: 'recovers parallel executions without duplicate effects',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['parallelRecovery', 'managerRestartRecovery', 'deduplicatedExecution'],
     plan: executionPlan(
       sequence(
         {
@@ -115,9 +124,10 @@ export const lifecycleScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'concurrency',
+    intentId: 'rr-079',
+    category: 'concurrency',
     name: 'enforces the plan-wide active execution limit across parallel nodes',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['planWideConcurrencyLimit'],
     plan: executionPlan(
       sequence(
         {

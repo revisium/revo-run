@@ -1,7 +1,9 @@
 import {
+  advanceTime,
   agentBinding,
   end,
   executionPlan,
+  expectCommandRejected,
   expectEvent,
   expectNodeExecutions,
   expectRunStatus,
@@ -18,9 +20,10 @@ const retryTransientErrors = retryPolicy();
 
 export const cancellationScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'cancellation',
+    intentId: 'rr-017',
+    category: 'cancellation',
     name: 'cancels an active agent execution cooperatively',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['cooperativeRunCancellation'],
     plan: executionPlan(sequence(task('implement'), end('succeeded')), {
       bindings: [agentBinding('implement', 'developer')],
     }),
@@ -33,9 +36,10 @@ export const cancellationScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'cancellation',
+    intentId: 'rr-018',
+    category: 'cancellation',
     name: 'cancels a run while it is waiting for retry backoff',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['runCancellation', 'durableBackoff', 'dbosSafeTimeAdvancement'],
     plan: executionPlan(
       sequence(task('review', { retry: retryTransientErrors }), end('succeeded')),
       {
@@ -46,15 +50,16 @@ export const cancellationScenarios: readonly RunScenario[] = [
       startRun(),
       failNode('main/review', 'rate_limited'),
       { kind: 'cancelRun', actorId: 'operator', commandId: 'cancel-retry-1' },
-      { kind: 'advanceTime', durationMs: 60_000 },
+      advanceTime(60_000),
       { kind: 'expectExecutionCount', path: 'main/review', count: 1 },
       expectRunStatus('cancelled'),
     ],
   }),
   scenario({
-    capability: 'cancellation',
+    intentId: 'rr-019',
+    category: 'cancellation',
     name: 'treats repeated cancellation commands as idempotent',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['idempotentRunCancellation'],
     plan: executionPlan(sequence(task('work'), end('succeeded')), {
       bindings: [agentBinding('work', 'developer')],
     }),
@@ -67,14 +72,16 @@ export const cancellationScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'cancellation',
+    intentId: 'rr-020',
+    category: 'cancellation',
     name: 'keeps a completed run terminal after a later cancellation request',
-    blockedBy: 'runManagerApi',
+    requiredCapabilities: ['terminalStateImmutability', 'commandRejection'],
     plan: executionPlan(end('succeeded')),
     steps: [
       startRun(),
       expectRunStatus('succeeded'),
       { kind: 'cancelRun', actorId: 'operator', commandId: 'cancel-completed-1' },
+      expectCommandRejected('cancel-completed-1', 'run_already_terminal'),
       expectEvent('run.cancellationRejected'),
       expectRunStatus('succeeded'),
     ],

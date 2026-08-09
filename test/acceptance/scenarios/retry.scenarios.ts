@@ -1,4 +1,5 @@
 import {
+  advanceTime,
   agentBinding,
   completeNode,
   end,
@@ -20,9 +21,15 @@ const retryTransientErrors = retryPolicy();
 
 export const retryScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'retry',
+    intentId: 'rr-007',
+    category: 'retry',
     name: 'retries a transient agent failure with durable backoff',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: [
+      'agentTaskExecution',
+      'retryableFailureRetry',
+      'durableBackoff',
+      'dbosSafeTimeAdvancement',
+    ],
     plan: executionPlan(
       sequence(task('review', { retry: retryTransientErrors }), end('succeeded')),
       {
@@ -32,7 +39,7 @@ export const retryScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       failNode('main/review', 'rate_limited', 1),
-      { kind: 'advanceTime', durationMs: 1_000 },
+      advanceTime(1_000),
       expectNodeExecutions('main/review'),
       completeNode('main/review', 'completed', undefined, 2),
       { kind: 'expectExecutionCount', path: 'main/review', count: 2 },
@@ -40,9 +47,15 @@ export const retryScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'retry',
+    intentId: 'rr-008',
+    category: 'retry',
     name: 'stops retrying a script after the configured attempt limit',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: [
+      'versionedScriptTaskExecution',
+      'retryAttemptLimit',
+      'durableBackoff',
+      'dbosSafeTimeAdvancement',
+    ],
     plan: executionPlan(
       routeOutcomes(task('publish', { retry: retryTransientErrors }), {
         completed: end('succeeded'),
@@ -53,18 +66,19 @@ export const retryScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       failNode('main/publish', 'provider_unavailable', 1),
-      { kind: 'advanceTime', durationMs: 1_000 },
+      advanceTime(1_000),
       failNode('main/publish', 'provider_unavailable', 2),
-      { kind: 'advanceTime', durationMs: 2_000 },
+      advanceTime(2_000),
       failNode('main/publish', 'provider_unavailable', 3),
       { kind: 'expectExecutionCount', path: 'main/publish', count: 3 },
       expectRunStatus('failed'),
     ],
   }),
   scenario({
-    capability: 'retry',
+    intentId: 'rr-009',
+    category: 'retry',
     name: 'does not retry an error code outside the retry allowlist',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: ['retryErrorFiltering', 'singleAttemptExecution'],
     plan: executionPlan(
       routeOutcomes(task('publish', { retry: retryTransientErrors }), {
         completed: end('succeeded'),
@@ -80,9 +94,15 @@ export const retryScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'retry',
+    intentId: 'rr-010',
+    category: 'retry',
     name: 'resumes durable retry backoff after a manager restart',
-    blockedBy: 'runRuntime',
+    requiredCapabilities: [
+      'retryableFailureRetry',
+      'durableBackoff',
+      'managerRestartRecovery',
+      'dbosSafeTimeAdvancement',
+    ],
     plan: executionPlan(
       sequence(task('review', { retry: retryTransientErrors }), end('succeeded')),
       { bindings: [agentBinding('review', 'reviewer')] },
@@ -90,10 +110,10 @@ export const retryScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       failNode('main/review', 'rate_limited'),
-      { kind: 'advanceTime', durationMs: 400 },
+      advanceTime(400),
       { kind: 'crashManager', moment: 'whileWaiting' },
       { kind: 'restartManager' },
-      { kind: 'advanceTime', durationMs: 600 },
+      advanceTime(600),
       expectNodeExecutions('main/review'),
       completeNode('main/review', 'completed', undefined, 2),
       { kind: 'expectExecutionCount', path: 'main/review', count: 2 },

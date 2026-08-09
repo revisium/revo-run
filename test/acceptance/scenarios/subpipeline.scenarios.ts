@@ -21,8 +21,10 @@ import {
 
 export const subpipelineScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'subpipeline',
+    intentId: 'rr-051',
+    category: 'subpipeline',
     name: 'passes immutable input into a subpipeline and returns its output',
+    requiredCapabilities: ['subpipelineDataFlow'],
     plan: executionPlan(
       sequence(
         {
@@ -62,8 +64,10 @@ export const subpipelineScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'subpipeline',
+    intentId: 'rr-052',
+    category: 'subpipeline',
     name: 'routes a failed subpipeline outcome in its parent',
+    requiredCapabilities: ['subpipelineFailureRouting'],
     plan: executionPlan(
       routeOutcomes(
         { kind: 'subpipeline', key: 'review', pipelineId: 'review.v1' },
@@ -87,8 +91,10 @@ export const subpipelineScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'subpipeline',
+    intentId: 'rr-053',
+    category: 'subpipeline',
     name: 'rejects a plan that references a missing subpipeline',
+    requiredCapabilities: ['missingSubpipelineValidation'],
     plan: executionPlan({ kind: 'subpipeline', key: 'review', pipelineId: 'missing.v1' }),
     steps: [startRun(), { kind: 'expectPlanRejected', errorCode: 'pipeline_not_found' }],
   }),

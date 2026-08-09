@@ -16,8 +16,10 @@ import {
 
 export const branchScenarios: readonly RunScenario[] = [
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-023',
+    category: 'dataFlow',
     name: 'selects a branch from a completed node output',
+    requiredCapabilities: ['outcomeBranchSelection'],
     plan: executionPlan(
       sequence(
         task('classify'),
@@ -49,8 +51,10 @@ export const branchScenarios: readonly RunScenario[] = [
     ],
   }),
   scenario({
-    capability: 'dataFlow',
+    intentId: 'rr-024',
+    category: 'dataFlow',
     name: 'uses an explicit default branch for an uncovered value',
+    requiredCapabilities: ['defaultOutcomeBranch'],
     plan: executionPlan(
       sequence(task('classify'), {
         kind: 'branch',
