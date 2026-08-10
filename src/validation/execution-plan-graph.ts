@@ -93,6 +93,36 @@ interface PendingPipelineNode {
   readonly parentPath: string;
 }
 
+type PipelineNodeInspection =
+  | { readonly valid: true; readonly path: string }
+  | Extract<PipelineInspection, { readonly valid: false }>;
+
+const inspectPipelineNode = (
+  current: PendingPipelineNode,
+  maximumDepth: number,
+  dependencies: Set<string>,
+  nodeKinds: Map<string, PipelineNode['kind']>,
+): PipelineNodeInspection => {
+  if (current.depth > maximumDepth) {
+    return { valid: false, code: 'node_depth_exceeded' };
+  }
+
+  const path = pipelineNodePath(current.node, current.parentPath);
+  if (path !== current.parentPath && nodeKinds.has(path)) {
+    return { valid: false, code: 'duplicate_node_key' };
+  }
+  if (path !== current.parentPath) {
+    nodeKinds.set(path, current.node.kind);
+  }
+  if (current.node.kind === 'subpipeline') {
+    dependencies.add(current.node.pipelineId);
+  }
+  const validationError = nodeValidationError(current.node);
+  return validationError === undefined
+    ? { valid: true, path }
+    : { valid: false, code: validationError };
+};
+
 const inspectPipeline = (root: PipelineNode, maximumDepth: number): PipelineInspection => {
   const dependencies = new Set<string>();
   const nodeKinds = new Map<string, PipelineNode['kind']>();
@@ -103,26 +133,13 @@ const inspectPipeline = (root: PipelineNode, maximumDepth: number): PipelineInsp
     if (current === undefined) {
       continue;
     }
-    if (current.depth > maximumDepth) {
-      return { valid: false, code: 'node_depth_exceeded' };
-    }
 
-    const path = pipelineNodePath(current.node, current.parentPath);
-    if (path !== current.parentPath && nodeKinds.has(path)) {
-      return { valid: false, code: 'duplicate_node_key' };
-    }
-    if (path !== current.parentPath) {
-      nodeKinds.set(path, current.node.kind);
-    }
-    if (current.node.kind === 'subpipeline') {
-      dependencies.add(current.node.pipelineId);
-    }
-    const validationError = nodeValidationError(current.node);
-    if (validationError !== undefined) {
-      return { valid: false, code: validationError };
+    const inspection = inspectPipelineNode(current, maximumDepth, dependencies, nodeKinds);
+    if (!inspection.valid) {
+      return inspection;
     }
     for (const child of childNodes(current.node)) {
-      pending.push({ node: child, depth: current.depth + 1, parentPath: path });
+      pending.push({ node: child, depth: current.depth + 1, parentPath: inspection.path });
     }
   }
 
