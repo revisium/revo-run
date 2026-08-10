@@ -1,6 +1,7 @@
 import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
+import { AttemptIdSchema, ScopeWorkflowIdSchema } from '../execution-identity.js';
 import { IdentifierSchema, NonEmptyStringSchema } from '../schema-primitives.js';
 
 const EventMessageSchema = Type.Object(
@@ -21,8 +22,8 @@ const EventMessageSchema = Type.Object(
 const ReserveExecutionMessageSchema = Type.Object(
   {
     kind: Type.Literal('reserveExecution'),
-    executionId: NonEmptyStringSchema,
-    replyWorkflowId: NonEmptyStringSchema,
+    attemptId: AttemptIdSchema,
+    replyWorkflowId: ScopeWorkflowIdSchema,
   },
   { additionalProperties: false },
 );
@@ -30,7 +31,7 @@ const ReserveExecutionMessageSchema = Type.Object(
 const ScopeRegisteredMessageSchema = Type.Object(
   {
     kind: Type.Literal('scopeRegistered'),
-    workflowId: NonEmptyStringSchema,
+    workflowId: ScopeWorkflowIdSchema,
   },
   { additionalProperties: false },
 );
@@ -38,7 +39,7 @@ const ScopeRegisteredMessageSchema = Type.Object(
 const ScopeSettledMessageSchema = Type.Object(
   {
     kind: Type.Literal('scopeSettled'),
-    workflowId: NonEmptyStringSchema,
+    workflowId: ScopeWorkflowIdSchema,
   },
   { additionalProperties: false },
 );
@@ -54,7 +55,7 @@ export type RunCoordinatorMessage = DeepReadonly<Type.Static<typeof RunCoordinat
 
 export const ExecutionReservationSchema = Type.Object(
   {
-    executionId: NonEmptyStringSchema,
+    attemptId: AttemptIdSchema,
     granted: Type.Boolean(),
   },
   { additionalProperties: false },

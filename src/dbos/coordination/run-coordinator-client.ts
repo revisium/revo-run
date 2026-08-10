@@ -7,13 +7,14 @@ import type { PipelineEventSink } from '../../pipeline/interpreter/pipeline-even
 import { parseExecutionReservation } from '../../validation/run-coordinator-message.validator.js';
 import { runCoordinatorMessageTopic, runCoordinatorReplyTopic } from '../dbos-names.js';
 import type { NodeExecutionStep } from '../steps/node-execution-step.js';
+import { runWorkflowId } from '../workflow-id.js';
 import { isActiveWorkflowStatus } from '../workflow-status.js';
 
 export class RunCoordinatorClient implements PipelineEventSink {
-  private readonly runId: string;
+  private readonly rootWorkflowId: string;
 
   constructor(runId: string) {
-    this.runId = runId;
+    this.rootWorkflowId = runWorkflowId(runId);
   }
 
   async write(
@@ -46,12 +47,12 @@ export class RunCoordinatorClient implements PipelineEventSink {
     const workflowId = this.workflowId();
     await this.send({
       kind: 'reserveExecution',
-      executionId: request.executionId,
+      attemptId: request.attemptId,
       replyWorkflowId: workflowId,
     });
 
     const response = parseExecutionReservation(await this.receiveReservation());
-    if (response.executionId !== request.executionId) {
+    if (response.attemptId !== request.attemptId) {
       throw new Error('Run execution received a reservation for another execution.');
     }
 
@@ -65,7 +66,7 @@ export class RunCoordinatorClient implements PipelineEventSink {
         return response;
       }
 
-      const run = await DBOS.getWorkflowStatus(this.runId);
+      const run = await DBOS.getWorkflowStatus(this.rootWorkflowId);
       if (run === null || !isActiveWorkflowStatus(run.status)) {
         throw new Error('Run coordinator terminated before reserving the execution.');
       }
@@ -73,7 +74,7 @@ export class RunCoordinatorClient implements PipelineEventSink {
   }
 
   private async send(message: RunCoordinatorMessage): Promise<void> {
-    await DBOS.send(this.runId, message, runCoordinatorMessageTopic);
+    await DBOS.send(this.rootWorkflowId, message, runCoordinatorMessageTopic);
   }
 
   private workflowId(): string {

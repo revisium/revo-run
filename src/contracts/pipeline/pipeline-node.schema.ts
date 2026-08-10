@@ -3,7 +3,7 @@ import Type from 'typebox';
 import {
   IdentifierSchema,
   JsonPointerSchema,
-  PositiveIntegerSchema,
+  PositiveSafeIntegerSchema,
 } from '../schema-primitives.js';
 import { InputSourceSchema, TerminalOutputSourceSchema } from './data-reference.js';
 import type { PipelineNode } from './pipeline-node.js';
@@ -33,7 +33,7 @@ const PipelineNodeType = Type.Cyclic(
         input: Type.Optional(InputMappingSchema),
         retry: Type.Optional(RetryPolicySchema),
         recovery: Type.Optional(RecoveryPolicySchema),
-        timeoutMs: Type.Optional(PositiveIntegerSchema),
+        timeoutMs: Type.Optional(PositiveSafeIntegerSchema),
       },
       { additionalProperties: false },
     ),
@@ -97,7 +97,7 @@ const PipelineNodeType = Type.Cyclic(
           Type.Object(
             {
               kind: Type.Literal('threshold'),
-              count: PositiveIntegerSchema,
+              count: PositiveSafeIntegerSchema,
               successfulOutcomes: SuccessfulOutcomesSchema,
               remaining: RemainingBranchPolicySchema,
             },
@@ -118,20 +118,20 @@ const PipelineNodeType = Type.Cyclic(
         policy: Type.Union([
           Type.Object({ kind: Type.Literal('unanimous') }, { additionalProperties: false }),
           Type.Object(
-            { kind: Type.Literal('quorum'), count: PositiveIntegerSchema },
+            { kind: Type.Literal('quorum'), count: PositiveSafeIntegerSchema },
             { additionalProperties: false },
           ),
           Type.Object(
             {
               kind: Type.Literal('threshold'),
-              approve: PositiveIntegerSchema,
-              reject: PositiveIntegerSchema,
+              approve: PositiveSafeIntegerSchema,
+              reject: PositiveSafeIntegerSchema,
             },
             { additionalProperties: false },
           ),
         ]),
         remaining: RemainingBranchPolicySchema,
-        timeoutMs: Type.Optional(PositiveIntegerSchema),
+        timeoutMs: Type.Optional(PositiveSafeIntegerSchema),
       },
       { additionalProperties: false },
     ),
@@ -145,14 +145,14 @@ const PipelineNodeType = Type.Cyclic(
           Type.Object(
             {
               kind: Type.Literal('matchingAnswers'),
-              count: PositiveIntegerSchema,
+              count: PositiveSafeIntegerSchema,
               onConflict: Type.Union([Type.Literal('conflict'), Type.Literal('wait')]),
             },
             { additionalProperties: false },
           ),
         ]),
         eligibleGroup: Type.Optional(IdentifierSchema),
-        timeoutMs: Type.Optional(PositiveIntegerSchema),
+        timeoutMs: Type.Optional(PositiveSafeIntegerSchema),
       },
       { additionalProperties: false },
     ),
@@ -160,7 +160,7 @@ const PipelineNodeType = Type.Cyclic(
       {
         kind: Type.Literal('repeat'),
         key: IdentifierSchema,
-        maximumIterations: PositiveIntegerSchema,
+        maximumIterations: PositiveSafeIntegerSchema,
         continueOn: Type.Array(IdentifierSchema, { minItems: 1, uniqueItems: true }),
         completeOn: Type.Array(IdentifierSchema, { minItems: 1, uniqueItems: true }),
         initialInput: Type.Optional(InputMappingSchema),
@@ -184,8 +184,8 @@ const PipelineNodeType = Type.Cyclic(
         key: IdentifierSchema,
         items: InputSourceSchema,
         itemKeyPath: JsonPointerSchema,
-        maximumItems: PositiveIntegerSchema,
-        concurrency: PositiveIntegerSchema,
+        maximumItems: PositiveSafeIntegerSchema,
+        concurrency: PositiveSafeIntegerSchema,
         failure: Type.Union([
           Type.Object(
             {
@@ -201,7 +201,7 @@ const PipelineNodeType = Type.Cyclic(
       { additionalProperties: false },
     ),
     DelayNode: Type.Object(
-      { kind: Type.Literal('delay'), key: IdentifierSchema, durationMs: PositiveIntegerSchema },
+      { kind: Type.Literal('delay'), key: IdentifierSchema, durationMs: PositiveSafeIntegerSchema },
       { additionalProperties: false },
     ),
     EndNode: Type.Object(

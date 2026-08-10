@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createRunManager } from '../../src/index.js';
-import type { RunEvent, RunExecutor, RunManager } from '../../src/index.js';
+import type { RunExecutor, RunManager } from '../../src/index.js';
 import {
   agentBinding,
   end,
@@ -12,7 +12,6 @@ import {
   sequence,
   task,
 } from '../dsl/pipeline-builder.js';
-import { waitForRunStatus } from '../support/run-manager.fixture.js';
 import { testDatabaseUrl } from '../support/test-environment.js';
 
 let manager: RunManager | undefined;
@@ -23,11 +22,11 @@ afterEach(async () => {
 });
 
 describe('execution budget', () => {
-  it('does not dispatch a task after the plan-wide execution limit is exhausted', async () => {
+  it('rejects a sequential plan above its total execution bound before DBOS admission', async () => {
     const dispatched: string[] = [];
     const executor: RunExecutor = {
-      execute: async ({ path }) => {
-        dispatched.push(path);
+      execute: async ({ displayPath }) => {
+        dispatched.push(displayPath);
         return { kind: 'completed', outcome: 'completed' };
       },
     };
@@ -38,40 +37,26 @@ describe('execution budget', () => {
     await manager.start();
 
     const runId = `budget-${randomUUID()}`;
-    await manager.startRun({
-      runId,
-      executionPlan: executionPlan(sequence(task('first'), task('second'), end('succeeded')), {
-        bindings: [agentBinding('first', 'worker'), agentBinding('second', 'worker')],
-        policies: { maximumTotalNodeExecutions: 1 },
+    await expect(
+      manager.startRun({
+        runId,
+        executionPlan: executionPlan(sequence(task('first'), task('second'), end('succeeded')), {
+          bindings: [agentBinding('first', 'worker'), agentBinding('second', 'worker')],
+          policies: { maximumTotalNodeExecutions: 1 },
+        }),
+        input: null,
       }),
-      input: null,
-    });
-    await waitForRunStatus(manager, runId, 'failed');
+    ).rejects.toMatchObject({ code: 'execution_bound_exceeded' });
 
-    expect(dispatched).toEqual(['main/first']);
-    await expect(manager.getRun(runId)).resolves.toMatchObject({
-      status: 'failed',
-      result: { outcome: 'invalid' },
-    });
-
-    const events: RunEvent[] = [];
-    for await (const event of manager.subscribeRunEvents(runId)) {
-      events.push(event);
-    }
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: 'pipeline.invalidState',
-        path: 'main/second',
-        errorCode: 'maximum_total_node_executions_exceeded',
-      }),
-    );
+    expect(dispatched).toEqual([]);
+    await expect(manager.getRun(runId)).resolves.toBeUndefined();
   });
 
-  it('shares the execution limit across parallel branch workflows', async () => {
+  it('rejects a parallel plan above its total execution bound before child workflows start', async () => {
     const dispatched: string[] = [];
     const executor: RunExecutor = {
-      execute: async ({ path }) => {
-        dispatched.push(path);
+      execute: async ({ displayPath }) => {
+        dispatched.push(displayPath);
         return { kind: 'completed', outcome: 'completed' };
       },
     };
@@ -82,31 +67,33 @@ describe('execution budget', () => {
     await manager.start();
 
     const runId = `parallel-budget-${randomUUID()}`;
-    await manager.startRun({
-      runId,
-      executionPlan: executionPlan(
-        routeOutcomes(
-          {
-            kind: 'parallel',
-            key: 'work',
-            branches: { first: task('first'), second: task('second') },
-            join: {
-              kind: 'all',
-              successfulOutcomes: ['completed'],
-              remaining: 'drain',
+    await expect(
+      manager.startRun({
+        runId,
+        executionPlan: executionPlan(
+          routeOutcomes(
+            {
+              kind: 'parallel',
+              key: 'work',
+              branches: { first: task('first'), second: task('second') },
+              join: {
+                kind: 'all',
+                successfulOutcomes: ['completed'],
+                remaining: 'drain',
+              },
             },
+            { completed: end('succeeded'), failed: end('failed') },
+          ),
+          {
+            bindings: [agentBinding('work/first', 'worker'), agentBinding('work/second', 'worker')],
+            policies: { maximumTotalNodeExecutions: 1 },
           },
-          { completed: end('succeeded'), failed: end('failed') },
         ),
-        {
-          bindings: [agentBinding('work/first', 'worker'), agentBinding('work/second', 'worker')],
-          policies: { maximumTotalNodeExecutions: 1 },
-        },
-      ),
-      input: null,
-    });
-    await waitForRunStatus(manager, runId, 'failed');
+        input: null,
+      }),
+    ).rejects.toMatchObject({ code: 'execution_bound_exceeded' });
 
-    expect(dispatched).toHaveLength(1);
+    expect(dispatched).toEqual([]);
+    await expect(manager.getRun(runId)).resolves.toBeUndefined();
   });
 });

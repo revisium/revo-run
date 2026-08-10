@@ -4,6 +4,7 @@ import { parseParallelBranchWorkflowInput } from '../../src/validation/parallel-
 
 const workflowInput = () => ({
   runId: 'run_01',
+  scopeId: `sc1_${'a'.repeat(43)}`,
   branchKey: 'security',
   node: { kind: 'task', key: 'scan' },
   pipelineId: 'main',
@@ -39,6 +40,21 @@ describe('parallel branch workflow input validation', () => {
   it('rejects identifiers outside the contract grammar', () => {
     expect(() =>
       parseParallelBranchWorkflowInput({ ...workflowInput(), branchKey: 'invalid/key' }),
+    ).toThrow('Parallel branch workflow input is invalid.');
+  });
+
+  it('uses a positive safe integer for durable maximum parallelism', () => {
+    expect(
+      parseParallelBranchWorkflowInput({
+        ...workflowInput(),
+        maximumParallelism: Number.MAX_SAFE_INTEGER,
+      }),
+    ).toBeDefined();
+    expect(() =>
+      parseParallelBranchWorkflowInput({
+        ...workflowInput(),
+        maximumParallelism: Number.MAX_SAFE_INTEGER + 1,
+      }),
     ).toThrow('Parallel branch workflow input is invalid.');
   });
 });

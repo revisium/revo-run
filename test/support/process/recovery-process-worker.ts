@@ -30,19 +30,19 @@ class ProcessRunExecutor implements RunExecutor {
   }
 
   execute(request: RunExecutorRequest, context: RunExecutorContext): Promise<RunExecutorResult> {
-    send({ kind: 'dispatched', path: request.path });
-    if (this.scenario === 'timeout' && request.path === 'main/work') {
+    send({ kind: 'dispatched', path: request.displayPath });
+    if (this.scenario === 'timeout' && request.displayPath === 'main/work') {
       return new Promise(() => {
         context.signal.addEventListener('abort', () => {
-          send({ kind: 'timeoutSignalled', path: request.path });
+          send({ kind: 'timeoutSignalled', path: request.displayPath });
         });
       });
     }
 
     return new Promise((resolve) => {
-      const pending = this.pending.get(request.path) ?? [];
+      const pending = this.pending.get(request.displayPath) ?? [];
       pending.push(resolve);
-      this.pending.set(request.path, pending);
+      this.pending.set(request.displayPath, pending);
     });
   }
 
@@ -84,7 +84,7 @@ if (environment('REVO_RUN_TEST_MODE') === 'start') {
 const watchTerminalRun = async (): Promise<void> => {
   const details = await manager.getRunDetails(runId);
   for (const execution of details?.nodeExecutions ?? []) {
-    const path = execution.request.path;
+    const path = execution.request.displayPath;
     if (!checkpointed.has(path)) {
       checkpointed.add(path);
       send({ kind: 'checkpointed', path });

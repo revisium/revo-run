@@ -1,6 +1,6 @@
-export const runWorkflowName = 'revo-run.run.v1';
-export const runExecutionWorkflowName = 'revo-run.execution.v1';
-export const parallelBranchWorkflowName = 'revo-run.parallel-branch.v1';
+export const runWorkflowName = 'revo-run.run.v2';
+export const runExecutionWorkflowName = 'revo-run.execution.v2';
+export const parallelBranchWorkflowName = 'revo-run.parallel-branch.v2';
 export const runEventStreamName = 'revo-run.events';
 export const runCoordinatorMessageTopic = 'revo-run.coordinator';
 export const runCoordinatorReplyTopic = 'revo-run.coordinator.reply';

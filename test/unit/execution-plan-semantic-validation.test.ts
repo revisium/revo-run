@@ -63,7 +63,7 @@ describe('execution plan semantic validation', () => {
           {
             kind: 'script',
             target: { pipelineId: 'main', nodePath: 'review/work' },
-            script: { id: 'example.run', version: '1.0.0' },
+            script: { id: 'example.run', revision: 1 },
           },
         ],
       },
@@ -199,7 +199,7 @@ describe('execution plan semantic validation', () => {
     expect(ExecutionPlanValidator.Check(plan)).toBe(false);
   });
 
-  it('rejects duplicate node paths', () => {
+  it('rejects duplicate node keys', () => {
     const plan = executionPlan({
       kind: 'sequence',
       children: [
@@ -208,7 +208,7 @@ describe('execution plan semantic validation', () => {
       ],
     });
 
-    expect(validationError(plan)).toBe('duplicate_node_path');
+    expect(validationError(plan)).toBe('duplicate_node_key');
   });
 
   it('rejects a parallel threshold above the branch count', () => {
@@ -231,7 +231,7 @@ describe('execution plan semantic validation', () => {
     const binding = {
       kind: 'script',
       target: { pipelineId: 'main', nodePath: 'work' },
-      script: { id: 'example.run', version: '1.0.0' },
+      script: { id: 'example.run', revision: 1 },
     } as const;
     const plan: ExecutionPlan = {
       ...executionPlan({ kind: 'task', key: 'work' }),
@@ -253,7 +253,7 @@ describe('execution plan semantic validation', () => {
         {
           kind: 'script',
           target: { pipelineId: 'main', nodePath: 'missing' },
-          script: { id: 'example.run', version: '1.0.0' },
+          script: { id: 'example.run', revision: 1 },
         },
       ],
     });
@@ -267,7 +267,7 @@ describe('execution plan semantic validation', () => {
         {
           kind: 'script',
           target: { pipelineId: 'missing', nodePath: 'work' },
-          script: { id: 'example.run', version: '1.0.0' },
+          script: { id: 'example.run', revision: 1 },
         },
       ],
     });
@@ -286,7 +286,7 @@ describe('execution plan semantic validation', () => {
           {
             kind: 'script',
             target: { pipelineId: 'main', nodePath: 'cooldown' },
-            script: { id: 'example.run', version: '1.0.0' },
+            script: { id: 'example.run', revision: 1 },
           },
         ],
       },

@@ -14,7 +14,7 @@ export const createRunExecutionWorkflow =
     parallelBranchWorkflows: ParallelBranchWorkflowProvider,
   ): RunExecutionWorkflow =>
   async (durableInput) => {
-    const { runId } = parseRunExecutionWorkflowInput(durableInput);
+    const { runId, scopeId } = parseRunExecutionWorkflowInput(durableInput);
     const { coordinator, interpreter } = createPipelineExecution(
       runId,
       executor,
@@ -23,7 +23,7 @@ export const createRunExecutionWorkflow =
 
     try {
       const { executionPlan, input } = await loadRunWorkflowInput(runId);
-      return await interpreter.execute(executionPlan, runId, input);
+      return await interpreter.execute(executionPlan, runId, input, scopeId);
     } finally {
       await coordinator.scopeSettled();
     }

@@ -49,7 +49,7 @@ export const executorScenarios: readonly RunScenario[] = [
       startRun({ task: 'Implement feature' }),
       expectAgentExecution('main/implement', 'developer'),
       completeNode('main/implement', 'completed', { branch: 'feature/example' }),
-      expectVersionedScriptExecution('main/create-pr', 'github.create-pull-request', '1.0.0'),
+      expectVersionedScriptExecution('main/create-pr', 'github.create-pull-request', 1),
       expectNodeInput('main/create-pr', { branch: 'feature/example' }),
       completeNode('main/create-pr', 'completed', { pullRequest: 42 }),
       expectRunStatus('succeeded'),
@@ -100,11 +100,11 @@ export const executorScenarios: readonly RunScenario[] = [
     name: 'executes an immutable versioned script binding',
     requiredCapabilities: ['versionedScriptTaskExecution'],
     plan: executionPlan(sequence(task('validate'), end('succeeded')), {
-      bindings: [scriptBinding('validate', 'repository.validate', { version: '2.1.0' })],
+      bindings: [scriptBinding('validate', 'repository.validate', { revision: 2 })],
     }),
     steps: [
       startRun(),
-      expectVersionedScriptExecution('main/validate', 'repository.validate', '2.1.0'),
+      expectVersionedScriptExecution('main/validate', 'repository.validate', 2),
       completeNode('main/validate'),
       expectRunStatus('succeeded'),
     ],

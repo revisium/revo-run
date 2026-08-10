@@ -15,6 +15,10 @@ progress, terminal result, status, and timestamps in PostgreSQL.
 The public runtime API contains `createRunManager`, lifecycle methods, `startRun`, `getRun`,
 `getRunDetails`, and `subscribeRunEvents`.
 
+`startRun` is create-only: an already claimed ID returns `run_id_conflict`, even when the new
+input is identical. Run IDs must match `[A-Za-z][A-Za-z0-9._-]{0,127}`. If admission returns
+`run_admission_failed`, use `getRun(runId)` to resolve whether the workflow was committed.
+
 DBOS has one process-global runtime. Create one `RunManager` per process and share it across
 consumers.
 
@@ -64,7 +68,7 @@ const { runId } = await manager.startRun({
       {
         kind: 'script',
         target: { pipelineId: 'main', nodePath: 'work' },
-        script: { id: 'example.run', version: '1.0.0' },
+        script: { id: 'example.run', revision: 1 },
       },
     ],
     policies: {

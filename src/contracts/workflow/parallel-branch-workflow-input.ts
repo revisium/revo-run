@@ -1,19 +1,22 @@
 import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
+import { ScopeIdSchema } from '../execution-identity.js';
 import { NodeOutputSchema } from '../pipeline/node-output.js';
 import { PipelineInputScopeSchema } from '../pipeline/pipeline-input.js';
 import { PipelineNodeSchema } from '../pipeline/pipeline-node.schema.js';
+import { RunIdSchema } from '../run/run-id.js';
 import {
   IdentifierSchema,
   NonEmptyStringSchema,
   PipelineNodePathSchema,
-  PositiveIntegerSchema,
+  PositiveSafeIntegerSchema,
 } from '../schema-primitives.js';
 
 export const ParallelBranchWorkflowInputSchema = Type.Object(
   {
-    runId: NonEmptyStringSchema,
+    runId: RunIdSchema,
+    scopeId: ScopeIdSchema,
     branchKey: IdentifierSchema,
     node: PipelineNodeSchema,
     pipelineId: IdentifierSchema,
@@ -26,7 +29,7 @@ export const ParallelBranchWorkflowInputSchema = Type.Object(
         { additionalProperties: false },
       ),
     ),
-    maximumParallelism: PositiveIntegerSchema,
+    maximumParallelism: PositiveSafeIntegerSchema,
   },
   { additionalProperties: false },
 );

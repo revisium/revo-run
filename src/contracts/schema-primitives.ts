@@ -15,7 +15,10 @@ export const NonEmptyStringSchema = Type.String({ minLength: 1 });
 
 export const PipelineNodePathSchema = Type.String({ pattern: pipelineNodePathPattern });
 
-export const PositiveIntegerSchema = Type.Integer({ minimum: 1 });
+export const PositiveSafeIntegerSchema = Type.Integer({
+  minimum: 1,
+  maximum: Number.MAX_SAFE_INTEGER,
+});
 
 export const NonNegativeIntegerSchema = Type.Integer({ minimum: 0 });
 

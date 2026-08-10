@@ -1,6 +1,11 @@
 import type { TaskNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { ExecutionBinding } from '../../contracts/run/execution-binding.js';
 import { InputResolver } from '../data/input-resolver.js';
+import {
+  createAttemptId,
+  createAuthoredNodeId,
+  createNodeInstanceId,
+} from '../identity/execution-identity.js';
 import type { ExecuteNodeEffect, PipelineExecutionContext } from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
 import type { PipelineEventSink } from './pipeline-event-sink.js';
@@ -35,10 +40,22 @@ export class TaskNodeExecutor {
       return { kind: 'finished', result: { status: 'failed', outcome: 'invalid' } };
     }
 
+    const authoredNodeId = createAuthoredNodeId({
+      schemaVersion: context.plan.schemaVersion,
+      pipelineId: context.pipelineId,
+      nodePath,
+      nodeKind: node.kind,
+    });
+    const nodeInstanceId = createNodeInstanceId({ scopeId: context.scopeId, authoredNodeId });
+    const attemptOrdinal = 1;
     const request = {
-      executionId: `${context.runId}:${runtimePath(context, nodePath)}:1`,
       runId: context.runId,
-      path: runtimePath(context, nodePath),
+      authoredNodeId,
+      scopeId: context.scopeId,
+      nodeInstanceId,
+      attemptId: createAttemptId({ nodeInstanceId, attemptOrdinal }),
+      attemptOrdinal,
+      displayPath: runtimePath(context, nodePath),
       pipelineId: context.pipelineId,
       nodePath,
       binding,

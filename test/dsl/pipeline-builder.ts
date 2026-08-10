@@ -108,11 +108,11 @@ export const agentBinding = (
 export const scriptBinding = (
   nodePath: string,
   scriptId: string,
-  options: { readonly pipelineId?: string; readonly version?: string } = {},
+  options: { readonly pipelineId?: string; readonly revision?: number } = {},
 ): ScriptExecutorBinding => ({
   kind: 'script',
   target: { pipelineId: options.pipelineId ?? 'main', nodePath },
-  script: { id: scriptId, version: options.version ?? '1.0.0' },
+  script: { id: scriptId, revision: options.revision ?? 1 },
 });
 
 export const fromRunInput = (path: string): InputSourceOf<'runInput'> => ({

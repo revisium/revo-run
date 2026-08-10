@@ -1,6 +1,7 @@
 import type { JsonValue } from '../json-value.js';
 import type { NodeOutput } from '../pipeline/node-output.js';
 import type { ExecutionPlan } from './execution-plan.js';
+import type { RunId } from './run-id.js';
 
 // RunSnapshot is an in-memory manager view, not a durable JSON contract. Serialized API models
 // must define their own timestamp representation and schema instead of reusing this Date-based view.
@@ -17,7 +18,7 @@ export interface RunResult {
 }
 
 export interface RunSnapshot {
-  readonly id: string;
+  readonly id: RunId;
   readonly status: RunStatus;
   readonly executionPlan: ExecutionPlan;
   readonly input: JsonValue;

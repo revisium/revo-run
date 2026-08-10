@@ -73,7 +73,7 @@ export class RunWorkflowCoordinator {
     }
 
     const reservation: ExecutionReservation = {
-      executionId: message.executionId,
+      attemptId: message.attemptId,
       granted,
     };
     await DBOS.send(message.replyWorkflowId, reservation, runCoordinatorReplyTopic);

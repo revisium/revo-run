@@ -2,12 +2,12 @@ import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
 import { JsonValueSchema } from '../json-value.js';
-import { NonEmptyStringSchema } from '../schema-primitives.js';
 import { ExecutionPlanSchema } from './execution-plan.js';
+import { RunIdSchema } from './run-id.js';
 
 export const StartRunInputSchema = Type.Object(
   {
-    runId: NonEmptyStringSchema,
+    runId: RunIdSchema,
     executionPlan: ExecutionPlanSchema,
     input: JsonValueSchema,
   },
@@ -17,7 +17,7 @@ export const StartRunInputSchema = Type.Object(
 export type StartRunInput = DeepReadonly<Type.Static<typeof StartRunInputSchema>>;
 
 export const StartRunResultSchema = Type.Object(
-  { runId: NonEmptyStringSchema },
+  { runId: RunIdSchema },
   { additionalProperties: false },
 );
 

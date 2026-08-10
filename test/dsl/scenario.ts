@@ -1,10 +1,5 @@
-import type {
-  ConsensusVote,
-  ExecutionPlan,
-  JsonValue,
-  NodeOutput,
-  OutputValue,
-} from '../../src/index.js';
+import type { ConsensusVote } from '../../src/contracts/pipeline/pipeline-progress.js';
+import type { ExecutionPlan, JsonValue, NodeOutput, OutputValue } from '../../src/index.js';
 import type {
   RequiredScenarioCapabilities,
   ScenarioCategory,
@@ -45,7 +40,7 @@ export type ScenarioStep =
       readonly kind: 'expectVersionedScriptExecution';
       readonly path: string;
       readonly scriptId: string;
-      readonly version: string;
+      readonly revision: number;
     }
   | {
       readonly kind: 'expectNodeInput';

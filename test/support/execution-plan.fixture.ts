@@ -28,7 +28,7 @@ export const taskExecutionPlan = (): ExecutionPlan => ({
     {
       kind: 'script',
       target: { pipelineId: 'main', nodePath: 'work' },
-      script: { id: 'test.unsupported', version: '1.0.0' },
+      script: { id: 'test.unsupported', revision: 1 },
     },
   ],
   policies,

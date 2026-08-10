@@ -8,6 +8,7 @@ import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
 export interface PipelineExecutionContext {
   readonly plan: ExecutionPlan;
   readonly runId: string;
+  readonly scopeId: string;
   readonly runInput: JsonValue;
   readonly pipelineId: string;
   readonly pipelineInput: PipelineInputScope;

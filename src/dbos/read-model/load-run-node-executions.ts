@@ -16,21 +16,20 @@ const executionFrom = (step: StepInfo): RunNodeExecution | undefined => {
 
 const loadWorkflowExecutions = async (
   workflowId: string,
-  ancestors: ReadonlySet<string>,
+  visited: Set<string>,
 ): Promise<RunNodeExecution[]> => {
-  if (ancestors.has(workflowId)) {
+  if (visited.has(workflowId)) {
     return [];
   }
 
-  const nextAncestors = new Set(ancestors);
-  nextAncestors.add(workflowId);
+  visited.add(workflowId);
   const steps = (await DBOS.listWorkflowSteps(workflowId)) ?? [];
   const executions = await Promise.all(
     steps.map(async (step) => {
       const nested =
         step.childWorkflowID === null
           ? []
-          : await loadWorkflowExecutions(step.childWorkflowID, nextAncestors);
+          : await loadWorkflowExecutions(step.childWorkflowID, visited);
       const execution = executionFrom(step);
       return execution === undefined ? nested : [execution, ...nested];
     }),

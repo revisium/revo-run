@@ -30,9 +30,9 @@ export class ControlledRunExecutor implements RunExecutor {
   execute(request: RunExecutorRequest): Promise<RunExecutorResult> {
     this.requests.push(request);
     return new Promise((resolve) => {
-      const pending = this.pending.get(request.path) ?? [];
+      const pending = this.pending.get(request.displayPath) ?? [];
       pending.push({ request, resolve });
-      this.pending.set(request.path, pending);
+      this.pending.set(request.displayPath, pending);
       this.maximumActiveExecutions = Math.max(
         this.maximumActiveExecutions,
         this.activeExecutions(),
@@ -80,7 +80,7 @@ export class ControlledRunExecutor implements RunExecutor {
   async expectStarted(path: string): Promise<void> {
     await vi.waitFor(
       () => {
-        assert(this.requests.some((request) => request.path === path));
+        assert(this.requests.some((request) => request.displayPath === path));
       },
       { timeout: 5_000 },
     );
@@ -95,11 +95,11 @@ export class ControlledRunExecutor implements RunExecutor {
   async expectVersionedScriptExecution(
     path: string,
     scriptId: string,
-    version: string,
+    revision: number,
   ): Promise<void> {
     const request = await this.requestAt(path);
     assert.equal(request.binding.kind, 'script');
-    assert.deepStrictEqual(request.binding.script, { id: scriptId, version });
+    assert.deepStrictEqual(request.binding.script, { id: scriptId, revision });
   }
 
   async expectInput(path: string, expected: JsonValue): Promise<void> {
@@ -120,7 +120,7 @@ export class ControlledRunExecutor implements RunExecutor {
   }
 
   executionCount(path: string): number {
-    return this.requests.filter((request) => request.path === path).length;
+    return this.requests.filter((request) => request.displayPath === path).length;
   }
 
   async expectExecutionCount(path: string, count: number): Promise<void> {
@@ -145,7 +145,7 @@ export class ControlledRunExecutor implements RunExecutor {
 
   private async requestAt(path: string): Promise<RunExecutorRequest> {
     await this.expectStarted(path);
-    const request = this.requests.findLast((candidate) => candidate.path === path);
+    const request = this.requests.findLast((candidate) => candidate.displayPath === path);
     assert(request !== undefined);
     return request;
   }

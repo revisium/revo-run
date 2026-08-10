@@ -1,24 +1,32 @@
 import Schema from 'typebox/schema';
 import { describe, expect, it } from 'vitest';
 
-import { RunExecutorResultSchema } from '../../src/contracts/executor/run-executor.js';
+import {
+  RunExecutorRequestSchema,
+  RunExecutorResultSchema,
+} from '../../src/contracts/executor/run-executor.js';
 import { RunNodeExecutionSchema } from '../../src/contracts/executor/run-node-execution.js';
 import { RunEventSchema } from '../../src/contracts/run/run-event.js';
 
 const resultValidator = Schema.Compile(RunExecutorResultSchema);
+const requestValidator = Schema.Compile(RunExecutorRequestSchema);
 const executionValidator = Schema.Compile(RunNodeExecutionSchema);
 const eventValidator = Schema.Compile(RunEventSchema);
 
 const request = {
-  executionId: 'run-1:main/work:1',
   runId: 'run-1',
-  path: 'main/work',
+  authoredNodeId: `an1_${'a'.repeat(43)}`,
+  scopeId: `sc1_${'b'.repeat(43)}`,
+  nodeInstanceId: `ni1_${'c'.repeat(43)}`,
+  attemptId: `at1_${'d'.repeat(43)}`,
+  attemptOrdinal: 1,
+  displayPath: 'main/work',
   pipelineId: 'main',
   nodePath: 'work',
   binding: {
     kind: 'script',
     target: { pipelineId: 'main', nodePath: 'work' },
-    script: { id: 'example.run', version: '1.0.0' },
+    script: { id: 'example.run', revision: 1 },
   },
   input: { subject: { kind: 'json', value: 'example' } },
 } as const;
@@ -36,6 +44,36 @@ describe('executor durable contracts', () => {
         },
       }),
     ).toBe(true);
+  });
+
+  it('rejects path aliases and invalid attempt identity', () => {
+    expect(
+      executionValidator.Check({
+        kind: 'runNodeExecution',
+        request: { ...request, path: request.displayPath },
+        result: { kind: 'completed', outcome: 'completed' },
+      }),
+    ).toBe(false);
+    expect(
+      executionValidator.Check({
+        kind: 'runNodeExecution',
+        request: { ...request, attemptOrdinal: 0 },
+        result: { kind: 'completed', outcome: 'completed' },
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects invalid pipeline-relative node paths directly and in stored executions', () => {
+    const invalidRequest = { ...request, nodePath: 'invalid//path' };
+
+    expect(requestValidator.Check(invalidRequest)).toBe(false);
+    expect(
+      executionValidator.Check({
+        kind: 'runNodeExecution',
+        request: invalidRequest,
+        result: { kind: 'completed', outcome: 'completed' },
+      }),
+    ).toBe(false);
   });
 
   it('rejects additional properties and malformed nested output', () => {

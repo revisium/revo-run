@@ -1,21 +1,21 @@
 import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
-import { IdentifierSchema, PositiveIntegerSchema } from '../schema-primitives.js';
+import { IdentifierSchema, PositiveSafeIntegerSchema } from '../schema-primitives.js';
 
 export const RetryPolicySchema = Type.Object(
   {
-    maximumAttempts: PositiveIntegerSchema,
+    maximumAttempts: PositiveSafeIntegerSchema,
     backoff: Type.Union([
       Type.Object(
-        { kind: Type.Literal('constant'), delayMs: PositiveIntegerSchema },
+        { kind: Type.Literal('constant'), delayMs: PositiveSafeIntegerSchema },
         { additionalProperties: false },
       ),
       Type.Object(
         {
           kind: Type.Literal('exponential'),
-          initialDelayMs: PositiveIntegerSchema,
-          maximumDelayMs: PositiveIntegerSchema,
+          initialDelayMs: PositiveSafeIntegerSchema,
+          maximumDelayMs: PositiveSafeIntegerSchema,
         },
         { additionalProperties: false },
       ),
@@ -38,8 +38,8 @@ export const RecoveryPolicySchema = Type.Union([
   Type.Object(
     {
       reconciliation: Type.Literal('required'),
-      maximumAttempts: PositiveIntegerSchema,
-      timeoutMs: PositiveIntegerSchema,
+      maximumAttempts: PositiveSafeIntegerSchema,
+      timeoutMs: PositiveSafeIntegerSchema,
       unknownOutcome: Type.Union([Type.Literal('fail'), Type.Literal('requireHumanResolution')]),
     },
     { additionalProperties: false },

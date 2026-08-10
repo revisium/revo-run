@@ -4,7 +4,7 @@ export const validationScenarioAudit = [
   {
     intentId: 'rr-085',
     requiredCapabilities: ['planSchemaVersionValidation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['planSchemaVersionValidation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-085' },
   },
   {
     intentId: 'rr-086',
@@ -24,15 +24,12 @@ export const validationScenarioAudit = [
   {
     intentId: 'rr-089',
     requiredCapabilities: ['repeatExecutionBoundValidation'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['repeatExecutionBoundValidation'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-089' },
   },
   {
     intentId: 'rr-090',
     requiredCapabilities: ['branchDefaultValidation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['branchDefaultValidation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-090' },
   },
   {
     intentId: 'rr-091',
@@ -47,22 +44,22 @@ export const validationScenarioAudit = [
   {
     intentId: 'rr-093',
     requiredCapabilities: ['uniqueNodeKeyValidation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['uniqueNodeKeyValidation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-093' },
   },
   {
     intentId: 'rr-094',
     requiredCapabilities: ['uniqueNodeKeyValidation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['uniqueNodeKeyValidation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-094' },
   },
   {
     intentId: 'rr-095',
     requiredCapabilities: ['identifierValidation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['identifierValidation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-095' },
   },
   {
     intentId: 'rr-096',
     requiredCapabilities: ['identifierValidation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['identifierValidation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-096' },
   },
   {
     intentId: 'rr-097',
@@ -72,18 +69,12 @@ export const validationScenarioAudit = [
   {
     intentId: 'rr-098',
     requiredCapabilities: ['consensusThresholdValidation'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['consensusThresholdValidation'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-098' },
   },
   {
     intentId: 'rr-099',
     requiredCapabilities: ['composedExecutionBoundValidation'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['composedExecutionBoundValidation'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-099' },
   },
   {
     intentId: 'rr-100',

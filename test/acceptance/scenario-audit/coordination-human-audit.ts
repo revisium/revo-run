@@ -92,6 +92,6 @@ export const coordinationHumanScenarioAudit = [
   {
     intentId: 'rr-057',
     requiredCapabilities: ['boundedRepeatValidation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['boundedRepeatValidation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-057' },
   },
 ] as const satisfies readonly ScenarioAuditEntry[];

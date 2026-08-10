@@ -25,6 +25,7 @@ export const createParallelBranchWorkflow =
       const context: PipelineExecutionContext = {
         plan: root.executionPlan,
         runId: input.runId,
+        scopeId: input.scopeId,
         runInput: root.input,
         pipelineId: input.pipelineId,
         pipelineInput: input.pipelineInput,
