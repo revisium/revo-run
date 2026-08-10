@@ -1,4 +1,5 @@
-import type { ConsensusVote, JsonValue, NodeOutput, OutputValue } from '../../src/index.js';
+import type { ConsensusVote } from '../../src/contracts/pipeline/pipeline-progress.js';
+import type { JsonValue, NodeOutput, OutputValue } from '../../src/index.js';
 import { advanceLogicalTime } from './scenario-time.js';
 import type { ExpectedRunEvent, ScenarioCommandRejectionReason, ScenarioStep } from './scenario.js';
 
@@ -24,8 +25,8 @@ export const expectAgentExecution = (path: string, roleId: string): ScenarioStep
 export const expectVersionedScriptExecution = (
   path: string,
   scriptId: string,
-  version: string,
-): ScenarioStep => ({ kind: 'expectVersionedScriptExecution', path, scriptId, version });
+  revision: number,
+): ScenarioStep => ({ kind: 'expectVersionedScriptExecution', path, scriptId, revision });
 
 export const expectNodeInput = (path: string, value: JsonValue): ScenarioStep => ({
   kind: 'expectNodeInput',

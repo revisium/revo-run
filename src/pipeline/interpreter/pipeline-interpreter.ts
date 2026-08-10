@@ -3,6 +3,7 @@ import type { PipelineNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
 import type { RunWorkflowResult } from '../../contracts/workflow/run-workflow-result.js';
 import { InputResolver } from '../data/input-resolver.js';
+import { createAuthoredNodeId, createSubpipelineScopeId } from '../identity/execution-identity.js';
 import type {
   ParallelBranchResult,
   ParallelBranchRunner,
@@ -34,10 +35,12 @@ export class PipelineInterpreter {
     plan: ExecutionPlan,
     runId: string,
     runInput: PipelineExecutionContext['runInput'],
+    scopeId: string,
   ): Promise<RunWorkflowResult> {
     const context: PipelineExecutionContext = {
       plan,
       runId,
+      scopeId,
       runInput,
       pipelineId: plan.rootPipelineId,
       pipelineInput: { kind: 'value', value: { kind: 'json', value: runInput } },
@@ -203,6 +206,16 @@ export class PipelineInterpreter {
 
     const result = await this.executePipeline({
       ...context,
+      scopeId: createSubpipelineScopeId({
+        parentScopeId: context.scopeId,
+        authoredNodeId: createAuthoredNodeId({
+          schemaVersion: context.plan.schemaVersion,
+          pipelineId: context.pipelineId,
+          nodePath,
+          nodeKind: node.kind,
+        }),
+        invocationOrdinal: 1,
+      }),
       pipelineId: node.pipelineId,
       pipelineInput: { kind: 'mapping', values: input.value },
       runtimePath: runtimePath(context, nodePath),

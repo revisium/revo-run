@@ -1,7 +1,7 @@
 import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
-import { PositiveIntegerSchema } from '../schema-primitives.js';
+import { PositiveSafeIntegerSchema } from '../schema-primitives.js';
 
 export const maximumExecutionPlanDepth = 32;
 
@@ -12,11 +12,11 @@ const ExecutionPlanDepthSchema = Type.Integer({
 
 export const ExecutionPoliciesSchema = Type.Object(
   {
-    defaultTaskTimeoutMs: PositiveIntegerSchema,
-    maximumActiveNodeExecutions: PositiveIntegerSchema,
+    defaultTaskTimeoutMs: PositiveSafeIntegerSchema,
+    maximumActiveNodeExecutions: PositiveSafeIntegerSchema,
     maximumNodeNestingDepth: ExecutionPlanDepthSchema,
     maximumSubpipelineDepth: ExecutionPlanDepthSchema,
-    maximumTotalNodeExecutions: PositiveIntegerSchema,
+    maximumTotalNodeExecutions: PositiveSafeIntegerSchema,
   },
   { additionalProperties: false },
 );

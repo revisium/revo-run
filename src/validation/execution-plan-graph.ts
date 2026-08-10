@@ -1,0 +1,151 @@
+import { pipelineNodePath } from '../contracts/pipeline/node-path.js';
+import type { PipelineNode } from '../contracts/pipeline/pipeline-node.js';
+import type { ExecutionPlan } from '../contracts/run/execution-plan.js';
+
+type PipelineGraphErrorCode =
+  | 'duplicate_node_key'
+  | 'missing_branch_default'
+  | 'node_depth_exceeded'
+  | 'pipeline_not_found'
+  | 'unreachable_consensus_threshold'
+  | 'unreachable_parallel_threshold';
+
+export type PipelineGraphInspection =
+  | {
+      readonly valid: true;
+      readonly dependencies: ReadonlyMap<string, ReadonlySet<string>>;
+      readonly nodeKinds: ReadonlyMap<string, ReadonlyMap<string, PipelineNode['kind']>>;
+    }
+  | { readonly valid: false; readonly code: PipelineGraphErrorCode };
+
+type PipelineInspection =
+  | {
+      readonly valid: true;
+      readonly dependencies: ReadonlySet<string>;
+      readonly nodeKinds: ReadonlyMap<string, PipelineNode['kind']>;
+    }
+  | { readonly valid: false; readonly code: Exclude<PipelineGraphErrorCode, 'pipeline_not_found'> };
+
+const optionalNode = (node: PipelineNode | undefined): readonly PipelineNode[] =>
+  node === undefined ? [] : [node];
+
+const childNodes = (node: PipelineNode): readonly PipelineNode[] => {
+  switch (node.kind) {
+    case 'branch':
+      return [...Object.values(node.cases), ...optionalNode(node.default)];
+    case 'consensus':
+      return Object.values(node.participants);
+    case 'map':
+    case 'repeat':
+      return [node.body];
+    case 'outcomeSwitch':
+      return [node.source, ...Object.values(node.cases), ...optionalNode(node.default)];
+    case 'parallel':
+      return Object.values(node.branches);
+    case 'sequence':
+      return node.children;
+    case 'delay':
+    case 'end':
+    case 'humanGate':
+    case 'subpipeline':
+    case 'task':
+      return [];
+  }
+
+  node satisfies never;
+  return node;
+};
+
+const nodeValidationError = (
+  node: PipelineNode,
+):
+  | Exclude<
+      PipelineGraphErrorCode,
+      'duplicate_node_key' | 'node_depth_exceeded' | 'pipeline_not_found'
+    >
+  | undefined => {
+  if (node.kind === 'branch' && node.default === undefined) {
+    return 'missing_branch_default';
+  }
+  if (
+    node.kind === 'parallel' &&
+    node.join.kind === 'threshold' &&
+    node.join.count > Object.keys(node.branches).length
+  ) {
+    return 'unreachable_parallel_threshold';
+  }
+  if (node.kind === 'consensus') {
+    const participants = Object.keys(node.participants).length;
+    if (
+      (node.policy.kind === 'quorum' && node.policy.count > participants) ||
+      (node.policy.kind === 'threshold' &&
+        (node.policy.approve > participants || node.policy.reject > participants))
+    ) {
+      return 'unreachable_consensus_threshold';
+    }
+  }
+  return undefined;
+};
+
+interface PendingPipelineNode {
+  readonly node: PipelineNode;
+  readonly depth: number;
+  readonly parentPath: string;
+}
+
+const inspectPipeline = (root: PipelineNode, maximumDepth: number): PipelineInspection => {
+  const dependencies = new Set<string>();
+  const nodeKinds = new Map<string, PipelineNode['kind']>();
+  const pending: PendingPipelineNode[] = [{ node: root, depth: 1, parentPath: '' }];
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined) {
+      continue;
+    }
+    if (current.depth > maximumDepth) {
+      return { valid: false, code: 'node_depth_exceeded' };
+    }
+
+    const path = pipelineNodePath(current.node, current.parentPath);
+    if (path !== current.parentPath && nodeKinds.has(path)) {
+      return { valid: false, code: 'duplicate_node_key' };
+    }
+    if (path !== current.parentPath) {
+      nodeKinds.set(path, current.node.kind);
+    }
+    if (current.node.kind === 'subpipeline') {
+      dependencies.add(current.node.pipelineId);
+    }
+    const validationError = nodeValidationError(current.node);
+    if (validationError !== undefined) {
+      return { valid: false, code: validationError };
+    }
+    for (const child of childNodes(current.node)) {
+      pending.push({ node: child, depth: current.depth + 1, parentPath: path });
+    }
+  }
+
+  return { valid: true, dependencies, nodeKinds };
+};
+
+export const inspectPipelineGraph = (plan: ExecutionPlan): PipelineGraphInspection => {
+  const dependencies = new Map<string, ReadonlySet<string>>();
+  const nodeKinds = new Map<string, ReadonlyMap<string, PipelineNode['kind']>>();
+
+  for (const [pipelineId, pipeline] of Object.entries(plan.pipelines)) {
+    const inspection = inspectPipeline(pipeline.root, plan.policies.maximumNodeNestingDepth);
+    if (!inspection.valid) {
+      return inspection;
+    }
+    for (const dependency of inspection.dependencies) {
+      if (!Object.hasOwn(plan.pipelines, dependency)) {
+        return { valid: false, code: 'pipeline_not_found' };
+      }
+    }
+    dependencies.set(pipelineId, inspection.dependencies);
+    nodeKinds.set(pipelineId, inspection.nodeKinds);
+  }
+
+  return { valid: true, dependencies, nodeKinds };
+};

@@ -27,12 +27,12 @@ const sequencePlan: ExecutionPlan = {
     {
       kind: 'script',
       target: { pipelineId: 'main', nodePath: 'first' },
-      script: { id: 'test.first', version: '1.0.0' },
+      script: { id: 'test.first', revision: 1 },
     },
     {
       kind: 'script',
       target: { pipelineId: 'main', nodePath: 'second' },
-      script: { id: 'test.second', version: '1.0.0' },
+      script: { id: 'test.second', revision: 1 },
     },
   ],
   policies,
@@ -63,12 +63,12 @@ const timeoutPlan: ExecutionPlan = {
     {
       kind: 'script',
       target: { pipelineId: 'main', nodePath: 'work' },
-      script: { id: 'test.timeout', version: '1.0.0' },
+      script: { id: 'test.timeout', revision: 1 },
     },
     {
       kind: 'script',
       target: { pipelineId: 'main', nodePath: 'after-timeout' },
-      script: { id: 'test.after-timeout', version: '1.0.0' },
+      script: { id: 'test.after-timeout', revision: 1 },
     },
   ],
   policies,
@@ -101,12 +101,12 @@ const parallelPlan: ExecutionPlan = {
     {
       kind: 'script',
       target: { pipelineId: 'main', nodePath: 'work/a' },
-      script: { id: 'test.a', version: '1.0.0' },
+      script: { id: 'test.a', revision: 1 },
     },
     {
       kind: 'script',
       target: { pipelineId: 'main', nodePath: 'work/b' },
-      script: { id: 'test.b', version: '1.0.0' },
+      script: { id: 'test.b', revision: 1 },
     },
   ],
   policies: { ...policies, maximumActiveNodeExecutions: 2 },

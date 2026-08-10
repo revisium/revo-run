@@ -5,6 +5,7 @@ import {
   parseRunWorkflowInput,
   parseRunWorkflowResult,
 } from '../../validation/parse-run-workflow-data.js';
+import { runWorkflowId } from '../workflow-id.js';
 
 const mapStatus = (status: string): RunStatus => {
   switch (status) {
@@ -25,40 +26,45 @@ const mapStatus = (status: string): RunStatus => {
   }
 };
 
-const errorMessage = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === 'string') {
-    return error;
-  }
-  return 'Workflow execution failed.';
-};
-
 const mapError = (status: WorkflowStatus): RunError | undefined => {
   if (status.status === 'MAX_RECOVERY_ATTEMPTS_EXCEEDED') {
     return {
       code: 'recovery_exhausted',
-      message: errorMessage(status.error),
+      message: 'Workflow recovery attempts were exhausted.',
     };
   }
   if (status.status === 'ERROR') {
     return {
       code: 'workflow_failed',
-      message: errorMessage(status.error),
+      message: 'Workflow execution failed.',
     };
   }
   return undefined;
 };
 
-export const mapRunSnapshot = (status: WorkflowStatus, workflowName: string): RunSnapshot => {
-  if (status.workflowName !== workflowName) {
-    throw new Error('Workflow is not a Revo run.');
+export class RunOwnershipError extends Error {}
+
+export const mapRunSnapshot = (
+  status: WorkflowStatus,
+  workflowName: string,
+  runId: string,
+): RunSnapshot => {
+  if (status.workflowName !== workflowName || status.workflowID !== runWorkflowId(runId)) {
+    throw new RunOwnershipError('Workflow is not a Revo run.');
   }
 
-  const { executionPlan, input } = parseRunWorkflowInput(status.input);
+  let durableInput;
+  try {
+    durableInput = parseRunWorkflowInput(status.input);
+  } catch {
+    throw new RunOwnershipError('Workflow is not a Revo run.');
+  }
+  if (durableInput.runId !== runId) {
+    throw new RunOwnershipError('Workflow is not a Revo run.');
+  }
+  const { executionPlan, input } = durableInput;
   const snapshot = {
-    id: status.workflowID,
+    id: runId,
     status: mapStatus(status.status),
     executionPlan,
     input,

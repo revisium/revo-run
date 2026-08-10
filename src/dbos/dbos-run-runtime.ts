@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+
 import { DBOS } from '@dbos-inc/dbos-sdk';
 
 import type { RunExecutor } from '../contracts/executor/run-executor.js';
@@ -5,12 +7,16 @@ import type { JsonValue } from '../contracts/json-value.js';
 import type { ExecutionPlan } from '../contracts/run/execution-plan.js';
 import type { RunDetails } from '../contracts/run/run-details.js';
 import type { RunEvent } from '../contracts/run/run-event.js';
+import { RunManagerError } from '../contracts/run/run-manager-error.js';
 import type { RunSnapshot } from '../contracts/run/run.js';
+import type { RunWorkflowInput } from '../contracts/workflow/run-workflow-input.js';
+import { parseRunWorkflowInput } from '../validation/parse-run-workflow-data.js';
 import { parseRunEvent } from '../validation/run-event.validator.js';
 import { runEventStreamName, runWorkflowName } from './dbos-names.js';
 import { loadRunNodeExecutions } from './read-model/load-run-node-executions.js';
 import { mapRunDetails } from './read-model/map-run-details.js';
-import { mapRunSnapshot } from './read-model/map-run-snapshot.js';
+import { mapRunSnapshot, RunOwnershipError } from './read-model/map-run-snapshot.js';
+import { runWorkflowId } from './workflow-id.js';
 import type { WorkflowRegistry } from './workflow-registry.js';
 
 const applicationName = 'revo-run';
@@ -49,19 +55,55 @@ export class DbosRunRuntime {
   }
 
   async startRun(runId: string, executionPlan: ExecutionPlan, input: JsonValue): Promise<void> {
-    if ((await DBOS.getWorkflowStatus(runId)) !== null) {
-      throw new Error('Run ID is already in use.');
+    const workflowId = runWorkflowId(runId);
+    let status;
+    try {
+      status = await DBOS.getWorkflowStatus(workflowId);
+    } catch {
+      throw new RunManagerError('run_admission_failed');
+    }
+    if (status !== null) {
+      throw new RunManagerError('run_id_conflict');
     }
 
-    await DBOS.startWorkflow(this.workflows.run, {
-      duplicationPolicy: 'reject',
-      workflowID: runId,
-    })({ executionPlan, input });
+    const admissionToken = randomBytes(32).toString('base64url');
+    const durableInput: RunWorkflowInput = {
+      contractVersion: 2,
+      runId,
+      admissionToken,
+      executionPlan,
+      input,
+    };
+    try {
+      await DBOS.startWorkflow(this.workflows.run, {
+        workflowID: workflowId,
+      })(durableInput);
+    } catch {
+      // A transport failure can happen after DBOS commits the workflow. Ownership is confirmed below.
+    }
+
+    await this.confirmAdmission(workflowId, runId, admissionToken);
   }
 
   async getRun(runId: string): Promise<RunSnapshot | undefined> {
-    const status = await DBOS.getWorkflowStatus(runId);
-    return status === null ? undefined : mapRunSnapshot(status, runWorkflowName);
+    const workflowId = runWorkflowId(runId);
+    let status;
+    try {
+      status = await DBOS.getWorkflowStatus(workflowId);
+    } catch {
+      throw new RunManagerError('run_read_failed');
+    }
+    if (status === null) {
+      return undefined;
+    }
+
+    try {
+      return mapRunSnapshot(status, runWorkflowName, runId);
+    } catch (error) {
+      throw new RunManagerError(
+        error instanceof RunOwnershipError ? 'run_id_conflict' : 'run_read_failed',
+      );
+    }
   }
 
   async getRunDetails(runId: string): Promise<RunDetails | undefined> {
@@ -70,17 +112,53 @@ export class DbosRunRuntime {
       return undefined;
     }
 
-    return mapRunDetails(run, await loadRunNodeExecutions(runId));
+    return mapRunDetails(run, await loadRunNodeExecutions(runWorkflowId(runId)));
   }
 
   async *subscribeRunEvents(runId: string): AsyncGenerator<RunEvent> {
     const run = await this.getRun(runId);
     if (run === undefined) {
-      throw new Error('Run was not found.');
+      throw new RunManagerError('run_not_found');
     }
 
-    for await (const event of DBOS.readStream<unknown>(runId, runEventStreamName)) {
+    for await (const event of DBOS.readStream<unknown>(runWorkflowId(runId), runEventStreamName)) {
       yield parseRunEvent(event);
+    }
+  }
+
+  private async confirmAdmission(
+    workflowId: string,
+    runId: string,
+    admissionToken: string,
+  ): Promise<void> {
+    let status;
+    try {
+      status = await DBOS.getWorkflowStatus(workflowId);
+    } catch {
+      throw new RunManagerError('run_admission_failed');
+    }
+    if (status === null) {
+      throw new RunManagerError('run_admission_failed');
+    }
+    if (status.workflowName !== runWorkflowName) {
+      throw new RunManagerError('run_id_conflict');
+    }
+
+    let durableArguments;
+    try {
+      durableArguments = await DBOS.retrieveWorkflow(workflowId).getWorkflowInputs<unknown[]>();
+    } catch {
+      throw new RunManagerError('run_admission_failed');
+    }
+
+    let durableInput;
+    try {
+      durableInput = parseRunWorkflowInput(durableArguments);
+    } catch {
+      throw new RunManagerError('run_id_conflict');
+    }
+    if (durableInput.runId !== runId || durableInput.admissionToken !== admissionToken) {
+      throw new RunManagerError('run_id_conflict');
     }
   }
 }

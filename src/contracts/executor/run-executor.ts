@@ -1,18 +1,34 @@
 import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
+import {
+  AttemptIdSchema,
+  AuthoredNodeIdSchema,
+  NodeInstanceIdSchema,
+  ScopeIdSchema,
+} from '../execution-identity.js';
 import { NodeOutputSchema } from '../pipeline/node-output.js';
 import { ExecutionBindingSchema } from '../run/execution-binding.js';
-import { IdentifierSchema, NonEmptyStringSchema } from '../schema-primitives.js';
+import { RunIdSchema } from '../run/run-id.js';
+import {
+  IdentifierSchema,
+  NonEmptyStringSchema,
+  PipelineNodePathSchema,
+  PositiveSafeIntegerSchema,
+} from '../schema-primitives.js';
 import { ExecutorInputSchema } from './executor-input.js';
 
 export const RunExecutorRequestSchema = Type.Object(
   {
-    executionId: NonEmptyStringSchema,
-    runId: NonEmptyStringSchema,
-    path: NonEmptyStringSchema,
+    runId: RunIdSchema,
+    authoredNodeId: AuthoredNodeIdSchema,
+    scopeId: ScopeIdSchema,
+    nodeInstanceId: NodeInstanceIdSchema,
+    attemptId: AttemptIdSchema,
+    attemptOrdinal: PositiveSafeIntegerSchema,
+    displayPath: NonEmptyStringSchema,
     pipelineId: IdentifierSchema,
-    nodePath: NonEmptyStringSchema,
+    nodePath: PipelineNodePathSchema,
     binding: ExecutionBindingSchema,
     input: ExecutorInputSchema,
   },

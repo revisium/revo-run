@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import { vi } from 'vitest';
 
-import { createRunManager } from '../../../src/index.js';
+import { createRunManager, RunManagerError } from '../../../src/index.js';
 import type {
   ExecutionPlan,
   JsonValue,
@@ -75,7 +75,7 @@ class AcceptanceScenarioRunner {
         await this.executor.expectAgentExecution(step.path, step.roleId);
         return;
       case 'expectVersionedScriptExecution':
-        await this.executor.expectVersionedScriptExecution(step.path, step.scriptId, step.version);
+        await this.executor.expectVersionedScriptExecution(step.path, step.scriptId, step.revision);
         return;
       case 'expectNodeInput':
         await this.executor.expectInput(step.path, step.value);
@@ -128,7 +128,8 @@ class AcceptanceScenarioRunner {
         this.executor.expectResolvedSecret(step.value);
         return;
       case 'expectPlanRejected':
-        assert(this.startError?.message.includes(step.errorCode));
+        assert(this.startError instanceof RunManagerError);
+        assert.equal(this.startError.code, step.errorCode);
         return;
       case 'answerHumanGate':
       case 'cancelRun':
@@ -156,12 +157,15 @@ class AcceptanceScenarioRunner {
     input: JsonValue,
     schemaVersionOverride: number | undefined,
   ): Promise<void> {
-    if (schemaVersionOverride !== undefined) {
-      throw new Error('Plan schema overrides are not implemented.');
-    }
-
     try {
-      await this.manager.startRun({ runId: this.runId, executionPlan: plan, input });
+      const executionPlan = structuredClone(plan);
+      if (schemaVersionOverride !== undefined) {
+        Object.defineProperty(executionPlan, 'schemaVersion', {
+          enumerable: true,
+          value: schemaVersionOverride,
+        });
+      }
+      await this.manager.startRun({ runId: this.runId, executionPlan, input });
     } catch (error) {
       this.startError = error instanceof Error ? error : new Error(String(error));
     }
@@ -196,7 +200,7 @@ class AcceptanceScenarioRunner {
   private async expectOutputValue(path: string, key: string, value: unknown): Promise<void> {
     await vi.waitFor(async () => {
       const execution = (await this.details()).nodeExecutions.find(
-        ({ request }) => request.path === path,
+        ({ request }) => request.displayPath === path,
       );
       assert(execution?.result.kind === 'completed');
       assert.deepStrictEqual(execution.result.output?.[key], value);
@@ -211,7 +215,7 @@ class AcceptanceScenarioRunner {
   ): Promise<void> {
     await vi.waitFor(async () => {
       const execution = (await this.details()).nodeExecutions.find(
-        ({ request }) => request.path === path,
+        ({ request }) => request.displayPath === path,
       );
       assert(execution?.result.kind === 'completed');
       const output = execution.result.output?.[key];
@@ -231,7 +235,9 @@ class AcceptanceScenarioRunner {
   private async expectRunDetails(nodePaths: readonly string[]): Promise<void> {
     await vi.waitFor(
       async () => {
-        const actual = (await this.details()).nodeExecutions.map(({ request }) => request.path);
+        const actual = (await this.details()).nodeExecutions.map(
+          ({ request }) => request.displayPath,
+        );
         assert.deepStrictEqual(new Set(actual), new Set(nodePaths));
       },
       { timeout: 5_000 },

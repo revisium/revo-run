@@ -2,6 +2,10 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { WorkflowHandle } from '@dbos-inc/dbos-sdk';
 
 import type { ParallelBranchWorkflowInput } from '../../contracts/workflow/parallel-branch-workflow-input.js';
+import {
+  createAuthoredNodeId,
+  createParallelBranchScopeId,
+} from '../../pipeline/identity/execution-identity.js';
 import type { PipelineExecutionContext } from '../../pipeline/interpreter/interpreter-context.js';
 import type {
   ParallelBranch,
@@ -9,6 +13,7 @@ import type {
   ParallelBranchRunner,
 } from '../../pipeline/parallel/parallel-branch-runner.js';
 import { RunCoordinatorClient } from '../coordination/run-coordinator-client.js';
+import { scopeWorkflowId } from '../workflow-id.js';
 import type { ParallelBranchWorkflowProvider } from '../workflows/parallel-branch-workflow-provider.js';
 
 interface ActiveBranch {
@@ -81,8 +86,20 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
       return;
     }
 
+    const authoredNodeId = createAuthoredNodeId({
+      schemaVersion: context.plan.schemaVersion,
+      pipelineId: context.pipelineId,
+      nodePath: parentPath,
+      nodeKind: 'parallel',
+    });
+    const scopeId = createParallelBranchScopeId({
+      parentScopeId: context.scopeId,
+      authoredNodeId,
+      branchKey: branch.key,
+    });
     const input: ParallelBranchWorkflowInput = {
       runId: context.runId,
+      scopeId,
       branchKey: branch.key,
       node: branch.node,
       pipelineId: context.pipelineId,
@@ -92,7 +109,9 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
       inheritedOutputs: [...context.outputs].map(([path, output]) => ({ path, output })),
       maximumParallelism: capacity,
     };
-    const handle = await DBOS.startWorkflow(this.workflows.get())(input);
+    const handle = await DBOS.startWorkflow(this.workflows.get(), {
+      workflowID: scopeWorkflowId(scopeId),
+    })(input);
     await this.coordinator.registerScope(handle.workflowID);
     active.set(handle.workflowID, { branch, capacity, handle });
   }

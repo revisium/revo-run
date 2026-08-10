@@ -1,10 +1,14 @@
 import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
-import { NonEmptyStringSchema } from '../schema-primitives.js';
+import { ScopeIdSchema } from '../execution-identity.js';
+import { RunIdSchema } from '../run/run-id.js';
 
 export const RunExecutionWorkflowInputSchema = Type.Object(
-  { runId: NonEmptyStringSchema },
+  {
+    runId: RunIdSchema,
+    scopeId: ScopeIdSchema,
+  },
   { additionalProperties: false },
 );
 

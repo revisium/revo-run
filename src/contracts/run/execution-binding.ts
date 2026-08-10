@@ -5,6 +5,7 @@ import {
   IdentifierSchema,
   NonEmptyStringSchema,
   PipelineNodePathSchema,
+  PositiveSafeIntegerSchema,
 } from '../schema-primitives.js';
 
 export const BindingTargetSchema = Type.Object(
@@ -35,7 +36,7 @@ export const ScriptExecutorBindingSchema = Type.Object(
     kind: Type.Literal('script'),
     target: BindingTargetSchema,
     script: Type.Object(
-      { id: NonEmptyStringSchema, version: NonEmptyStringSchema },
+      { id: NonEmptyStringSchema, revision: PositiveSafeIntegerSchema },
       { additionalProperties: false },
     ),
   },

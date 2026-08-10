@@ -1,9 +1,11 @@
 import Schema from 'typebox/schema';
 
-import { pipelineNodePath } from '../contracts/pipeline/node-path.js';
 import type { PipelineNode } from '../contracts/pipeline/pipeline-node.js';
 import { ExecutionPlanSchema } from '../contracts/run/execution-plan.js';
 import type { ExecutionPlan } from '../contracts/run/execution-plan.js';
+import { executionPlanFitsBound } from './execution-plan-bound.js';
+import { inspectPipelineGraph } from './execution-plan-graph.js';
+import { classifyExecutionPlanSchemaFailure } from './execution-plan-schema-failure.js';
 
 const schemaValidator = Schema.Compile(ExecutionPlanSchema);
 
@@ -11,167 +13,26 @@ export type ExecutionPlanValidationErrorCode =
   | 'binding_target_not_found'
   | 'binding_target_not_task'
   | 'duplicate_executor_binding'
-  | 'duplicate_node_path'
+  | 'duplicate_node_key'
+  | 'execution_bound_exceeded'
+  | 'invalid_node_key'
+  | 'invalid_pipeline_id'
+  | 'invalid_repeat_bound'
   | 'invalid_execution_plan'
+  | 'missing_branch_default'
   | 'missing_executor_binding'
   | 'node_depth_exceeded'
   | 'pipeline_not_found'
   | 'root_pipeline_not_found'
   | 'subpipeline_cycle'
   | 'subpipeline_depth_exceeded'
+  | 'unsupported_plan_schema_version'
+  | 'unreachable_consensus_threshold'
   | 'unreachable_parallel_threshold';
 
 export type ExecutionPlanValidationResult =
   | { readonly valid: true; readonly plan: ExecutionPlan }
   | { readonly valid: false; readonly code: ExecutionPlanValidationErrorCode };
-
-type PipelineInspection =
-  | {
-      readonly valid: true;
-      readonly dependencies: ReadonlySet<string>;
-      readonly nodeKinds: ReadonlyMap<string, PipelineNode['kind']>;
-    }
-  | {
-      readonly valid: false;
-      readonly code:
-        | 'duplicate_node_path'
-        | 'node_depth_exceeded'
-        | 'unreachable_parallel_threshold';
-    };
-
-type PipelineGraphInspection =
-  | {
-      readonly valid: true;
-      readonly dependencies: ReadonlyMap<string, ReadonlySet<string>>;
-      readonly nodeKinds: ReadonlyMap<string, ReadonlyMap<string, PipelineNode['kind']>>;
-    }
-  | {
-      readonly valid: false;
-      readonly code:
-        | 'duplicate_node_path'
-        | 'node_depth_exceeded'
-        | 'pipeline_not_found'
-        | 'unreachable_parallel_threshold';
-    };
-
-const optionalNode = (node: PipelineNode | undefined): readonly PipelineNode[] =>
-  node === undefined ? [] : [node];
-
-const childNodes = (node: PipelineNode): readonly PipelineNode[] => {
-  switch (node.kind) {
-    case 'branch':
-      return [...Object.values(node.cases), ...optionalNode(node.default)];
-    case 'consensus':
-      return Object.values(node.participants);
-    case 'map':
-    case 'repeat':
-      return [node.body];
-    case 'outcomeSwitch':
-      return [node.source, ...Object.values(node.cases), ...optionalNode(node.default)];
-    case 'parallel':
-      return Object.values(node.branches);
-    case 'sequence':
-      return node.children;
-    case 'delay':
-    case 'end':
-    case 'humanGate':
-    case 'subpipeline':
-    case 'task':
-      return [];
-  }
-
-  node satisfies never;
-  return node;
-};
-
-interface PendingPipelineNode {
-  readonly node: PipelineNode;
-  readonly depth: number;
-  readonly parentPath: string;
-}
-
-type PipelineInspectionError = Extract<PipelineInspection, { readonly valid: false }>;
-
-type PipelineNodeInspection =
-  | { readonly valid: true; readonly path: string }
-  | PipelineInspectionError;
-
-const hasUnreachableThreshold = (node: PipelineNode): boolean =>
-  node.kind === 'parallel' &&
-  node.join.kind === 'threshold' &&
-  node.join.count > Object.keys(node.branches).length;
-
-const inspectPipelineNode = (
-  current: PendingPipelineNode,
-  maximumDepth: number,
-  dependencies: Set<string>,
-  nodeKinds: Map<string, PipelineNode['kind']>,
-): PipelineNodeInspection => {
-  if (current.depth > maximumDepth) {
-    return { valid: false, code: 'node_depth_exceeded' };
-  }
-
-  const path = pipelineNodePath(current.node, current.parentPath);
-  if (path !== current.parentPath && nodeKinds.has(path)) {
-    return { valid: false, code: 'duplicate_node_path' };
-  }
-  if (path !== current.parentPath) {
-    nodeKinds.set(path, current.node.kind);
-  }
-  if (current.node.kind === 'subpipeline') {
-    dependencies.add(current.node.pipelineId);
-  }
-  if (hasUnreachableThreshold(current.node)) {
-    return { valid: false, code: 'unreachable_parallel_threshold' };
-  }
-
-  return { valid: true, path };
-};
-
-const inspectPipeline = (root: PipelineNode, maximumDepth: number): PipelineInspection => {
-  const dependencies = new Set<string>();
-  const nodeKinds = new Map<string, PipelineNode['kind']>();
-  const pending: PendingPipelineNode[] = [{ node: root, depth: 1, parentPath: '' }];
-
-  while (pending.length > 0) {
-    const current = pending.pop();
-    if (current === undefined) {
-      continue;
-    }
-
-    const inspection = inspectPipelineNode(current, maximumDepth, dependencies, nodeKinds);
-    if (!inspection.valid) {
-      return inspection;
-    }
-
-    for (const child of childNodes(current.node)) {
-      pending.push({ node: child, depth: current.depth + 1, parentPath: inspection.path });
-    }
-  }
-
-  return { valid: true, dependencies, nodeKinds };
-};
-
-const inspectPipelineGraph = (plan: ExecutionPlan): PipelineGraphInspection => {
-  const dependencies = new Map<string, ReadonlySet<string>>();
-  const nodeKinds = new Map<string, ReadonlyMap<string, PipelineNode['kind']>>();
-
-  for (const [pipelineId, pipeline] of Object.entries(plan.pipelines)) {
-    const inspection = inspectPipeline(pipeline.root, plan.policies.maximumNodeNestingDepth);
-    if (!inspection.valid) {
-      return inspection;
-    }
-    for (const dependency of inspection.dependencies) {
-      if (!Object.hasOwn(plan.pipelines, dependency)) {
-        return { valid: false, code: 'pipeline_not_found' };
-      }
-    }
-    dependencies.set(pipelineId, inspection.dependencies);
-    nodeKinds.set(pipelineId, inspection.nodeKinds);
-  }
-
-  return { valid: true, dependencies, nodeKinds };
-};
 
 const bindingKey = (pipelineId: string, nodePath: string): string => `${pipelineId}\0${nodePath}`;
 
@@ -291,13 +152,16 @@ const validateSemantics = (plan: ExecutionPlan): ExecutionPlanValidationResult =
   if (!respectsSubpipelineDepth(graph.dependencies, order, plan.policies.maximumSubpipelineDepth)) {
     return { valid: false, code: 'subpipeline_depth_exceeded' };
   }
+  if (!executionPlanFitsBound(plan)) {
+    return { valid: false, code: 'execution_bound_exceeded' };
+  }
 
   return { valid: true, plan };
 };
 
 const validate = (value: unknown): ExecutionPlanValidationResult => {
   if (!schemaValidator.Check(value)) {
-    return { valid: false, code: 'invalid_execution_plan' };
+    return { valid: false, code: classifyExecutionPlanSchemaFailure(value) };
   }
 
   return validateSemantics(value);
