@@ -3,8 +3,10 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { RunExecutorRequest } from '../../contracts/executor/run-executor.js';
 import type { RunCoordinatorMessage } from '../../contracts/workflow/run-coordinator-message.js';
 import type { ExecuteNodeEffect } from '../../pipeline/interpreter/interpreter-context.js';
-import type { PipelineEventSink } from '../../pipeline/interpreter/pipeline-event-sink.js';
-import type { PipelineEventDraft } from '../../pipeline/interpreter/pipeline-event-sink.js';
+import type {
+  PipelineEventDraft,
+  PipelineEventSink,
+} from '../../pipeline/interpreter/pipeline-event-sink.js';
 import { parseExecutionReservation } from '../../validation/run-coordinator-message.validator.js';
 import { runCoordinatorMessageTopic, runCoordinatorReplyTopic } from '../dbos-names.js';
 import type { NodeExecutionStep } from '../steps/node-execution-step.js';

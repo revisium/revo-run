@@ -11,7 +11,7 @@ import {
 import { IdentifierSchema, PositiveSafeIntegerSchema } from '../schema-primitives.js';
 
 const cursorPattern = '^[A-Za-z][A-Za-z0-9._-]{0,127}:[1-9][0-9]*$';
-const timestampPattern = '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$';
+const timestampPattern = String.raw`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$`;
 
 const CursorSchema = Type.String({ pattern: cursorPattern });
 const TimestampSchema = Type.String({ format: 'date-time', pattern: timestampPattern });
