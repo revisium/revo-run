@@ -1,6 +1,6 @@
+import type { ParallelBranchResult } from '../../contracts/workflow/parallel-branch-result.js';
 import type { ParallelBranchWorkflowInput } from '../../contracts/workflow/parallel-branch-workflow-input.js';
 import type { PipelineExecutionContext } from '../../pipeline/interpreter/interpreter-context.js';
-import type { ParallelBranchResult } from '../../pipeline/parallel/parallel-branch-runner.js';
 import { parseParallelBranchWorkflowInput } from '../../validation/parallel-branch-workflow-input.validator.js';
 import type { RunExecutorProvider } from '../executor/run-executor-provider.js';
 import { createPipelineExecution } from './create-pipeline-execution.js';

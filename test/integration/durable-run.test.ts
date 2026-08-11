@@ -15,6 +15,35 @@ let manager: RunManager;
 const isRunIdConflict = (value: unknown): value is RunManagerError =>
   value instanceof RunManagerError && value.code === 'run_id_conflict';
 
+const runConcurrentIdenticalAdmissionScenario = async () => {
+  await manager.stop();
+  let effects = 0;
+  manager = createRunManager({
+    database: { url: testDatabaseUrl() },
+    executor: {
+      async execute() {
+        effects += 1;
+        return { kind: 'completed', outcome: 'completed' };
+      },
+    },
+  });
+  await manager.start();
+  const runId = `duplicate-identical-race-${randomUUID()}`;
+  const admission = { runId, executionPlan: taskExecutionPlan(), input: null } as const;
+  const results = await Promise.allSettled([
+    manager.startRun(admission),
+    manager.startRun(admission),
+  ]);
+  await waitForRunStatus(manager, runId, 'failed');
+
+  return {
+    details: await manager.getRunDetails(runId),
+    effects,
+    results,
+    runId,
+  };
+};
+
 beforeEach(async () => {
   manager = await startTestRunManager();
 });
@@ -105,38 +134,22 @@ describe('durable run', () => {
     await expect(manager.startRun(loser)).rejects.toMatchObject({ code: 'run_id_conflict' });
   });
 
-  it('executes one durable effect for concurrent identical admission', async () => {
-    await manager.stop();
-    let effects = 0;
-    manager = createRunManager({
-      database: { url: testDatabaseUrl() },
-      executor: {
-        async execute() {
-          effects += 1;
-          return { kind: 'completed', outcome: 'completed' };
-        },
-      },
-    });
-    await manager.start();
-    const runId = `duplicate-identical-race-${randomUUID()}`;
-    const admission = { runId, executionPlan: taskExecutionPlan(), input: null } as const;
+  it('admits one concurrent identical start and records exactly one durable effect', async () => {
+    const { details, effects, results } = await runConcurrentIdenticalAdmissionScenario();
 
-    const results = await Promise.allSettled([
-      manager.startRun(admission),
-      manager.startRun(admission),
-    ]);
     expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
     const rejected = results.filter(
       (result): result is PromiseRejectedResult => result.status === 'rejected',
     );
     expect(rejected).toHaveLength(1);
     expect(isRunIdConflict(rejected[0]?.reason)).toBe(true);
-    await waitForRunStatus(manager, runId, 'failed');
-
     expect(effects).toBe(1);
-    const details = await manager.getRunDetails(runId);
-    expect(details?.nodeExecutions).toHaveLength(1);
-    expect(details?.nodeExecutions[0]?.request.runId).toBe(runId);
+    expect(details?.nodeInstances).toHaveLength(1);
+    expect(details?.attempts).toHaveLength(1);
+  });
+
+  it('keeps the valid admission token private across observation surfaces', async () => {
+    const { details, runId } = await runConcurrentIdenticalAdmissionScenario();
 
     const rootWorkflowId = `rr:run:v2:${runId}`;
     const durableStatus = await DBOS.getWorkflowStatus(rootWorkflowId);

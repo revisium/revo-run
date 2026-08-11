@@ -1,5 +1,11 @@
 import type { ConsensusVote } from '../../src/contracts/pipeline/pipeline-progress.js';
-import type { ExecutionPlan, JsonValue, NodeOutput, OutputValue } from '../../src/index.js';
+import type {
+  ExecutionPlan,
+  JsonValue,
+  NodeOutput,
+  OutputValue,
+  RunNodeExecutionStatus,
+} from '../../src/index.js';
 import type {
   RequiredScenarioCapabilities,
   ScenarioCategory,
@@ -148,6 +154,10 @@ export type ScenarioStep =
       readonly afterCapturedCursor: string;
     }
   | {
+      readonly kind: 'captureCursorFromAnotherRun';
+      readonly captureAs: string;
+    }
+  | {
       readonly kind: 'expectNoDuplicateExecution';
       readonly path: string;
     }
@@ -171,6 +181,11 @@ export type ScenarioStep =
   | {
       readonly kind: 'expectRunDetails';
       readonly nodePaths: readonly string[];
+      readonly scopePaths?: readonly string[];
+      readonly attempts?: readonly {
+        readonly nodePath: string;
+        readonly status: RunNodeExecutionStatus;
+      }[];
     }
   | {
       readonly kind: 'expectPlanRejected';

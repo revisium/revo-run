@@ -4,8 +4,16 @@ export {
   ScriptExecutorBindingSchema,
 } from './contracts/run/execution-binding.js';
 export { ExecutionPlanSchema } from './contracts/run/execution-plan.js';
+export {
+  RunEventCursorSchema,
+  RunEventPageInputSchema,
+  RunEventPageSchema,
+  RunEventSubscriptionInputSchema,
+} from './contracts/run/run-event-page.js';
+export { RunEventSchema } from './contracts/run/run-event.js';
 export { RunIdSchema } from './contracts/run/run-id.js';
 export { RunManagerError, RunManagerErrorCodeSchema } from './contracts/run/run-manager-error.js';
+export { RunErrorSchema, RunResultSchema, RunStatusSchema } from './contracts/run/run.js';
 export { StartRunInputSchema, StartRunResultSchema } from './contracts/run/start-run.js';
 export {
   RunExecutorRequestSchema,
@@ -22,6 +30,12 @@ export type {
   RunExecutorResult,
 } from './contracts/executor/run-executor.js';
 export type { RunNodeExecution } from './contracts/executor/run-node-execution.js';
+export type {
+  AttemptId,
+  AuthoredNodeId,
+  NodeInstanceId,
+  ScopeId,
+} from './contracts/execution-identity.js';
 export type { CompiledPipeline } from './contracts/pipeline/compiled-pipeline.js';
 export type {
   ArtifactReference,
@@ -61,11 +75,31 @@ export type {
 } from './contracts/run/execution-binding.js';
 export type { ExecutionPlan } from './contracts/run/execution-plan.js';
 export type { ExecutionPolicies } from './contracts/run/execution-policy.js';
-export type { RunDetails } from './contracts/run/run-details.js';
+export type { ListRunsInput, RunPage } from './contracts/run/list-runs.js';
+export type {
+  RunAttempt,
+  RunDetails,
+  RunNodeExecutionStatus,
+  RunNodeInstance,
+  RunScope,
+} from './contracts/run/run-details.js';
 export type { RunEvent } from './contracts/run/run-event.js';
-export type { RunError, RunResult, RunSnapshot, RunStatus } from './contracts/run/run.js';
+export type {
+  RunEventCursor,
+  RunEventPage,
+  RunEventPageInput,
+  RunEventSubscriptionInput,
+} from './contracts/run/run-event-page.js';
+export type {
+  RunError,
+  RunResult,
+  RunSnapshot,
+  RunStatus,
+  RunSummary,
+} from './contracts/run/run.js';
 export type { RunId } from './contracts/run/run-id.js';
 export type { RunManagerErrorCode } from './contracts/run/run-manager-error.js';
 export type { StartRunInput, StartRunResult } from './contracts/run/start-run.js';
+export type { WaitForTerminalInput } from './contracts/run/wait-for-terminal.js';
 export type { CreateRunManagerOptions } from './manager/create-run-manager.js';
 export type { RunManager } from './manager/run-manager.js';

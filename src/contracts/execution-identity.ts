@@ -13,4 +13,7 @@ export const ScopeWorkflowIdSchema = Type.String({
 });
 
 export type AttemptId = DeepReadonly<Type.Static<typeof AttemptIdSchema>>;
+export type AuthoredNodeId = DeepReadonly<Type.Static<typeof AuthoredNodeIdSchema>>;
+export type NodeInstanceId = DeepReadonly<Type.Static<typeof NodeInstanceIdSchema>>;
+export type ScopeId = DeepReadonly<Type.Static<typeof ScopeIdSchema>>;
 export type ScopeWorkflowId = DeepReadonly<Type.Static<typeof ScopeWorkflowIdSchema>>;

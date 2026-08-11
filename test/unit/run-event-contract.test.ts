@@ -121,6 +121,7 @@ describe('run event contract', () => {
 
   it.each([
     { ...goldenEvents[0], cursor: 'run-1:0' },
+    { ...goldenEvents[0], cursor: `run-1:${Number.MAX_SAFE_INTEGER + 1}` },
     { ...goldenEvents[0], cursor: 'run:1:1' },
     { ...goldenEvents[0], timestamp: '2026-08-10T12:34:56Z' },
     { ...goldenEvents[0], timestamp: '2026-13-10T12:34:56.789Z' },

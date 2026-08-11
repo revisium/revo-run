@@ -38,3 +38,23 @@ rationale.
 
 Consistency never justifies needless abstractions whose only purpose is to make different
 responsibilities look alike.
+
+## Readability Blocker
+
+Reject a changed function, class, or test when it operates at more than one abstraction level.
+Keep these responsibilities distinct: orchestration, domain policy, provider protocol and IO,
+validation and mapping, and fixture construction. Each test must have one diagnosable reason to
+fail; keep multiple assertions together only when they prove one business outcome.
+
+Extraction must be semantic. Split by a named responsibility, not by line count, and do not move
+unrelated behavior into generic helper or utility dumping grounds.
+
+Review every change for the following:
+
+- the unit has one purpose that can be stated in one sentence;
+- its statements stay at one abstraction level;
+- domain policy is separate from provider protocol and IO;
+- validation and mapping do not absorb orchestration;
+- fixture construction does not hide the behavior or boundary under test;
+- each test failure identifies one behavior outcome;
+- every extraction names a real responsibility and does not merely reduce line count.

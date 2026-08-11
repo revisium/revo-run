@@ -11,3 +11,10 @@ export const nodeExecutionStepName = (path: string): string => `${nodeExecutionS
 
 export const isNodeExecutionStepName = (name: string): boolean =>
   name.startsWith(nodeExecutionStepPrefix);
+
+export const nodeExecutionDisplayPath = (name: string): string => {
+  if (!isNodeExecutionStepName(name)) {
+    throw new Error('DBOS step is not a node execution.');
+  }
+  return name.slice(nodeExecutionStepPrefix.length);
+};

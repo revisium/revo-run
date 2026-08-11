@@ -10,11 +10,7 @@ export const enterpriseLifecycleScenarioAudit = [
     ],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: [
-        'durableDelayRecovery',
-        'managerRestartRecovery',
-        'dbosSafeTimeAdvancement',
-      ],
+      missingCapabilities: ['durableDelayRecovery', 'dbosSafeTimeAdvancement'],
     },
   },
   {
@@ -35,7 +31,7 @@ export const enterpriseLifecycleScenarioAudit = [
     requiredCapabilities: ['parallelRecovery', 'managerRestartRecovery', 'deduplicatedExecution'],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: ['parallelRecovery', 'managerRestartRecovery', 'deduplicatedExecution'],
+      missingCapabilities: ['parallelRecovery', 'deduplicatedExecution'],
     },
   },
   {
@@ -46,7 +42,7 @@ export const enterpriseLifecycleScenarioAudit = [
   {
     intentId: 'rr-080',
     requiredCapabilities: ['runEventSubscription'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['runEventSubscription'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-080' },
   },
   {
     intentId: 'rr-081',
@@ -56,22 +52,16 @@ export const enterpriseLifecycleScenarioAudit = [
   {
     intentId: 'rr-082',
     requiredCapabilities: ['subscriptionCursorValidation'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['subscriptionCursorValidation'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-082' },
   },
   {
     intentId: 'rr-083',
     requiredCapabilities: ['runDetailsProjection'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['runDetailsProjection'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-083' },
   },
   {
     intentId: 'rr-084',
     requiredCapabilities: ['subscriptionRecovery', 'managerRestartRecovery'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['subscriptionRecovery', 'managerRestartRecovery'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-084' },
   },
 ] as const satisfies readonly ScenarioAuditEntry[];

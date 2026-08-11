@@ -10,8 +10,11 @@ const runtime = (overrides: Partial<ConstructorParameters<typeof RunManager>[0]>
   stop: async () => undefined,
   startRun: async () => undefined,
   getRun: async () => undefined,
+  listRuns: async () => ({ items: [] }),
   getRunDetails: async () => undefined,
+  getRunEvents: async () => ({ items: [], hasMore: false }),
   subscribeRunEvents: async function* () {},
+  waitForTerminal: async () => Promise.reject(new RunManagerError('run_not_found')),
   ...overrides,
 });
 
@@ -62,13 +65,13 @@ describe('run manager error boundary', () => {
     });
   });
 
-  it('preserves typed mapped-record conflicts from read APIs', async () => {
-    const conflict = async () => Promise.reject(new RunManagerError('run_id_conflict'));
-    const manager = new RunManager(runtime({ getRun: conflict, getRunDetails: conflict }));
+  it('preserves typed observation failures from the runtime boundary', async () => {
+    const notFound = async () => Promise.reject(new RunManagerError('run_not_found'));
+    const manager = new RunManager(runtime({ getRun: notFound, getRunDetails: notFound }));
     await manager.start();
 
-    await expect(manager.getRun('Run_1')).rejects.toMatchObject({ code: 'run_id_conflict' });
-    await expect(manager.getRunDetails('Run_1')).rejects.toMatchObject({ code: 'run_id_conflict' });
+    await expect(manager.getRun('Run_1')).rejects.toMatchObject({ code: 'run_not_found' });
+    await expect(manager.getRunDetails('Run_1')).rejects.toMatchObject({ code: 'run_not_found' });
   });
 
   it.each([null, undefined, 42, '', {}, []])(

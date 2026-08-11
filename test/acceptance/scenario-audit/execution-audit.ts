@@ -90,12 +90,7 @@ export const executionScenarioAudit = [
     ],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: [
-        'retryableFailureRetry',
-        'durableBackoff',
-        'managerRestartRecovery',
-        'dbosSafeTimeAdvancement',
-      ],
+      missingCapabilities: ['retryableFailureRetry', 'durableBackoff', 'dbosSafeTimeAdvancement'],
     },
   },
   {
@@ -107,11 +102,7 @@ export const executionScenarioAudit = [
     ],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: [
-        'effectReconciliation',
-        'managerRestartRecovery',
-        'deduplicatedExecution',
-      ],
+      missingCapabilities: ['effectReconciliation', 'deduplicatedExecution'],
     },
   },
   {
@@ -127,7 +118,6 @@ export const executionScenarioAudit = [
       missingCapabilities: [
         'effectReconciliation',
         'unknownOutcomeResolution',
-        'managerRestartRecovery',
         'deduplicatedExecution',
       ],
     },
@@ -145,7 +135,7 @@ export const executionScenarioAudit = [
     requiredCapabilities: ['managerRestartRecovery', 'deduplicatedExecution'],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: ['managerRestartRecovery', 'deduplicatedExecution'],
+      missingCapabilities: ['deduplicatedExecution'],
     },
   },
   {

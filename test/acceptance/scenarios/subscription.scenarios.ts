@@ -4,6 +4,7 @@ import {
   end,
   executionPlan,
   expectEvent,
+  expectNodeExecutions,
   expectRunStatus,
   failNode,
   routeOutcomes,
@@ -62,6 +63,7 @@ export const subscriptionScenarios: readonly RunScenario[] = [
     plan: executionPlan(end('succeeded')),
     steps: [
       startRun(),
+      { kind: 'captureCursorFromAnotherRun', captureAs: 'cursor-from-another-run' },
       { kind: 'resumeSubscription', afterCapturedCursor: 'cursor-from-another-run' },
       { kind: 'expectSubscriptionError', errorCode: 'invalid_run_event_cursor' },
     ],
@@ -74,26 +76,60 @@ export const subscriptionScenarios: readonly RunScenario[] = [
     plan: executionPlan(
       sequence(
         {
-          kind: 'repeat',
+          kind: 'parallel',
           key: 'review',
-          maximumIterations: 3,
-          continueOn: ['rejected'],
-          completeOn: ['approved'],
-          body: task('reviewer'),
+          branches: {
+            product: task('product'),
+            assurance: {
+              kind: 'parallel',
+              key: 'assurance',
+              branches: { security: task('security'), qa: task('qa') },
+              join: { kind: 'all', successfulOutcomes: ['completed'], remaining: 'drain' },
+            },
+          },
+          join: { kind: 'all', successfulOutcomes: ['completed'], remaining: 'drain' },
         },
         end('succeeded'),
       ),
-      { bindings: [agentBinding('review/reviewer', 'reviewer')] },
+      {
+        bindings: [
+          agentBinding('review/product', 'product-reviewer'),
+          agentBinding('review/assurance/security', 'security-reviewer'),
+          agentBinding('review/assurance/qa', 'qa-reviewer'),
+        ],
+      },
     ),
     steps: [
       startRun(),
-      completeNode('main/review[1]/reviewer', 'rejected'),
-      { kind: 'expectIteration', path: 'main/review', iteration: 2 },
+      expectNodeExecutions(
+        'main/review/product',
+        'main/review/assurance/security',
+        'main/review/assurance/qa',
+      ),
+      completeNode('main/review/product'),
+      completeNode('main/review/assurance/security'),
+      completeNode('main/review/assurance/qa'),
+      expectRunStatus('succeeded'),
       {
         kind: 'expectRunDetails',
-        nodePaths: ['main/review[1]/reviewer', 'main/review[2]/reviewer'],
+        nodePaths: [
+          'main/review/product',
+          'main/review/assurance/security',
+          'main/review/assurance/qa',
+        ],
+        scopePaths: [
+          'main',
+          'main/review/product',
+          'main/review/assurance',
+          'main/review/assurance/security',
+          'main/review/assurance/qa',
+        ],
+        attempts: [
+          { nodePath: 'main/review/product', status: 'completed' },
+          { nodePath: 'main/review/assurance/security', status: 'completed' },
+          { nodePath: 'main/review/assurance/qa', status: 'completed' },
+        ],
       },
-      expectRunStatus('running'),
     ],
   }),
   scenario({
@@ -112,6 +148,7 @@ export const subscriptionScenarios: readonly RunScenario[] = [
       { kind: 'resumeSubscription', afterCapturedCursor: 'started' },
       completeNode('main/work'),
       expectEvent('nodeExecution.completed', { path: 'main/work' }),
+      expectEvent('run.completed'),
       expectRunStatus('succeeded'),
     ],
   }),

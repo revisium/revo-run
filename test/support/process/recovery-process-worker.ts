@@ -83,8 +83,8 @@ if (environment('REVO_RUN_TEST_MODE') === 'start') {
 
 const watchTerminalRun = async (): Promise<void> => {
   const details = await manager.getRunDetails(runId);
-  for (const execution of details?.nodeExecutions ?? []) {
-    const path = execution.request.displayPath;
+  for (const execution of details?.nodeInstances ?? []) {
+    const path = execution.displayPath;
     if (!checkpointed.has(path)) {
       checkpointed.add(path);
       send({ kind: 'checkpointed', path });

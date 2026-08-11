@@ -8,15 +8,31 @@ import type {
   CreateRunManagerOptions,
   ExecutionBinding,
   ExecutionPlan,
+  ListRunsInput,
+  RunAttempt,
+  RunDetails,
+  RunError,
+  RunEventCursor,
+  RunEventPage,
+  RunEventPageInput,
+  RunEventSubscriptionInput,
   RunExecutorRequest,
   RunExecutorResult,
   RunManager,
   RunManagerErrorCode,
   RunEvent,
   RunId,
+  RunNodeInstance,
+  RunPage,
+  RunResult,
+  RunScope,
+  RunSnapshot,
+  RunStatus,
+  RunSummary,
   ScriptExecutorBinding,
   StartRunInput,
   StartRunResult,
+  WaitForTerminalInput,
 } from '../../src/index.js';
 
 describe('root-only public API', () => {
@@ -25,11 +41,19 @@ describe('root-only public API', () => {
       'AgentExecutorBindingSchema',
       'ExecutionBindingSchema',
       'ExecutionPlanSchema',
+      'RunErrorSchema',
+      'RunEventCursorSchema',
+      'RunEventPageInputSchema',
+      'RunEventPageSchema',
+      'RunEventSchema',
+      'RunEventSubscriptionInputSchema',
       'RunExecutorRequestSchema',
       'RunExecutorResultSchema',
       'RunIdSchema',
       'RunManagerError',
       'RunManagerErrorCodeSchema',
+      'RunResultSchema',
+      'RunStatusSchema',
       'ScriptExecutorBindingSchema',
       'StartRunInputSchema',
       'StartRunResultSchema',
@@ -62,6 +86,22 @@ describe('root-only public API', () => {
     expectTypeOf<RunExecutorResult>().toMatchTypeOf<{ readonly kind: string }>();
     expectTypeOf<RunManagerErrorCode>().toBeString();
     expectTypeOf<RunEvent>().toBeObject();
+    expectTypeOf<RunEventCursor>().toBeString();
+    expectTypeOf<RunEventPageInput>().toBeObject();
+    expectTypeOf<RunEventPage>().toBeObject();
+    expectTypeOf<RunEventSubscriptionInput>().toBeObject();
     expectTypeOf<RunId>().toBeString();
+    expectTypeOf<ListRunsInput>().toBeObject();
+    expectTypeOf<RunPage>().toBeObject();
+    expectTypeOf<RunStatus>().toBeString();
+    expectTypeOf<RunError>().toBeObject();
+    expectTypeOf<RunResult>().toBeObject();
+    expectTypeOf<RunSummary>().toBeObject();
+    expectTypeOf<RunSnapshot>().toBeObject();
+    expectTypeOf<RunDetails>().toBeObject();
+    expectTypeOf<RunScope>().toBeObject();
+    expectTypeOf<RunNodeInstance>().toBeObject();
+    expectTypeOf<RunAttempt>().toBeObject();
+    expectTypeOf<WaitForTerminalInput>().toBeObject();
   });
 });
