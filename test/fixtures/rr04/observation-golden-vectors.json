@@ -1,0 +1,119 @@
+{
+  "contract": "rr-04-read-observe-api",
+  "artifactVersion": 2,
+  "sourceRevision": "1fb508fffc76dd9946994f0d57cd274b5d6f25d7",
+  "vectors": [
+    {
+      "id": "stored-terminal-event",
+      "operation": "parseRunEvent",
+      "input": {
+        "cursor": "Golden_1:1",
+        "timestamp": "2026-08-11T00:00:00.000Z",
+        "type": "run.completed",
+        "data": { "outcome": "completed" }
+      },
+      "expected": {
+        "kind": "output",
+        "value": {
+          "cursor": "Golden_1:1",
+          "timestamp": "2026-08-11T00:00:00.000Z",
+          "type": "run.completed",
+          "data": { "outcome": "completed" }
+        }
+      }
+    },
+    {
+      "id": "stored-event-rejects-unapproved-data",
+      "operation": "parseRunEvent",
+      "input": {
+        "cursor": "Golden_1:1",
+        "timestamp": "2026-08-11T00:00:00.000Z",
+        "type": "run.completed",
+        "data": { "outcome": "completed", "private": true }
+      },
+      "expected": { "kind": "error", "message": "Stored run event is invalid." }
+    },
+    {
+      "id": "parallel-branch-result",
+      "operation": "parseParallelBranchResult",
+      "input": {
+        "key": "security",
+        "outcome": "completed",
+        "outputs": [
+          ["review/security", { "result": { "kind": "json", "value": { "approved": true } } }]
+        ]
+      },
+      "expected": {
+        "kind": "output",
+        "value": {
+          "key": "security",
+          "outcome": "completed",
+          "outputs": [
+            ["review/security", { "result": { "kind": "json", "value": { "approved": true } } }]
+          ]
+        }
+      }
+    },
+    {
+      "id": "parallel-branch-result-rejects-extra-fields",
+      "operation": "parseParallelBranchResult",
+      "input": {
+        "key": "security",
+        "outcome": "completed",
+        "outputs": [],
+        "runtimePath": "must-not-leak"
+      },
+      "expected": {
+        "kind": "error",
+        "message": "Parallel branch workflow output is invalid."
+      }
+    },
+    {
+      "id": "dbos-workflow-status-envelope",
+      "operation": "parseDbosWorkflowStatus",
+      "input": {
+        "workflowID": "rr:run:v2:Golden_1",
+        "status": "PENDING",
+        "workflowName": "revo.run.v2",
+        "workflowClassName": "",
+        "input": [],
+        "createdAt": 1,
+        "updatedAt": 1,
+        "priority": 0,
+        "applicationID": "revo-run"
+      },
+      "expected": {
+        "kind": "output",
+        "value": {
+          "workflowID": "rr:run:v2:Golden_1",
+          "status": "PENDING",
+          "workflowName": "revo.run.v2",
+          "workflowClassName": "",
+          "input": [],
+          "createdAt": 1,
+          "updatedAt": 1,
+          "priority": 0,
+          "applicationID": "revo-run"
+        }
+      }
+    },
+    {
+      "id": "dbos-workflow-status-rejects-unapproved-envelope-field",
+      "operation": "parseDbosWorkflowStatus",
+      "input": {
+        "workflowID": "rr:run:v2:Golden_1",
+        "status": "PENDING",
+        "workflowName": "revo.run.v2",
+        "workflowClassName": "",
+        "createdAt": 1,
+        "priority": 0,
+        "applicationID": "revo-run",
+        "privateProviderField": true
+      },
+      "expected": {
+        "kind": "error",
+        "message": "DBOS workflow status envelope is invalid."
+      }
+    }
+  ]
+}

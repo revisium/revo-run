@@ -2,13 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type TestWorkflow = (input: unknown) => Promise<unknown>;
 type TestStatus = {
+  readonly applicationID: string;
   readonly workflowID: string;
   readonly workflowName: string;
+  readonly workflowClassName: string;
+  readonly priority: number;
   readonly status: string;
   readonly input: readonly unknown[];
   readonly output: unknown;
-  readonly createdAt: string;
-  readonly updatedAt: string | null;
+  readonly createdAt: number;
+  readonly updatedAt: number;
 };
 
 const dbos = vi.hoisted(() => ({
@@ -57,13 +60,16 @@ const status = (
   input: readonly unknown[] = [durableInput()],
   workflowName = runWorkflowName,
 ): TestStatus => ({
+  applicationID: 'test',
   workflowID: rootWorkflowId,
   workflowName,
   status: 'PENDING',
   input,
-  output: null,
-  createdAt: '2026-01-01T00:00:00.000Z',
-  updatedAt: null,
+  output: undefined,
+  createdAt: 1,
+  updatedAt: 1,
+  workflowClassName: '',
+  priority: 0,
 });
 
 const runtime = () =>
@@ -216,14 +222,25 @@ describe('DBOS mapped run reads', () => {
     await expect(runtime().getRun(runId)).rejects.toMatchObject({ code: 'run_read_failed' });
   });
 
+  it('returns undefined when the workflow status is missing', async () => {
+    dbos.getWorkflowStatus.mockResolvedValueOnce(null);
+
+    await expect(runtime().getRun(runId)).resolves.toBeUndefined();
+  });
+
   it.each([
     ['foreign workflow', status([durableInput()], 'foreign.workflow.v1')],
     ['mapped workflow ID mismatch', { ...status(), workflowID: 'rr:run:v2:Other_1' }],
-    ['malformed arguments', status([{ contractVersion: 2 }])],
     ['stored run ID mismatch', status([durableInput({ runId: 'Other_1' })])],
-  ])('maps %s to run_id_conflict', async (_label, workflowStatus) => {
+  ])('treats %s as not found', async (_label, workflowStatus) => {
     dbos.getWorkflowStatus.mockResolvedValueOnce(workflowStatus);
-    await expect(runtime().getRun(runId)).rejects.toMatchObject({ code: 'run_id_conflict' });
+    await expect(runtime().getRun(runId)).resolves.toBeUndefined();
+  });
+
+  it('maps malformed arguments to run_read_failed for an owned workflow', async () => {
+    const workflowStatus = status([{ contractVersion: 2 }]);
+    dbos.getWorkflowStatus.mockResolvedValueOnce(workflowStatus);
+    await expect(runtime().getRun(runId)).rejects.toMatchObject({ code: 'run_read_failed' });
   });
 
   it.each([

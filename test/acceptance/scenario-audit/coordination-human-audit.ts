@@ -6,7 +6,7 @@ export const coordinationHumanScenarioAudit = [
     requiredCapabilities: ['humanGateRecovery', 'managerRestartRecovery'],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: ['humanGateRecovery', 'managerRestartRecovery'],
+      missingCapabilities: ['humanGateRecovery'],
     },
   },
   {

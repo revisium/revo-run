@@ -5,17 +5,25 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { RunExecutor } from '../contracts/executor/run-executor.js';
 import type { JsonValue } from '../contracts/json-value.js';
 import type { ExecutionPlan } from '../contracts/run/execution-plan.js';
+import type { ListRunsInput, RunPage } from '../contracts/run/list-runs.js';
 import type { RunDetails } from '../contracts/run/run-details.js';
+import type {
+  RunEventPage,
+  RunEventPageInput,
+  RunEventSubscriptionInput,
+} from '../contracts/run/run-event-page.js';
 import type { RunEvent } from '../contracts/run/run-event.js';
 import { RunManagerError } from '../contracts/run/run-manager-error.js';
 import type { RunSnapshot } from '../contracts/run/run.js';
+import type { WaitForTerminalInput } from '../contracts/run/wait-for-terminal.js';
 import type { RunWorkflowInput } from '../contracts/workflow/run-workflow-input.js';
 import { parseRunWorkflowInput } from '../validation/parse-run-workflow-data.js';
-import { parseRunEvent } from '../validation/run-event.validator.js';
-import { runEventStreamName, runWorkflowName } from './dbos-names.js';
-import { loadRunNodeExecutions } from './read-model/load-run-node-executions.js';
-import { mapRunDetails } from './read-model/map-run-details.js';
+import { runWorkflowName } from './dbos-names.js';
+import { loadRunDetails } from './read-model/load-run-details.js';
+import { loadRunPage } from './read-model/load-run-page.js';
 import { mapRunSnapshot, RunOwnershipError } from './read-model/map-run-snapshot.js';
+import { loadRunEventPage, subscribeToRunEvents } from './read-model/run-event-reader.js';
+import { waitForTerminalRun } from './read-model/wait-for-terminal-run.js';
 import { runWorkflowId } from './workflow-id.js';
 import type { WorkflowRegistry } from './workflow-registry.js';
 
@@ -100,9 +108,18 @@ export class DbosRunRuntime {
     try {
       return mapRunSnapshot(status, runWorkflowName, runId);
     } catch (error) {
-      throw new RunManagerError(
-        error instanceof RunOwnershipError ? 'run_id_conflict' : 'run_read_failed',
-      );
+      if (error instanceof RunOwnershipError) {
+        return undefined;
+      }
+      throw new RunManagerError('run_read_failed');
+    }
+  }
+
+  async listRuns(input: ListRunsInput): Promise<RunPage> {
+    try {
+      return await loadRunPage(input);
+    } catch {
+      throw new RunManagerError('run_read_failed');
     }
   }
 
@@ -112,18 +129,45 @@ export class DbosRunRuntime {
       return undefined;
     }
 
-    return mapRunDetails(run, await loadRunNodeExecutions(runWorkflowId(runId)));
+    try {
+      return await loadRunDetails(run);
+    } catch {
+      throw new RunManagerError('run_read_failed');
+    }
   }
 
-  async *subscribeRunEvents(runId: string): AsyncGenerator<RunEvent> {
+  async getRunEvents(runId: string, input: RunEventPageInput): Promise<RunEventPage> {
+    if ((await this.getRun(runId)) === undefined) {
+      throw new RunManagerError('run_not_found');
+    }
+    try {
+      return await loadRunEventPage(runId, input);
+    } catch (error) {
+      if (error instanceof RunManagerError) {
+        throw error;
+      }
+      throw new RunManagerError('run_read_failed');
+    }
+  }
+
+  async *subscribeRunEvents(
+    runId: string,
+    input: RunEventSubscriptionInput,
+  ): AsyncGenerator<RunEvent> {
     const run = await this.getRun(runId);
     if (run === undefined) {
       throw new RunManagerError('run_not_found');
     }
 
-    for await (const event of DBOS.readStream<unknown>(runWorkflowId(runId), runEventStreamName)) {
-      yield parseRunEvent(event);
-    }
+    yield* subscribeToRunEvents(runId, input);
+  }
+
+  async waitForTerminal(
+    runId: string,
+    input: WaitForTerminalInput,
+    managerSignal: AbortSignal,
+  ): Promise<RunSnapshot> {
+    return waitForTerminalRun(() => this.getRun(runId), input, managerSignal);
   }
 
   private async confirmAdmission(

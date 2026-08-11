@@ -58,8 +58,11 @@ describe('task timeout', () => {
       status: 'failed',
       result: { outcome: 'timedOut' },
     });
-    expect(run?.error).toBeUndefined();
-    await expect(manager.getRunDetails(runId)).resolves.toMatchObject({ nodeExecutions: [] });
+    expect(run !== undefined && 'error' in run ? run.error : undefined).toBeUndefined();
+    await expect(manager.getRunDetails(runId)).resolves.toMatchObject({
+      nodeInstances: [expect.objectContaining({ status: 'timedOut' })],
+      attempts: [expect.objectContaining({ status: 'timedOut' })],
+    });
     const timedOutEvent = events.find(({ type }) => type === 'nodeExecution.timedOut');
     assert(timedOutEvent?.type === 'nodeExecution.timedOut');
     expect(timedOutEvent.data.attemptOrdinal).toBe(1);

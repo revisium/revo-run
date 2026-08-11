@@ -35,6 +35,8 @@ export const implementedCapabilities = [
   'pinnedArtifactInput',
   'planWideConcurrencyLimit',
   'planSchemaVersionValidation',
+  'runDetailsProjection',
+  'runEventSubscription',
   'rootPipelineValidation',
   'repeatExecutionBoundValidation',
   'secretBoundaryResolution',
@@ -45,12 +47,15 @@ export const implementedCapabilities = [
   'subpipelineDepthValidation',
   'subpipelineFailureRouting',
   'subpipelineRecursionValidation',
+  'subscriptionCursorValidation',
+  'subscriptionRecovery',
   'taskFailureRouting',
   'terminalFailureEvent',
   'unhandledOutcomeFailure',
   'uniqueNodeKeyValidation',
   'unresolvedSecretFailure',
   'versionedScriptTaskExecution',
+  'managerRestartRecovery',
 ] as const satisfies readonly ScenarioCapability[];
 
 const implementedCapabilitySet: ReadonlySet<ScenarioCapability> = new Set(implementedCapabilities);

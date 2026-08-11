@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { pipelineNodePath } from '../../../src/contracts/pipeline/node-path.js';
 import type { PipelineNode } from '../../../src/contracts/pipeline/pipeline-node.js';
 import type { ExecutionPlan, RunEvent } from '../../../src/index.js';
+import type { RunEventCursor } from '../../../src/index.js';
 import {
   createAuthoredNodeId,
   createNodeInstanceId,
@@ -10,6 +11,7 @@ import {
   createRootScopeId,
   createSubpipelineScopeId,
 } from '../../../src/pipeline/identity/execution-identity.js';
+import { isRunEventCursor } from '../../../src/validation/run-event-page.validator.js';
 import type { ExpectedRunEvent } from '../../dsl/scenario.js';
 
 interface NodeSearchContext {
@@ -27,19 +29,27 @@ export class RunEventExpectations {
   }
 
   expectEvent(events: readonly RunEvent[], plan: ExecutionPlan, expected: ExpectedRunEvent): void {
-    const expectedNodeInstanceId =
-      expected.path === undefined ? undefined : this.nodeInstanceIdFor(plan, expected.path);
-    const event = events.find(
-      (candidate) =>
-        candidate.type === expected.type &&
-        (expected.path === undefined ||
-          ('nodeInstanceId' in candidate.data &&
-            candidate.data.nodeInstanceId === expectedNodeInstanceId)),
-    );
+    const event = events.find((candidate) => this.matches(candidate, plan, expected));
     assert(event !== undefined);
-    if (expected.captureCursorAs !== undefined) {
-      this.capturedCursors.set(expected.captureCursorAs, event.cursor);
+    this.captureExpected(event, expected);
+  }
+
+  captureIfExpected(event: RunEvent, plan: ExecutionPlan, expected: ExpectedRunEvent): boolean {
+    if (!this.matches(event, plan, expected)) {
+      return false;
     }
+    this.captureExpected(event, expected);
+    return true;
+  }
+
+  captureCursor(name: string, cursor: string): void {
+    this.capturedCursors.set(name, cursor);
+  }
+
+  cursor(name: string): RunEventCursor {
+    const cursor = this.capturedCursors.get(name);
+    assert(cursor !== undefined && isRunEventCursor(cursor), `Cursor ${name} was not captured.`);
+    return cursor;
   }
 
   expectInputResolutionFailure(
@@ -91,6 +101,22 @@ export class RunEventExpectations {
       { pipelineId: plan.rootPipelineId, runtimePrefix: plan.rootPipelineId, scopeId },
       path,
     );
+  }
+
+  private matches(event: RunEvent, plan: ExecutionPlan, expected: ExpectedRunEvent): boolean {
+    const expectedNodeInstanceId =
+      expected.path === undefined ? undefined : this.nodeInstanceIdFor(plan, expected.path);
+    return (
+      event.type === expected.type &&
+      (expected.path === undefined ||
+        ('nodeInstanceId' in event.data && event.data.nodeInstanceId === expectedNodeInstanceId))
+    );
+  }
+
+  private captureExpected(event: RunEvent, expected: ExpectedRunEvent): void {
+    if (expected.captureCursorAs !== undefined) {
+      this.capturedCursors.set(expected.captureCursorAs, event.cursor);
+    }
   }
 
   private findNodeInstanceId(

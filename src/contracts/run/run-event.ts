@@ -9,11 +9,10 @@ import {
   ScopeIdSchema,
 } from '../execution-identity.js';
 import { IdentifierSchema, PositiveSafeIntegerSchema } from '../schema-primitives.js';
+import { RunEventCursorSchema } from './run-event-cursor.js';
 
-const cursorPattern = '^[A-Za-z][A-Za-z0-9._-]{0,127}:[1-9][0-9]*$';
 const timestampPattern = String.raw`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$`;
 
-const CursorSchema = Type.String({ pattern: cursorPattern });
 const TimestampSchema = Type.String({ format: 'date-time', pattern: timestampPattern });
 
 const NodeIdentitySchema = Type.Object(
@@ -43,7 +42,7 @@ const eventVariant = <EventType extends string, EventData extends TSchema>(
   draft: Type.Object({ type: Type.Literal(type), data }, { additionalProperties: false }),
   stored: Type.Object(
     {
-      cursor: CursorSchema,
+      cursor: RunEventCursorSchema,
       timestamp: TimestampSchema,
       type: Type.Literal(type),
       data,

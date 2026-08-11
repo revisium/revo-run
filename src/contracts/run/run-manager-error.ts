@@ -30,8 +30,14 @@ export const RunManagerErrorCodeSchema = Type.Union([
   Type.Literal('run_id_conflict'),
   Type.Literal('run_admission_failed'),
   Type.Literal('run_not_found'),
+  Type.Literal('invalid_list_runs_input'),
+  Type.Literal('invalid_run_event_page_input'),
+  Type.Literal('invalid_run_event_cursor'),
+  Type.Literal('invalid_wait_for_terminal_input'),
   Type.Literal('run_read_failed'),
   Type.Literal('run_event_subscription_failed'),
+  Type.Literal('run_wait_timed_out'),
+  Type.Literal('run_wait_aborted'),
 ]);
 
 export type RunManagerErrorCode = DeepReadonly<Type.Static<typeof RunManagerErrorCodeSchema>>;
@@ -64,8 +70,14 @@ const messages: Readonly<Record<RunManagerErrorCode, string>> = {
   run_id_conflict: 'Run ID is already claimed.',
   run_admission_failed: 'Run admission failed.',
   run_not_found: 'Run was not found.',
+  invalid_list_runs_input: 'Run list input is invalid.',
+  invalid_run_event_page_input: 'Run event page input is invalid.',
+  invalid_run_event_cursor: 'Run event cursor is invalid.',
+  invalid_wait_for_terminal_input: 'Run wait input is invalid.',
   run_read_failed: 'Run could not be read.',
   run_event_subscription_failed: 'Run event subscription failed.',
+  run_wait_timed_out: 'Run wait timed out.',
+  run_wait_aborted: 'Run wait was aborted.',
 };
 
 export class RunManagerError extends Error {

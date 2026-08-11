@@ -1,0 +1,479 @@
+{
+  "contract": "rr-04-read-observe-api",
+  "artifactVersion": 2,
+  "sourceRevision": "1fb508fffc76dd9946994f0d57cd274b5d6f25d7",
+  "axes": {
+    "surface": [
+      "getRun",
+      "listRuns",
+      "getRunDetails",
+      "getRunEvents",
+      "subscribeRunEvents",
+      "waitForTerminal"
+    ],
+    "ownership": ["owned", "missing", "foreign", "malformedOwned"],
+    "lifecycle": ["pending", "terminal", "managerStop", "callerAbort", "deadline"],
+    "cursor": ["absent", "acceptedHistory", "terminal", "future", "crossRun"],
+    "history": ["singlePage", "multiplePages", "liveAfterHighWater"],
+    "scopeTopology": ["root", "inlineSubpipeline", "parallelBranch", "nestedParallel"]
+  },
+  "cases": [
+    {
+      "id": "snapshot-owned-pending-terminal",
+      "covers": {
+        "surface": ["getRun"],
+        "ownership": ["owned"],
+        "lifecycle": ["pending", "terminal"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/map-run-snapshot.test.ts",
+          "anchor": "maps DBOS status %s to %s"
+        }
+      ]
+    },
+    {
+      "id": "snapshot-missing",
+      "covers": {
+        "surface": ["getRun"],
+        "ownership": ["missing"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/dbos-run-runtime-admission.test.ts",
+          "anchor": "returns undefined when the workflow status is missing"
+        }
+      ]
+    },
+    {
+      "id": "snapshot-foreign",
+      "covers": {
+        "surface": ["getRun"],
+        "ownership": ["foreign"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/dbos-run-runtime-admission.test.ts",
+          "anchor": "treats %s as not found"
+        }
+      ]
+    },
+    {
+      "id": "snapshot-malformed-owned",
+      "covers": {
+        "surface": ["getRun"],
+        "ownership": ["malformedOwned"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/dbos-run-runtime-admission.test.ts",
+          "anchor": "maps malformed arguments to run_read_failed for an owned workflow"
+        }
+      ]
+    },
+    {
+      "id": "list-owned-raw-paging",
+      "covers": {
+        "surface": ["listRuns"],
+        "ownership": ["owned"],
+        "history": ["singlePage", "multiplePages"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/load-run-page.test.ts",
+          "anchor": "uses raw offset paging and exposes a continuation only for another owned match"
+        }
+      ]
+    },
+    {
+      "id": "list-foreign-exclusion",
+      "covers": {
+        "surface": ["listRuns"],
+        "ownership": ["foreign"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/load-run-page.test.ts",
+          "anchor": "excludes a prefixed row whose parsed durable run ID is foreign"
+        }
+      ]
+    },
+    {
+      "id": "list-malformed-owned-failure",
+      "covers": {
+        "surface": ["listRuns"],
+        "ownership": ["malformedOwned"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/load-run-page.test.ts",
+          "anchor": "fails instead of hiding a corrupt owned row"
+        }
+      ]
+    },
+    {
+      "id": "details-root-inline-parallel",
+      "covers": {
+        "surface": ["getRunDetails"],
+        "lifecycle": ["terminal"],
+        "scopeTopology": ["root", "inlineSubpipeline", "parallelBranch"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/load-run-details.test.ts",
+          "anchor": "maps depth-first scopes and terminal attempts"
+        }
+      ]
+    },
+    {
+      "id": "details-near-budget-step-pages",
+      "covers": {
+        "surface": ["getRunDetails"],
+        "history": ["multiplePages"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/load-run-details-validation.test.ts",
+          "anchor": "after 99,997 preceding valid steps without stack growth"
+        }
+      ]
+    },
+    {
+      "id": "event-page-accepted-cursor-domain",
+      "covers": {
+        "surface": ["getRunEvents"],
+        "cursor": ["absent", "acceptedHistory", "terminal"],
+        "history": ["singlePage"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/run-event-reader.test.ts",
+          "anchor": "reconnects exclusively after every accepted cursor %s"
+        }
+      ]
+    },
+    {
+      "id": "event-page-invalid-cursor-domain",
+      "covers": {
+        "surface": ["getRunEvents"],
+        "cursor": ["future", "crossRun"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/run-event-reader.test.ts",
+          "anchor": "rejects cross-run and future cursors with one typed code"
+        }
+      ]
+    },
+    {
+      "id": "event-page-near-budget-history",
+      "covers": {
+        "surface": ["getRunEvents"],
+        "history": ["multiplePages"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/run-event-reader.test.ts",
+          "anchor": "bounds retained history to the requested page near the event budget"
+        }
+      ]
+    },
+    {
+      "id": "subscription-manager-stop",
+      "covers": {
+        "surface": ["subscribeRunEvents"],
+        "lifecycle": ["pending", "managerStop"],
+        "cursor": ["absent"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/rr04-public-contract.test.ts",
+          "anchor": "aborts a pending subscription next when its captured manager lifecycle stops"
+        }
+      ]
+    },
+    {
+      "id": "subscription-cross-run-rejection",
+      "covers": {
+        "surface": ["subscribeRunEvents"],
+        "cursor": ["crossRun"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/rr04-public-contract.test.ts",
+          "anchor": "rejects a cursor owned by another run before subscribing to the stream"
+        }
+      ]
+    },
+    {
+      "id": "subscription-high-water-resume",
+      "covers": {
+        "surface": ["subscribeRunEvents"],
+        "lifecycle": ["terminal"],
+        "cursor": ["acceptedHistory"],
+        "history": ["liveAfterHighWater"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/run-event-reader.test.ts",
+          "anchor": "closes the snapshot-subscribe race and resumes exclusively"
+        }
+      ]
+    },
+    {
+      "id": "wait-initial-terminal",
+      "covers": {
+        "surface": ["waitForTerminal"],
+        "ownership": ["owned"],
+        "lifecycle": ["terminal"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/wait-for-terminal-run.test.ts",
+          "anchor": "returns an initially terminal snapshot without polling"
+        }
+      ]
+    },
+    {
+      "id": "wait-deadline",
+      "covers": {
+        "surface": ["waitForTerminal"],
+        "ownership": ["owned"],
+        "lifecycle": ["deadline"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/wait-for-terminal-run.test.ts",
+          "anchor": "reports a typed timeout only after the final authoritative read"
+        }
+      ]
+    },
+    {
+      "id": "wait-caller-abort",
+      "covers": {
+        "surface": ["waitForTerminal"],
+        "ownership": ["owned"],
+        "lifecycle": ["callerAbort"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/wait-for-terminal-run.test.ts",
+          "anchor": "promptly observes user abort while the authoritative read never settles"
+        }
+      ]
+    },
+    {
+      "id": "wait-manager-stop",
+      "covers": {
+        "surface": ["waitForTerminal"],
+        "ownership": ["owned"],
+        "lifecycle": ["managerStop"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/wait-for-terminal-run.test.ts",
+          "anchor": "promptly observes manager stop while the authoritative read never settles"
+        }
+      ]
+    },
+    {
+      "id": "wait-missing",
+      "covers": {
+        "surface": ["waitForTerminal"],
+        "ownership": ["missing"]
+      },
+      "evidence": [
+        {
+          "file": "test/integration/run-observation.test.ts",
+          "anchor": "reports a missing run while waiting for terminal status"
+        }
+      ]
+    },
+    {
+      "id": "real-dbos-list-observation",
+      "covers": {
+        "surface": ["listRuns"],
+        "ownership": ["owned"],
+        "lifecycle": ["pending", "terminal"],
+        "history": ["singlePage", "multiplePages"]
+      },
+      "evidence": [
+        {
+          "file": "test/integration/run-observation.test.ts",
+          "anchor": "filters run listings by creation dates and status"
+        },
+        {
+          "file": "test/integration/run-observation.test.ts",
+          "anchor": "continues a run listing from the raw DBOS offset"
+        }
+      ]
+    },
+    {
+      "id": "real-dbos-event-observation",
+      "covers": {
+        "surface": ["getRunEvents"],
+        "ownership": ["owned"],
+        "lifecycle": ["pending", "terminal"],
+        "cursor": ["absent", "acceptedHistory", "future"],
+        "history": ["singlePage", "multiplePages"]
+      },
+      "evidence": [
+        {
+          "file": "test/integration/run-observation.test.ts",
+          "anchor": "returns a finite high-water page while the run stream is still active"
+        },
+        {
+          "file": "test/integration/run-observation.test.ts",
+          "anchor": "continues event pages from an observed cursor"
+        },
+        {
+          "file": "test/integration/run-observation.test.ts",
+          "anchor": "rejects an event cursor beyond the current high-water mark"
+        }
+      ]
+    },
+    {
+      "id": "real-dbos-wait-observation",
+      "covers": {
+        "surface": ["waitForTerminal"],
+        "ownership": ["owned", "missing"],
+        "lifecycle": ["pending", "terminal", "callerAbort", "deadline"]
+      },
+      "evidence": [
+        {
+          "file": "test/integration/run-observation.test.ts",
+          "anchor": "reports a terminal wait timeout while the run remains active"
+        },
+        {
+          "file": "test/integration/run-observation.test.ts",
+          "anchor": "reports caller abort separately from a terminal wait timeout"
+        },
+        {
+          "file": "test/integration/run-observation.test.ts",
+          "anchor": "reports a missing run while waiting for terminal status"
+        },
+        {
+          "file": "test/integration/run-observation.test.ts",
+          "anchor": "returns the authoritative terminal snapshot after the run succeeds"
+        }
+      ]
+    },
+    {
+      "id": "real-dbos-foreign-observation",
+      "covers": {
+        "surface": ["getRun", "listRuns", "getRunDetails", "getRunEvents", "waitForTerminal"],
+        "ownership": ["foreign"]
+      },
+      "evidence": [
+        {
+          "file": "test/integration/run-observation.test.ts",
+          "anchor": "hides a foreign mapped workflow from every observation surface"
+        }
+      ]
+    },
+    {
+      "id": "real-dbos-nested-details",
+      "covers": {
+        "surface": ["getRunDetails"],
+        "lifecycle": ["terminal"],
+        "scopeTopology": ["root", "parallelBranch", "nestedParallel"]
+      },
+      "evidence": [
+        {
+          "file": "test/integration/run-details-observation.test.ts",
+          "anchor": "projects root and nested parallel child workflows with their completed attempts"
+        }
+      ]
+    },
+    {
+      "id": "real-dbos-page-boundaries",
+      "covers": {
+        "surface": ["getRunDetails", "getRunEvents"],
+        "history": ["multiplePages"]
+      },
+      "evidence": [
+        {
+          "file": "test/integration/run-details-observation.test.ts",
+          "anchor": "loads all 105 durable node steps across the DBOS details boundary"
+        },
+        {
+          "file": "test/integration/run-details-observation.test.ts",
+          "anchor": "pages all 211 public events in 100, 100, and 11 event slices"
+        }
+      ]
+    },
+    {
+      "id": "acceptance-process-reconnect",
+      "covers": {
+        "surface": ["subscribeRunEvents"],
+        "lifecycle": ["terminal", "managerStop"],
+        "cursor": ["acceptedHistory"],
+        "history": ["liveAfterHighWater"]
+      },
+      "evidence": [
+        {
+          "file": "test/acceptance/pipeline-execution.test.ts",
+          "anchor": "await expect(runAcceptanceScenario(scenario)).resolves.toBeUndefined();"
+        },
+        {
+          "file": "test/support/acceptance/run-acceptance-scenario.ts",
+          "anchor": "if (scenario.intentId === 'rr-084')"
+        },
+        {
+          "file": "test/support/process/run-subscription-recovery-scenario.ts",
+          "anchor": "Observer emitted ${JSON.stringify(next)} before ${JSON.stringify(expected)}."
+        },
+        {
+          "file": "test/support/process/run-subscription-recovery-scenario.ts",
+          "anchor": "Captured nodeExecution.started event was replayed."
+        },
+        {
+          "file": "test/support/process/run-subscription-recovery-scenario.ts",
+          "anchor": "await observer.expectNext({ kind: 'stopped' });"
+        }
+      ]
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "no-production-runtime-capabilities",
+      "reason": "RR-04 observes admitted execution only and must not implement retry, reconcile, gates, map, repeat, or consensus.",
+      "evidence": [
+        {
+          "file": "test/acceptance/scenario-readiness.ts",
+          "anchor": "implementedCapabilities"
+        }
+      ]
+    },
+    {
+      "id": "no-public-provider-envelopes",
+      "reason": "DBOS WorkflowStatus and StepInfo stay behind the read-model boundary.",
+      "evidence": [
+        {
+          "file": "test/unit/public-api.test.ts",
+          "anchor": "keeps the supported type surface available from the package root"
+        }
+      ]
+    },
+    {
+      "id": "no-raw-database-query-path",
+      "reason": "Observation uses supported DBOS status, workflow-list, step-page, and stream APIs.",
+      "evidence": [
+        {
+          "file": "src/dbos/read-model/load-run-details.ts",
+          "anchor": "DBOS.getWorkflowStatus"
+        }
+      ]
+    },
+    {
+      "id": "no-command-or-mutation-surface",
+      "reason": "RR-04 adds read, subscribe, and wait operations only.",
+      "evidence": [
+        {
+          "file": "test/unit/rr04-public-contract.test.ts",
+          "anchor": "RR-04 public observation input contract"
+        }
+      ]
+    }
+  ]
+}

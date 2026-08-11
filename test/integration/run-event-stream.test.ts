@@ -160,6 +160,10 @@ describe('real DBOS run event stream', () => {
     await DBOS.cancelWorkflow(runWorkflowId(runId));
     await executor.complete('main/work', { kind: 'completed', outcome: 'completed' });
     await waitForRunStatus(runManager, runId, 'cancelled');
+    await expect(runManager.waitForTerminal(runId, { timeoutMs: 1_000 })).resolves.toMatchObject({
+      id: runId,
+      status: 'cancelled',
+    });
 
     const acceptedPrefix: RunEvent[] = [];
     if (!first.done) {
@@ -179,5 +183,10 @@ describe('real DBOS run event stream', () => {
     expect(
       acceptedPrefix.some(({ type }) => type === 'run.completed' || type === 'run.failed'),
     ).toBe(false);
+    await expect(runManager.getRunEvents(runId)).resolves.toMatchObject({
+      items: [{ type: 'nodeExecution.started' }],
+      nextCursor: `${runId}:1`,
+      hasMore: false,
+    });
   });
 });

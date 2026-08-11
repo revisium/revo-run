@@ -7,15 +7,16 @@ import { createRunManager, RunManagerError } from '../../../src/index.js';
 import type {
   ExecutionPlan,
   JsonValue,
-  RunDetails,
   RunEvent,
   RunManager,
   RunStatus,
 } from '../../../src/index.js';
 import type { RunScenario, ScenarioStep } from '../../dsl/scenario.js';
 import { ControlledRunExecutor } from '../executor/controlled-run-executor.js';
+import { runSubscriptionRecoveryScenario } from '../process/run-subscription-recovery-scenario.js';
 import { testDatabaseUrl } from '../test-environment.js';
 import { RunEventExpectations } from './run-event-expectations.js';
+import { RunObservationAssertions } from './run-observation-assertions.js';
 
 const terminal = (status: RunStatus): boolean => status !== 'pending' && status !== 'running';
 
@@ -25,13 +26,21 @@ class AcceptanceScenarioRunner {
   private readonly runId = `acceptance-${randomUUID()}`;
   private readonly executorSideInputFailures = new Set<string>();
   private readonly eventExpectations = new RunEventExpectations(this.runId);
+  private readonly observation: RunObservationAssertions;
+  private eventIterator: AsyncIterator<RunEvent> | undefined;
   private startError: Error | undefined;
+  private subscriptionError: Error | undefined;
 
   constructor() {
     this.manager = createRunManager({
       database: { url: testDatabaseUrl() },
       executor: this.executor,
     });
+    this.observation = new RunObservationAssertions(
+      this.manager,
+      this.runId,
+      this.eventExpectations,
+    );
   }
 
   async run(scenario: RunScenario): Promise<void> {
@@ -39,6 +48,7 @@ class AcceptanceScenarioRunner {
     try {
       await this.executeSteps(scenario.steps, 0, scenario.plan);
     } finally {
+      await this.eventIterator?.return?.();
       await this.manager.stop();
     }
   }
@@ -106,16 +116,40 @@ class AcceptanceScenarioRunner {
         await this.expectRunStatus(step.status);
         return;
       case 'expectOutputValue':
-        await this.expectOutputValue(step.path, step.outputKey, step.value);
+        await this.observation.expectOutputValue(step.path, step.outputKey, step.value);
         return;
       case 'expectJsonOutput':
-        await this.expectJsonOutput(step.path, step.outputKey, step.pointer, step.value);
+        await this.observation.expectJsonOutput(
+          step.path,
+          step.outputKey,
+          step.pointer,
+          step.value,
+        );
         return;
       case 'expectEvent':
         await this.expectEvent(step.event, plan);
         return;
+      case 'resumeSubscription': {
+        await this.eventIterator?.return?.();
+        try {
+          const subscription = this.manager.subscribeRunEvents(this.runId, {
+            after: this.eventExpectations.cursor(step.afterCapturedCursor),
+          });
+          this.eventIterator = subscription[Symbol.asyncIterator]();
+        } catch (error) {
+          this.subscriptionError = error instanceof Error ? error : new Error(String(error));
+          this.eventIterator = undefined;
+        }
+        return;
+      }
+      case 'captureCursorFromAnotherRun':
+        await this.captureCursorFromAnotherRun(step.captureAs, plan);
+        return;
+      case 'expectSubscriptionError':
+        await this.expectSubscriptionError(step.errorCode);
+        return;
       case 'expectCursorOrder':
-        await this.expectCursorOrder(step.cursors);
+        await this.observation.expectCursorOrder(step.cursors);
         return;
       case 'expectMaximumActiveExecutions':
         await this.executor.expectMaximumActiveExecutions(step.count);
@@ -124,10 +158,10 @@ class AcceptanceScenarioRunner {
         await this.executor.expectExecutionCount(step.path, step.count);
         return;
       case 'expectRunDetails':
-        await this.expectRunDetails(step.nodePaths);
+        await this.observation.expectRunDetails(step);
         return;
       case 'expectSecretAbsent':
-        await this.expectSecretAbsent(step.value);
+        await this.observation.expectSecretAbsent(step.value);
         return;
       case 'expectSecretResolved':
         this.executor.expectResolvedSecret(step.value);
@@ -144,11 +178,9 @@ class AcceptanceScenarioRunner {
       case 'expectHumanGateWaiting':
       case 'expectIteration':
       case 'expectNoDuplicateExecution':
-      case 'expectSubscriptionError':
       case 'reconcileNode':
       case 'resolveUnknownOutcome':
       case 'restartManager':
-      case 'resumeSubscription':
       case 'advanceTime':
         throw new Error(`Scenario step ${step.kind} is not implemented.`);
     }
@@ -185,7 +217,7 @@ class AcceptanceScenarioRunner {
       await this.executor.failInputResolution(path, errorCode);
     }
 
-    const events = await this.eventsAfterTerminal();
+    const events = await this.observation.eventsAfterTerminal();
     this.eventExpectations.expectInputResolutionFailure(events, plan, path, errorCode);
   }
 
@@ -198,101 +230,45 @@ class AcceptanceScenarioRunner {
     );
   }
 
-  private async expectOutputValue(path: string, key: string, value: unknown): Promise<void> {
-    await vi.waitFor(async () => {
-      const execution = (await this.details()).nodeExecutions.find(
-        ({ request }) => request.displayPath === path,
-      );
-      assert(execution?.result.kind === 'completed');
-      assert.deepStrictEqual(execution.result.output?.[key], value);
-    });
-  }
-
-  private async expectJsonOutput(
-    path: string,
-    key: string,
-    pointer: string | undefined,
-    value: unknown,
-  ): Promise<void> {
-    await vi.waitFor(async () => {
-      const execution = (await this.details()).nodeExecutions.find(
-        ({ request }) => request.displayPath === path,
-      );
-      assert(execution?.result.kind === 'completed');
-      const output = execution.result.output?.[key];
-      assert(output?.kind === 'json');
-      assert.equal(pointer, undefined);
-      assert.deepStrictEqual(output.value, value);
-    });
-  }
-
   private async expectEvent(
     expected: Extract<ScenarioStep, { readonly kind: 'expectEvent' }>['event'],
     plan: ExecutionPlan,
   ): Promise<void> {
-    const events = await this.eventsAfterTerminal();
-    this.eventExpectations.expectEvent(events, plan, expected);
+    this.eventIterator ??= this.manager.subscribeRunEvents(this.runId)[Symbol.asyncIterator]();
+    const next = await this.eventIterator.next();
+    assert(!next.done, `Run stream ended before ${expected.type}.`);
+    if (this.eventExpectations.captureIfExpected(next.value, plan, expected)) {
+      return;
+    }
+    await this.expectEvent(expected, plan);
   }
 
-  private async expectCursorOrder(captures: readonly string[]): Promise<void> {
-    const events = await this.eventsAfterTerminal();
-    this.eventExpectations.expectCursorOrder(events, captures);
-  }
-
-  private async expectRunDetails(nodePaths: readonly string[]): Promise<void> {
-    await vi.waitFor(
-      async () => {
-        const actual = (await this.details()).nodeExecutions.map(
-          ({ request }) => request.displayPath,
-        );
-        assert.deepStrictEqual(new Set(actual), new Set(nodePaths));
-      },
-      { timeout: 5_000 },
-    );
-  }
-
-  private async expectSecretAbsent(value: string): Promise<void> {
-    await this.waitForTerminal();
-    const stored = JSON.stringify({
-      run: await this.manager.getRun(this.runId),
-      details: await this.manager.getRunDetails(this.runId),
-      events: await this.collectEvents(),
+  private async captureCursorFromAnotherRun(name: string, plan: ExecutionPlan): Promise<void> {
+    const otherRunId = `acceptance-${randomUUID()}`;
+    await this.manager.startRun({ runId: otherRunId, executionPlan: plan, input: null });
+    await vi.waitFor(async () => {
+      const run = await this.manager.getRun(otherRunId);
+      assert(run !== undefined && terminal(run.status));
     });
-    assert(!stored.includes(value));
+    const event = (await this.manager.getRunEvents(otherRunId, { limit: 100 })).items.at(-1);
+    assert(event !== undefined);
+    this.eventExpectations.captureCursor(name, event.cursor);
   }
 
-  private async details(): Promise<RunDetails> {
-    const details = await this.manager.getRunDetails(this.runId);
-    if (details === undefined) {
-      throw new Error(`Run ${this.runId} was not found.`);
-    }
-    return details;
-  }
-
-  private async eventsAfterTerminal(): Promise<readonly RunEvent[]> {
-    await this.waitForTerminal();
-    return this.collectEvents();
-  }
-
-  private async waitForTerminal(): Promise<void> {
-    await vi.waitFor(
-      async () => {
-        const run = await this.manager.getRun(this.runId);
-        assert(run !== undefined && terminal(run.status));
-      },
-      { timeout: 5_000 },
-    );
-  }
-
-  private async collectEvents(): Promise<readonly RunEvent[]> {
-    const events: RunEvent[] = [];
-    for await (const event of this.manager.subscribeRunEvents(this.runId)) {
-      events.push(event);
-    }
-    return events;
+  private async expectSubscriptionError(errorCode: string): Promise<void> {
+    const error =
+      this.subscriptionError ??
+      (await this.eventIterator?.next().catch((caught: unknown) => caught));
+    assert(error instanceof RunManagerError);
+    assert.equal(error.code, errorCode);
+    this.subscriptionError = undefined;
   }
 }
 
 export const runAcceptanceScenario = async (scenario: RunScenario): Promise<void> => {
+  if (scenario.intentId === 'rr-084') {
+    await runSubscriptionRecoveryScenario(scenario);
+    return;
+  }
   await new AcceptanceScenarioRunner().run(scenario);
 };

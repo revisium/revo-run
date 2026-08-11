@@ -1,8 +1,10 @@
 # Repository Contract
 
-`src/index.ts` is the only public entrypoint. Public value and executor contracts live in
-`src/contracts`, boundary validation in `src/validation`, and the public manager facade in
-`src/manager`.
+`src/index.ts` is the only public entrypoint. `src/contracts` owns Revo public and durable value
+contracts, while private schemas for provider-owned DBOS envelopes live in `src/validation`.
+Boundary validation stays in `src/validation`, and the public manager facade stays in `src/manager`.
+Approved in-memory contracts may use TypeScript `Date` and `AbortSignal` types; they do not become
+serialized durable DTOs merely to satisfy JSON-schema conventions.
 
 Deterministic pipeline interpretation and data resolution live in `src/pipeline` and must not
 import DBOS. All DBOS SDK calls, workflow registration, durable steps, streams, and DBOS-backed
