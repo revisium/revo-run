@@ -1,3 +1,5 @@
+import assert from 'node:assert/strict';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import type { TaskNode } from '../../src/contracts/pipeline/pipeline-node.js';
@@ -34,9 +36,11 @@ describe('task node executor budget backstop', () => {
       result: { status: 'failed', outcome: 'invalid' },
     });
     expect(write).toHaveBeenCalledOnce();
-    expect(write).toHaveBeenCalledWith('pipeline.invalidState', {
-      path: 'main/work',
-      errorCode: 'maximum_total_node_executions_exceeded',
-    });
+    const event = write.mock.calls[0]?.[0];
+    assert(event?.type === 'pipeline.invalidState');
+    expect(event.data.scopeId).toBe(context.scopeId);
+    expect(event.data.authoredNodeId).toMatch(/^an1_/);
+    expect(event.data.nodeInstanceId).toMatch(/^ni1_/);
+    expect(event.data.errorCode).toBe('maximum_total_node_executions_exceeded');
   });
 });

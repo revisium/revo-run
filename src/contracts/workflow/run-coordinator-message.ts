@@ -2,19 +2,12 @@ import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
 import { AttemptIdSchema, ScopeWorkflowIdSchema } from '../execution-identity.js';
-import { IdentifierSchema, NonEmptyStringSchema } from '../schema-primitives.js';
+import { PipelineEventDraftSchema } from '../run/run-event.js';
 
 const EventMessageSchema = Type.Object(
   {
     kind: Type.Literal('event'),
-    event: Type.Object(
-      {
-        type: NonEmptyStringSchema,
-        path: Type.Optional(NonEmptyStringSchema),
-        errorCode: Type.Optional(IdentifierSchema),
-      },
-      { additionalProperties: false },
-    ),
+    event: PipelineEventDraftSchema,
   },
   { additionalProperties: false },
 );

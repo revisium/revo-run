@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -59,12 +60,8 @@ describe('task timeout', () => {
     });
     expect(run?.error).toBeUndefined();
     await expect(manager.getRunDetails(runId)).resolves.toMatchObject({ nodeExecutions: [] });
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: 'nodeExecution.timedOut',
-        path: 'main/work',
-        errorCode: 'execution_timed_out',
-      }),
-    );
+    const timedOutEvent = events.find(({ type }) => type === 'nodeExecution.timedOut');
+    assert(timedOutEvent?.type === 'nodeExecution.timedOut');
+    expect(timedOutEvent.data.attemptOrdinal).toBe(1);
   });
 });

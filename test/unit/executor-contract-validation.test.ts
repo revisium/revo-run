@@ -106,8 +106,25 @@ describe('executor durable contracts', () => {
 describe('run event durable contract', () => {
   it('accepts a cursor event and rejects unknown fields', () => {
     expect(
-      eventValidator.Check({ cursor: '1', type: 'pipeline.invalidState', path: 'main/work' }),
+      eventValidator.Check({
+        cursor: 'run-1:1',
+        timestamp: '2026-08-10T12:34:56.789Z',
+        type: 'pipeline.invalidState',
+        data: {
+          scopeId: request.scopeId,
+          authoredNodeId: request.authoredNodeId,
+          nodeInstanceId: request.nodeInstanceId,
+          errorCode: 'terminal_not_reached',
+        },
+      }),
     ).toBe(true);
-    expect(eventValidator.Check({ cursor: '1', type: 'run.started', payload: {} })).toBe(false);
+    expect(
+      eventValidator.Check({
+        cursor: 'run-1:1',
+        timestamp: '2026-08-10T12:34:56.789Z',
+        type: 'run.started',
+        data: {},
+      }),
+    ).toBe(false);
   });
 });

@@ -11,7 +11,12 @@ import type {
 import { ParallelNodeExecutor } from '../parallel/parallel-node-executor.js';
 import type { PipelineExecutionContext, ExecuteNodeEffect } from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
-import type { PipelineEventSink } from './pipeline-event-sink.js';
+import {
+  inputResolutionFailedEvent,
+  pipelineInvalidStateEvent,
+  pipelineNodeEventIdentity,
+  type PipelineEventSink,
+} from './pipeline-event-sink.js';
 import type { NodeExecutionResult } from './pipeline-node-result.js';
 import { continuedExecution } from './pipeline-node-result.js';
 import { TaskNodeExecutor } from './task-node-executor.js';
@@ -73,7 +78,7 @@ export class PipelineInterpreter {
       ? context.plan.pipelines[context.pipelineId]
       : undefined;
     if (pipeline === undefined) {
-      return this.invalid(context.runtimePath, 'pipeline_not_found');
+      throw new Error(`Validated pipeline ${context.pipelineId} was not found.`);
     }
 
     const result = await this.executeNode(pipeline.root, context, '');
@@ -81,7 +86,13 @@ export class PipelineInterpreter {
       return result.result;
     }
 
-    return this.invalid(context.runtimePath, 'terminal_not_reached');
+    const invalid = await this.invalidNode(
+      pipeline.root,
+      context,
+      pipelineNodePath(pipeline.root, ''),
+      'terminal_not_reached',
+    );
+    return invalid.result;
   }
 
   private async executeNode(
@@ -105,13 +116,13 @@ export class PipelineInterpreter {
       case 'parallel':
         return this.parallel.execute(node, context, nodePath);
       case 'end':
-        return this.executeEnd(node, context);
+        return this.executeEnd(node, context, nodePath);
       case 'consensus':
       case 'delay':
       case 'humanGate':
       case 'map':
       case 'repeat':
-        return this.invalidNode(runtimePath(context, nodePath), 'node_kind_not_implemented');
+        return this.invalidNode(node, context, nodePath, 'node_kind_not_implemented');
     }
 
     node satisfies never;
@@ -142,7 +153,12 @@ export class PipelineInterpreter {
       return result;
     }
     if (result.outcome !== 'completed') {
-      return this.invalidNode(result.path, 'unhandled_node_outcome');
+      return this.invalidNode(
+        child,
+        context,
+        pipelineNodePath(child, parentPath),
+        'unhandled_node_outcome',
+      );
     }
 
     return this.executeSequenceChild(children, index + 1, context, parentPath);
@@ -162,7 +178,12 @@ export class PipelineInterpreter {
       ? node.cases[source.outcome]
       : node.default;
     return route === undefined
-      ? this.invalidNode(runtimePath(context, parentPath), 'unhandled_node_outcome')
+      ? this.invalidNode(
+          node,
+          context,
+          pipelineNodePath(node, parentPath),
+          'unhandled_node_outcome',
+        )
       : this.executeNode(route, context, parentPath);
   }
 
@@ -173,21 +194,22 @@ export class PipelineInterpreter {
   ): Promise<NodeExecutionResult> {
     const value = new InputResolver(context).resolve(node.value);
     if (!value.resolved) {
-      return this.inputResolutionFailed(context, nodePath, value.errorCode);
+      return this.inputResolutionFailed(node, context, nodePath, value.errorCode);
     }
     if (value.value.kind !== 'json' || typeof value.value.value !== 'string') {
-      return this.invalidNode(runtimePath(context, nodePath), 'invalid_branch_value');
+      return this.invalidNode(node, context, nodePath, 'invalid_branch_value');
     }
 
     const selected = Object.hasOwn(node.cases, value.value.value)
       ? node.cases[value.value.value]
       : node.default;
     if (selected === undefined) {
-      return this.invalidNode(runtimePath(context, nodePath), 'branch_not_found');
+      return this.invalidNode(node, context, nodePath, 'branch_not_found');
     }
     if (!Object.hasOwn(node.cases, value.value.value)) {
-      await this.events.write('pipeline.branchDefaulted', {
-        path: runtimePath(context, nodePath),
+      await this.events.write({
+        type: 'pipeline.branchDefaulted',
+        data: pipelineNodeEventIdentity(node, context, nodePath),
       });
     }
 
@@ -201,7 +223,7 @@ export class PipelineInterpreter {
   ): Promise<NodeExecutionResult> {
     const input = new InputResolver(context).resolveMapping(node.input);
     if (!input.resolved) {
-      return this.inputResolutionFailed(context, nodePath, input.errorCode);
+      return this.inputResolutionFailed(node, context, nodePath, input.errorCode);
     }
 
     const result = await this.executePipeline({
@@ -225,7 +247,10 @@ export class PipelineInterpreter {
       context.outputs.set(nodePath, result.output);
     }
     if (result.status === 'failed') {
-      await this.events.write('subpipeline.failed', { path: runtimePath(context, nodePath) });
+      await this.events.write({
+        type: 'subpipeline.failed',
+        data: pipelineNodeEventIdentity(node, context, nodePath),
+      });
     }
 
     return continuedExecution(result.outcome, runtimePath(context, nodePath), result.output);
@@ -234,10 +259,11 @@ export class PipelineInterpreter {
   private async executeEnd(
     node: Extract<PipelineNode, { readonly kind: 'end' }>,
     context: PipelineExecutionContext,
+    nodePath: string,
   ): Promise<NodeExecutionResult> {
     const output = new InputResolver(context).resolveTerminalOutput(node.output);
     if (!output.resolved) {
-      return this.invalidNode(context.runtimePath, output.errorCode);
+      return this.invalidNode(node, context, nodePath, output.errorCode);
     }
 
     return {
@@ -251,23 +277,22 @@ export class PipelineInterpreter {
   }
 
   private async inputResolutionFailed(
+    node: PipelineNode,
     context: PipelineExecutionContext,
     nodePath: string,
     errorCode: string,
   ): Promise<NodeExecutionResult> {
-    await this.events.write('inputResolution.failed', {
-      path: runtimePath(context, nodePath),
-      errorCode,
-    });
+    await this.events.write(inputResolutionFailedEvent(node, context, nodePath, errorCode));
     return continuedExecution('failed', runtimePath(context, nodePath));
   }
 
-  private async invalid(path: string, errorCode: string): Promise<RunWorkflowResult> {
-    await this.events.write('pipeline.invalidState', { path, errorCode });
-    return { status: 'failed', outcome: 'invalid' };
-  }
-
-  private async invalidNode(path: string, errorCode: string): Promise<NodeExecutionResult> {
-    return { kind: 'finished', result: await this.invalid(path, errorCode) };
+  private async invalidNode(
+    node: PipelineNode,
+    context: PipelineExecutionContext,
+    nodePath: string,
+    errorCode: string,
+  ): Promise<Extract<NodeExecutionResult, { readonly kind: 'finished' }>> {
+    await this.events.write(pipelineInvalidStateEvent(node, context, nodePath, errorCode));
+    return { kind: 'finished', result: { status: 'failed', outcome: 'invalid' } };
   }
 }

@@ -51,7 +51,7 @@ export const enterpriseLifecycleScenarioAudit = [
   {
     intentId: 'rr-081',
     requiredCapabilities: ['terminalFailureEvent'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['terminalFailureEvent'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-081' },
   },
   {
     intentId: 'rr-082',

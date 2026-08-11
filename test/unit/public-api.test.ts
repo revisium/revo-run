@@ -12,6 +12,7 @@ import type {
   RunExecutorResult,
   RunManager,
   RunManagerErrorCode,
+  RunEvent,
   RunId,
   ScriptExecutorBinding,
   StartRunInput,
@@ -60,6 +61,7 @@ describe('root-only public API', () => {
     expectTypeOf<RunExecutorRequest>().toBeObject();
     expectTypeOf<RunExecutorResult>().toMatchTypeOf<{ readonly kind: string }>();
     expectTypeOf<RunManagerErrorCode>().toBeString();
+    expectTypeOf<RunEvent>().toBeObject();
     expectTypeOf<RunId>().toBeString();
   });
 });

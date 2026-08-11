@@ -46,6 +46,7 @@ export const implementedCapabilities = [
   'subpipelineFailureRouting',
   'subpipelineRecursionValidation',
   'taskFailureRouting',
+  'terminalFailureEvent',
   'unhandledOutcomeFailure',
   'uniqueNodeKeyValidation',
   'unresolvedSecretFailure',
