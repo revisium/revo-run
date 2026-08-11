@@ -11,12 +11,15 @@ interface WorkerMessage {
     | 'checkpointed'
     | 'dispatched'
     | 'error'
+    | 'events'
     | 'stopped'
     | 'terminal'
     | 'timeoutSignalled';
   readonly message?: string;
+  readonly cursors?: readonly string[];
   readonly path?: string;
   readonly status?: string;
+  readonly types?: readonly string[];
 }
 
 class RecoveryProcess {
@@ -55,6 +58,14 @@ class RecoveryProcess {
   dispatched(path: string): number {
     return this.messages.filter((message) => message.kind === 'dispatched' && message.path === path)
       .length;
+  }
+
+  eventStream(): { readonly cursors: readonly string[]; readonly types: readonly string[] } {
+    const message = this.messages.findLast(({ kind }) => kind === 'events');
+    if (message?.cursors === undefined || message.types === undefined) {
+      throw new Error('Recovery worker did not report its event stream.');
+    }
+    return { cursors: message.cursors, types: message.types };
   }
 
   async kill(): Promise<void> {
@@ -107,6 +118,19 @@ describe('process recovery', () => {
 
       recoveredProcess.complete('main/second');
       await recoveredProcess.waitFor({ kind: 'terminal', status: 'succeeded' });
+      await recoveredProcess.waitFor({ kind: 'events' });
+      const events = recoveredProcess.eventStream();
+      expect(events.types).toStrictEqual([
+        'nodeExecution.started',
+        'nodeExecution.completed',
+        'nodeExecution.started',
+        'nodeExecution.completed',
+        'run.completed',
+      ]);
+      expect(events.cursors).toStrictEqual(
+        events.cursors.map((_, index) => `${runId}:${index + 1}`),
+      );
+      expect(new Set(events.cursors).size).toBe(events.cursors.length);
       await recoveredProcess.waitFor({ kind: 'stopped' });
     } finally {
       await firstProcess.kill();

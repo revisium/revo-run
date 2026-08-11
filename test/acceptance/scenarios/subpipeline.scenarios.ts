@@ -61,6 +61,7 @@ export const subpipelineScenarios: readonly RunScenario[] = [
       expectNodeInput('main/summarize', { review: 'approved' }),
       completeNode('main/summarize'),
       expectRunStatus('succeeded'),
+      expectEvent('nodeExecution.completed', { path: 'main/review/reviewer' }),
     ],
   }),
   scenario({

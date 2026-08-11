@@ -7,7 +7,11 @@ import type {
 import type { RunWorkflowResult } from '../../contracts/workflow/run-workflow-result.js';
 import { parseRunCoordinatorMessage } from '../../validation/run-coordinator-message.validator.js';
 import { runCoordinatorMessageTopic, runCoordinatorReplyTopic } from '../dbos-names.js';
-import type { DbosRunEventStream } from '../streams/run-event-stream.js';
+import {
+  type DbosRunEventStream,
+  type RunEventBudgetFailure,
+  RunEventBudgetExceededError,
+} from '../streams/run-event-stream.js';
 import { isActiveWorkflowStatus } from '../workflow-status.js';
 
 export interface RunExecutionHandle {
@@ -21,11 +25,16 @@ export class RunWorkflowCoordinator {
   private readonly registeredScopes = new Set<string>();
   private readonly settledScopes = new Set<string>();
   private readonly terminalScopesAwaitingSettlement = new Set<string>();
+  private eventBudgetFailure: RunEventBudgetFailure | undefined;
   private executions = 0;
 
   constructor(events: DbosRunEventStream, maximumExecutions: number) {
     this.events = events;
     this.maximumExecutions = maximumExecutions;
+  }
+
+  get eventBudgetExceeded(): boolean {
+    return this.eventBudgetFailure !== undefined;
   }
 
   async execute(handle: RunExecutionHandle): Promise<RunWorkflowResult> {
@@ -34,13 +43,16 @@ export class RunWorkflowCoordinator {
       await this.advance();
     }
 
-    return handle.getResult();
+    const result = await handle.getResult();
+    return this.eventBudgetFailure === undefined
+      ? result
+      : { status: 'failed', outcome: this.eventBudgetFailure };
   }
 
   private async process(message: RunCoordinatorMessage): Promise<void> {
     switch (message.kind) {
       case 'event':
-        await this.events.append(message.event);
+        await this.appendEvent(message.event);
         return;
       case 'reserveExecution':
         await this.reserveExecution(message);
@@ -67,7 +79,8 @@ export class RunWorkflowCoordinator {
   private async reserveExecution(
     message: Extract<RunCoordinatorMessage, { readonly kind: 'reserveExecution' }>,
   ): Promise<void> {
-    const granted = this.executions < this.maximumExecutions;
+    const granted =
+      this.eventBudgetFailure === undefined && this.executions < this.maximumExecutions;
     if (granted) {
       this.executions += 1;
     }
@@ -77,6 +90,24 @@ export class RunWorkflowCoordinator {
       granted,
     };
     await DBOS.send(message.replyWorkflowId, reservation, runCoordinatorReplyTopic);
+  }
+
+  private async appendEvent(
+    event: Extract<RunCoordinatorMessage, { readonly kind: 'event' }>['event'],
+  ): Promise<void> {
+    if (this.eventBudgetFailure !== undefined) {
+      return;
+    }
+
+    try {
+      await this.events.append(event);
+    } catch (error) {
+      if (error instanceof RunEventBudgetExceededError) {
+        this.eventBudgetFailure = error.outcome;
+        return;
+      }
+      throw error;
+    }
   }
 
   private async advance(): Promise<void> {

@@ -15,6 +15,7 @@ import type {
 import type { RunScenario, ScenarioStep } from '../../dsl/scenario.js';
 import { ControlledRunExecutor } from '../executor/controlled-run-executor.js';
 import { testDatabaseUrl } from '../test-environment.js';
+import { RunEventExpectations } from './run-event-expectations.js';
 
 const terminal = (status: RunStatus): boolean => status !== 'pending' && status !== 'running';
 
@@ -23,6 +24,7 @@ class AcceptanceScenarioRunner {
   private readonly manager: RunManager;
   private readonly runId = `acceptance-${randomUUID()}`;
   private readonly executorSideInputFailures = new Set<string>();
+  private readonly eventExpectations = new RunEventExpectations(this.runId);
   private startError: Error | undefined;
 
   constructor() {
@@ -91,7 +93,7 @@ class AcceptanceScenarioRunner {
         await this.executor.fail(step.path, step.errorCode);
         return;
       case 'failInputResolution':
-        await this.failInputResolution(step.path, step.errorCode);
+        await this.failInputResolution(plan, step.path, step.errorCode);
         return;
       case 'expectNoNodeExecution':
         if (this.executorSideInputFailures.has(step.path)) {
@@ -110,7 +112,10 @@ class AcceptanceScenarioRunner {
         await this.expectJsonOutput(step.path, step.outputKey, step.pointer, step.value);
         return;
       case 'expectEvent':
-        await this.expectEvent(step.event.type, step.event.path);
+        await this.expectEvent(step.event, plan);
+        return;
+      case 'expectCursorOrder':
+        await this.expectCursorOrder(step.cursors);
         return;
       case 'expectMaximumActiveExecutions':
         await this.executor.expectMaximumActiveExecutions(step.count);
@@ -136,7 +141,6 @@ class AcceptanceScenarioRunner {
       case 'completeConsensusParticipant':
       case 'crashManager':
       case 'expectCommandResult':
-      case 'expectCursorOrder':
       case 'expectHumanGateWaiting':
       case 'expectIteration':
       case 'expectNoDuplicateExecution':
@@ -171,21 +175,18 @@ class AcceptanceScenarioRunner {
     }
   }
 
-  private async failInputResolution(path: string, errorCode: string): Promise<void> {
+  private async failInputResolution(
+    plan: ExecutionPlan,
+    path: string,
+    errorCode: string,
+  ): Promise<void> {
     if (errorCode === 'secret_not_found' || errorCode === 'entity_version_not_found') {
       this.executorSideInputFailures.add(path);
       await this.executor.failInputResolution(path, errorCode);
     }
 
     const events = await this.eventsAfterTerminal();
-    assert(
-      events.some(
-        (event) =>
-          event.type === 'inputResolution.failed' &&
-          event.path === path &&
-          event.errorCode === errorCode,
-      ),
-    );
+    this.eventExpectations.expectInputResolutionFailure(events, plan, path, errorCode);
   }
 
   private async expectRunStatus(status: RunStatus): Promise<void> {
@@ -225,11 +226,17 @@ class AcceptanceScenarioRunner {
     });
   }
 
-  private async expectEvent(type: string, path: string | undefined): Promise<void> {
+  private async expectEvent(
+    expected: Extract<ScenarioStep, { readonly kind: 'expectEvent' }>['event'],
+    plan: ExecutionPlan,
+  ): Promise<void> {
     const events = await this.eventsAfterTerminal();
-    assert(
-      events.some((event) => event.type === type && (path === undefined || event.path === path)),
-    );
+    this.eventExpectations.expectEvent(events, plan, expected);
+  }
+
+  private async expectCursorOrder(captures: readonly string[]): Promise<void> {
+    const events = await this.eventsAfterTerminal();
+    this.eventExpectations.expectCursorOrder(events, captures);
   }
 
   private async expectRunDetails(nodePaths: readonly string[]): Promise<void> {

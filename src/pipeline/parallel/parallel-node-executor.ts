@@ -1,7 +1,11 @@
 import type { ParallelNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { PipelineExecutionContext } from '../interpreter/interpreter-context.js';
 import { runtimePath } from '../interpreter/node-path.js';
-import type { PipelineEventSink } from '../interpreter/pipeline-event-sink.js';
+import {
+  pipelineInvalidStateEvent,
+  pipelineNodeEventIdentity,
+  type PipelineEventSink,
+} from '../interpreter/pipeline-event-sink.js';
 import type { NodeExecutionResult } from '../interpreter/pipeline-node-result.js';
 import { continuedExecution } from '../interpreter/pipeline-node-result.js';
 import type { ParallelBranchResult, ParallelBranchRunner } from './parallel-branch-runner.js';
@@ -39,11 +43,11 @@ export class ParallelNodeExecutor {
     nodePath: string,
   ): Promise<NodeExecutionResult> {
     const path = runtimePath(context, nodePath);
+    const identity = pipelineNodeEventIdentity(node, context, nodePath);
     if (node.join.remaining === 'cancel') {
-      await this.events.write('pipeline.invalidState', {
-        path,
-        errorCode: 'parallel_cancel_not_implemented',
-      });
+      await this.events.write(
+        pipelineInvalidStateEvent(node, context, nodePath, 'parallel_cancel_not_implemented'),
+      );
       return { kind: 'finished', result: { status: 'failed', outcome: 'invalid' } };
     }
 
@@ -56,7 +60,7 @@ export class ParallelNodeExecutor {
 
     const outcome = joinSucceeded(node, results) ? 'completed' : 'failed';
     if (outcome === 'failed') {
-      await this.events.write('parallel.joinFailed', { path });
+      await this.events.write({ type: 'parallel.joinFailed', data: identity });
     }
 
     return continuedExecution(outcome, path);

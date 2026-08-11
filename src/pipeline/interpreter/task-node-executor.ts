@@ -1,14 +1,15 @@
 import type { TaskNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { ExecutionBinding } from '../../contracts/run/execution-binding.js';
 import { InputResolver } from '../data/input-resolver.js';
-import {
-  createAttemptId,
-  createAuthoredNodeId,
-  createNodeInstanceId,
-} from '../identity/execution-identity.js';
+import { createAttemptId } from '../identity/execution-identity.js';
 import type { ExecuteNodeEffect, PipelineExecutionContext } from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
-import type { PipelineEventSink } from './pipeline-event-sink.js';
+import {
+  inputResolutionFailedEvent,
+  pipelineInvalidStateEvent,
+  pipelineNodeEventIdentity,
+  type PipelineEventSink,
+} from './pipeline-event-sink.js';
 import type { NodeExecutionResult } from './pipeline-node-result.js';
 import { continuedExecution } from './pipeline-node-result.js';
 
@@ -26,34 +27,26 @@ export class TaskNodeExecutor {
     context: PipelineExecutionContext,
     nodePath: string,
   ): Promise<NodeExecutionResult> {
+    const identity = pipelineNodeEventIdentity(node, context, nodePath);
     const input = new InputResolver(context).resolveMapping(node.input);
     if (!input.resolved) {
-      return this.inputResolutionFailed(context, nodePath, input.errorCode);
+      return this.inputResolutionFailed(node, nodePath, context, input.errorCode);
     }
 
     const binding = this.bindingFor(context.plan.bindings, context.pipelineId, nodePath);
     if (binding === undefined) {
-      await this.events.write('pipeline.invalidState', {
-        path: runtimePath(context, nodePath),
-        errorCode: 'executor_binding_not_found',
-      });
+      await this.events.write(
+        pipelineInvalidStateEvent(node, context, nodePath, 'executor_binding_not_found'),
+      );
       return { kind: 'finished', result: { status: 'failed', outcome: 'invalid' } };
     }
 
-    const authoredNodeId = createAuthoredNodeId({
-      schemaVersion: context.plan.schemaVersion,
-      pipelineId: context.pipelineId,
-      nodePath,
-      nodeKind: node.kind,
-    });
-    const nodeInstanceId = createNodeInstanceId({ scopeId: context.scopeId, authoredNodeId });
     const attemptOrdinal = 1;
+    const attemptId = createAttemptId({ nodeInstanceId: identity.nodeInstanceId, attemptOrdinal });
     const request = {
       runId: context.runId,
-      authoredNodeId,
-      scopeId: context.scopeId,
-      nodeInstanceId,
-      attemptId: createAttemptId({ nodeInstanceId, attemptOrdinal }),
+      ...identity,
+      attemptId,
       attemptOrdinal,
       displayPath: runtimePath(context, nodePath),
       pipelineId: context.pipelineId,
@@ -67,26 +60,38 @@ export class TaskNodeExecutor {
     );
 
     if (execution.kind === 'executionLimitExceeded') {
-      await this.events.write('pipeline.invalidState', {
-        path: runtimePath(context, nodePath),
-        errorCode: 'maximum_total_node_executions_exceeded',
-      });
+      await this.events.write(
+        pipelineInvalidStateEvent(
+          node,
+          context,
+          nodePath,
+          'maximum_total_node_executions_exceeded',
+        ),
+      );
       return { kind: 'finished', result: { status: 'failed', outcome: 'invalid' } };
     }
     if (execution.kind === 'timedOut') {
-      await this.events.write('nodeExecution.timedOut', {
-        path: runtimePath(context, nodePath),
-        errorCode: 'execution_timed_out',
+      await this.events.write({
+        type: 'nodeExecution.timedOut',
+        data: { ...identity, attemptId, attemptOrdinal },
       });
       return continuedExecution('timedOut', runtimePath(context, nodePath));
     }
     if (execution.result.kind === 'inputResolutionFailed') {
-      return this.inputResolutionFailed(context, nodePath, execution.result.error.code);
+      return this.inputResolutionFailed(node, nodePath, context, execution.result.error.code);
     }
     if (execution.result.kind === 'failed') {
+      await this.events.write({
+        type: 'nodeExecution.failed',
+        data: { ...identity, attemptId, attemptOrdinal, errorCode: execution.result.error.code },
+      });
       return continuedExecution('failed', runtimePath(context, nodePath));
     }
 
+    await this.events.write({
+      type: 'nodeExecution.completed',
+      data: { ...identity, attemptId, attemptOrdinal, outcome: execution.result.outcome },
+    });
     const output = execution.result.output ?? {};
     context.outputs.set(nodePath, output);
     return continuedExecution(execution.result.outcome, runtimePath(context, nodePath), output);
@@ -103,14 +108,12 @@ export class TaskNodeExecutor {
   }
 
   private async inputResolutionFailed(
-    context: PipelineExecutionContext,
+    node: TaskNode,
     nodePath: string,
+    context: PipelineExecutionContext,
     errorCode: string,
   ): Promise<NodeExecutionResult> {
-    await this.events.write('inputResolution.failed', {
-      path: runtimePath(context, nodePath),
-      errorCode,
-    });
+    await this.events.write(inputResolutionFailedEvent(node, context, nodePath, errorCode));
     return continuedExecution('failed', runtimePath(context, nodePath));
   }
 }

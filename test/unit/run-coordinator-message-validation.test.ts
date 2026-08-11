@@ -8,17 +8,22 @@ import {
 const digest = 'a'.repeat(43);
 const attemptId = `at1_${digest}`;
 const scopeWorkflowId = `rr:scope:v2:sc1_${digest}`;
+const eventIdentity = {
+  scopeId: `sc1_${digest}`,
+  authoredNodeId: `an1_${digest}`,
+  nodeInstanceId: `ni1_${digest}`,
+} as const;
 
 describe('run coordinator message validation', () => {
   it('accepts durable coordinator messages and reservations', () => {
     expect(
       parseRunCoordinatorMessage({
         kind: 'event',
-        event: { type: 'parallel.joinFailed', path: 'main/review' },
+        event: { type: 'parallel.joinFailed', data: eventIdentity },
       }),
     ).toStrictEqual({
       kind: 'event',
-      event: { type: 'parallel.joinFailed', path: 'main/review' },
+      event: { type: 'parallel.joinFailed', data: eventIdentity },
     });
     expect(
       parseRunCoordinatorMessage({
@@ -71,9 +76,9 @@ describe('run coordinator message validation', () => {
   );
 
   it('rejects malformed nested events', () => {
-    expect(() => parseRunCoordinatorMessage({ kind: 'event', event: { type: 42 } })).toThrow(
-      'Run coordinator received an invalid message.',
-    );
+    expect(() =>
+      parseRunCoordinatorMessage({ kind: 'event', event: { type: 42, data: eventIdentity } }),
+    ).toThrow('Run coordinator received an invalid message.');
   });
 
   it('rejects additional properties', () => {
@@ -90,7 +95,10 @@ describe('run coordinator message validation', () => {
     expect(() =>
       parseRunCoordinatorMessage({
         kind: 'event',
-        event: { type: 'pipeline.invalidState', errorCode: 'invalid/code' },
+        event: {
+          type: 'pipeline.invalidState',
+          data: { ...eventIdentity, errorCode: 'invalid/code' },
+        },
       }),
     ).toThrow('Run coordinator received an invalid message.');
   });

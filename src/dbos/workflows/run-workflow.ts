@@ -4,7 +4,7 @@ import type { RunWorkflowInput } from '../../contracts/workflow/run-workflow-inp
 import type { RunWorkflowResult } from '../../contracts/workflow/run-workflow-result.js';
 import { createRootScopeId } from '../../pipeline/identity/execution-identity.js';
 import { RunWorkflowCoordinator } from '../coordination/run-workflow-coordinator.js';
-import { DbosRunEventStream } from '../streams/run-event-stream.js';
+import { DbosRunEventStream, RunEventBudgetExceededError } from '../streams/run-event-stream.js';
 import { runWorkflowId, scopeWorkflowId } from '../workflow-id.js';
 import type { RunExecutionWorkflow } from './run-execution-workflow.js';
 
@@ -17,7 +17,7 @@ export const createRunWorkflow =
       throw new Error('Run workflow has an invalid DBOS workflow ID.');
     }
 
-    const events = new DbosRunEventStream();
+    const events = new DbosRunEventStream(runId);
     try {
       const scopeId = createRootScopeId({ runId, rootPipelineId: executionPlan.rootPipelineId });
       const execution = await DBOS.startWorkflow(executionWorkflow, {
@@ -28,8 +28,26 @@ export const createRunWorkflow =
         executionPlan.policies.maximumTotalNodeExecutions,
       );
 
-      return await coordinator.execute(execution);
+      const result = await coordinator.execute(execution);
+      if (!coordinator.eventBudgetExceeded) {
+        try {
+          await events.append({
+            type: result.status === 'succeeded' ? 'run.completed' : 'run.failed',
+            data: { outcome: result.outcome },
+          });
+        } catch (error) {
+          if (error instanceof RunEventBudgetExceededError) {
+            return { status: 'failed', outcome: error.outcome };
+          }
+          throw error;
+        }
+      }
+      return result;
     } finally {
-      await events.close();
+      try {
+        await events.close();
+      } catch {
+        // A terminal workflow status also closes subscriptions after their accepted prefix drains.
+      }
     }
   };

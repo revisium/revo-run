@@ -94,6 +94,15 @@ const watchTerminalRun = async (): Promise<void> => {
   const run = await manager.getRun(runId);
   if (run !== undefined && run.status !== 'pending' && run.status !== 'running') {
     send({ kind: 'terminal', status: run.status });
+    const events = [];
+    for await (const event of manager.subscribeRunEvents(runId)) {
+      events.push(event);
+    }
+    send({
+      kind: 'events',
+      cursors: events.map(({ cursor }) => cursor),
+      types: events.map(({ type }) => type),
+    });
     await manager.stop();
     send({ kind: 'stopped' });
     process.disconnect();
