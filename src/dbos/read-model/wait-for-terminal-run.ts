@@ -92,23 +92,20 @@ export const waitForTerminalRun = (
       schedule();
     }
 
-    function readOnce(): void {
-      let operation: Promise<RunSnapshot | undefined>;
+    async function readOnce(): Promise<void> {
+      let result: RunSnapshot | undefined;
       try {
-        operation = read();
+        result = await read();
       } catch (error) {
         finish(undefined, error);
         return;
       }
-      operation.then(
-        (result) => finish(result),
-        (error: unknown) => finish(undefined, error),
-      );
+      finish(result);
     }
 
     function schedule(): void {
       const remaining = deadline === undefined ? pollIntervalMs : deadline - Date.now();
-      timer = setTimeout(readOnce, Math.max(1, Math.min(pollIntervalMs, remaining)));
+      timer = setTimeout(() => void readOnce(), Math.max(1, Math.min(pollIntervalMs, remaining)));
     }
 
     managerSignal.addEventListener('abort', finishAbort, { once: true });
@@ -116,6 +113,6 @@ export const waitForTerminalRun = (
     if (finishAbort()) {
       return;
     }
-    readOnce();
+    void readOnce();
   });
 };

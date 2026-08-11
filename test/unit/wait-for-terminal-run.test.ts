@@ -52,6 +52,22 @@ describe('authoritative terminal waiting', () => {
     expect(read).toHaveBeenCalledTimes(1);
   });
 
+  it('preserves a synchronous authoritative read failure', async () => {
+    const failure = new Error('synchronous read failed');
+    const read = vi.fn<() => Promise<typeof running>>(() => {
+      throw failure;
+    });
+
+    await expect(waitForTerminalRun(read, {}, new AbortController().signal)).rejects.toBe(failure);
+  });
+
+  it('preserves an asynchronous authoritative read failure', async () => {
+    const failure = new Error('asynchronous read failed');
+    const read = vi.fn<() => Promise<typeof running>>(() => Promise.reject(failure));
+
+    await expect(waitForTerminalRun(read, {}, new AbortController().signal)).rejects.toBe(failure);
+  });
+
   it('performs the deadline read before reporting a timeout', async () => {
     vi.useFakeTimers();
     const read = vi

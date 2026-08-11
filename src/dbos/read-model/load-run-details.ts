@@ -180,7 +180,7 @@ class RunDetailsLoader {
   private includeAttempt(step: DbosStepRecord, physicalScope: DurableScopeCandidate): void {
     const path = nodeExecutionDisplayPath(step.name);
     const candidate = this.plan.nodesByDisplayPath.get(path);
-    if (candidate === undefined || candidate.physicalScopeId !== physicalScope.id) {
+    if (candidate?.physicalScopeId !== physicalScope.id) {
       throw new Error('DBOS node step is not present in its admitted scope.');
     }
     const attempt = mapRunAttempt(step, candidate, this.run.id);
@@ -210,7 +210,7 @@ class RunDetailsLoader {
       return;
     }
     const scope = this.plan.scopes.get(candidate.scopeId);
-    if (scope === undefined || scope.kind !== 'inlineSubpipeline') {
+    if (scope?.kind !== 'inlineSubpipeline') {
       throw new Error('Node belongs to an unobserved durable scope.');
     }
     this.includeScopeAncestors(scope);
