@@ -3,6 +3,7 @@ import type { RunNodeExecution } from '../../contracts/executor/run-node-executi
 import type { JsonValue } from '../../contracts/json-value.js';
 import type { NodeOutput } from '../../contracts/pipeline/node-output.js';
 import type { PipelineInputScope } from '../../contracts/pipeline/pipeline-input.js';
+import type { RecoveryPolicy } from '../../contracts/pipeline/task-policy.js';
 import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
 
 export interface PipelineExecutionContext {
@@ -20,8 +21,22 @@ export interface PipelineExecutionContext {
 export type ExecuteNodeEffect = (
   request: RunExecutorRequest,
   timeoutMs: number,
+  recovery: RecoveryPolicy,
+  nextReconciliationRound: number,
 ) => Promise<
-  RunNodeExecution | { readonly kind: 'executionLimitExceeded' } | { readonly kind: 'timedOut' }
+  | {
+      readonly kind: 'effectResult';
+      readonly execution: RunNodeExecution;
+      readonly nextReconciliationRound: number;
+    }
+  | {
+      readonly kind: 'effectNotFound';
+      readonly nextReconciliationRound: number;
+    }
+  | { readonly kind: 'executionLimitExceeded' }
+  | { readonly kind: 'outcomeUnknown'; readonly reconciliationRound: number }
+  | { readonly kind: 'recoveryExhausted'; readonly reconciliationRound: number }
+  | { readonly kind: 'timedOut' }
 >;
 
 export type WaitForRetry = (delayMs: number) => Promise<void>;

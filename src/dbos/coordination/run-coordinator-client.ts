@@ -25,7 +25,7 @@ export class RunCoordinatorClient implements PipelineEventSink {
   }
 
   executionStep(step: NodeExecutionStep): ExecuteNodeEffect {
-    return async (request, timeoutMs) => {
+    return async (request, timeoutMs, recovery, nextReconciliationRound) => {
       if (!(await this.reserveExecution(request))) {
         return { kind: 'executionLimitExceeded' };
       }
@@ -40,7 +40,7 @@ export class RunCoordinatorClient implements PipelineEventSink {
           attemptOrdinal: request.attemptOrdinal,
         },
       });
-      return step.execute(request, timeoutMs);
+      return step.execute(request, timeoutMs, recovery, nextReconciliationRound);
     };
   }
 

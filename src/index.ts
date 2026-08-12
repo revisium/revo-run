@@ -17,6 +17,7 @@ export { RunErrorSchema, RunResultSchema, RunStatusSchema } from './contracts/ru
 export { StartRunInputSchema, StartRunResultSchema } from './contracts/run/start-run.js';
 export {
   RunExecutorRequestSchema,
+  RunExecutorReconciliationResultSchema,
   RunExecutorResultSchema,
 } from './contracts/executor/run-executor.js';
 export { createRunManager } from './manager/create-run-manager.js';
@@ -26,6 +27,7 @@ export type { ExecutorInput, ExecutorInputValue } from './contracts/executor/exe
 export type {
   RunExecutor,
   RunExecutorContext,
+  RunExecutorReconciliationResult,
   RunExecutorRequest,
   RunExecutorResult,
 } from './contracts/executor/run-executor.js';

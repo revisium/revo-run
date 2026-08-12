@@ -94,7 +94,7 @@ export const lifecycleScenarios: readonly RunScenario[] = [
     intentId: 'rr-078',
     category: 'recovery',
     name: 'recovers parallel executions without duplicate effects',
-    requiredCapabilities: ['parallelRecovery', 'managerRestartRecovery', 'deduplicatedExecution'],
+    requiredCapabilities: ['parallelRecovery', 'managerRestartRecovery', 'noBlindEffectRepeat'],
     plan: executionPlan(
       sequence(
         {

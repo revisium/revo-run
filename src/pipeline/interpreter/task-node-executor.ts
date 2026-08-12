@@ -24,6 +24,11 @@ type ResolvedTaskRequest = Omit<
   'attemptId' | 'attemptOrdinal' | 'displayPath' | 'nodePath' | 'pipelineId' | 'runId'
 >;
 
+const unsupportedRecovery = {
+  reconciliation: 'unsupported',
+  unknownOutcome: 'fail',
+} as const;
+
 export class TaskNodeExecutor {
   private readonly executeEffect: ExecuteNodeEffect;
   private readonly waitForRetry: WaitForRetry;
@@ -68,6 +73,7 @@ export class TaskNodeExecutor {
         input: input.value,
       },
       1,
+      1,
     );
   }
 
@@ -77,6 +83,7 @@ export class TaskNodeExecutor {
     nodePath: string,
     input: ResolvedTaskRequest,
     attemptOrdinal: number,
+    nextReconciliationRound: number,
   ): Promise<NodeExecutionResult> {
     const attemptId = createAttemptId({
       nodeInstanceId: input.nodeInstanceId,
@@ -94,6 +101,8 @@ export class TaskNodeExecutor {
     const execution = await this.executeEffect(
       request,
       node.timeoutMs ?? context.plan.policies.defaultTaskTimeoutMs,
+      node.recovery ?? unsupportedRecovery,
+      nextReconciliationRound,
     );
 
     if (execution.kind === 'executionLimitExceeded') {
@@ -114,29 +123,69 @@ export class TaskNodeExecutor {
       });
       return continuedExecution('timedOut', runtimePath(context, nodePath));
     }
-    if (execution.result.kind === 'inputResolutionFailed') {
-      await this.events.write(
-        inputResolutionFailedEvent(node, context, nodePath, execution.result.error.code),
-      );
-      await this.writeAttemptFailure(request, execution.result.error.code);
+    if (execution.kind === 'outcomeUnknown') {
+      await this.writeAttemptFailure(request, 'outcome_unknown');
       return continuedExecution('failed', runtimePath(context, nodePath));
     }
-    if (execution.result.kind === 'failed') {
-      await this.writeAttemptFailure(request, execution.result.error.code);
-      if (this.shouldRetry(node.retry, attemptOrdinal, execution.result.error.code)) {
+    if (execution.kind === 'recoveryExhausted') {
+      await this.events.write({
+        type: 'nodeExecution.recoveryExhausted',
+        data: {
+          ...this.attemptEventIdentity(request),
+          reconciliationRound: execution.reconciliationRound,
+        },
+      });
+      await this.writeAttemptFailure(request, 'recovery_exhausted');
+      return continuedExecution('failed', runtimePath(context, nodePath));
+    }
+    if (execution.kind === 'effectNotFound') {
+      await this.writeAttemptFailure(request, 'effect_not_found');
+      return this.executeAttempt(
+        node,
+        context,
+        nodePath,
+        input,
+        attemptOrdinal + 1,
+        execution.nextReconciliationRound,
+      );
+    }
+    if (execution.execution.result.kind === 'inputResolutionFailed') {
+      await this.events.write(
+        inputResolutionFailedEvent(node, context, nodePath, execution.execution.result.error.code),
+      );
+      await this.writeAttemptFailure(request, execution.execution.result.error.code);
+      return continuedExecution('failed', runtimePath(context, nodePath));
+    }
+    if (execution.execution.result.kind === 'failed') {
+      await this.writeAttemptFailure(request, execution.execution.result.error.code);
+      if (this.shouldRetry(node.retry, attemptOrdinal, execution.execution.result.error.code)) {
         await this.waitForRetry(this.retryDelay(node.retry, attemptOrdinal));
-        return this.executeAttempt(node, context, nodePath, input, attemptOrdinal + 1);
+        return this.executeAttempt(
+          node,
+          context,
+          nodePath,
+          input,
+          attemptOrdinal + 1,
+          execution.nextReconciliationRound,
+        );
       }
       return continuedExecution('failed', runtimePath(context, nodePath));
     }
 
     await this.events.write({
       type: 'nodeExecution.completed',
-      data: { ...this.attemptEventIdentity(request), outcome: execution.result.outcome },
+      data: {
+        ...this.attemptEventIdentity(request),
+        outcome: execution.execution.result.outcome,
+      },
     });
-    const output = execution.result.output ?? {};
+    const output = execution.execution.result.output ?? {};
     context.outputs.set(nodePath, output);
-    return continuedExecution(execution.result.outcome, runtimePath(context, nodePath), output);
+    return continuedExecution(
+      execution.execution.result.outcome,
+      runtimePath(context, nodePath),
+      output,
+    );
   }
 
   private async writeAttemptFailure(request: RunExecutorRequest, errorCode: string): Promise<void> {

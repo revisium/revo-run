@@ -2,7 +2,7 @@ import { Error as DBOSError } from '@dbos-inc/dbos-sdk';
 import type { WorkflowStatus } from '@dbos-inc/dbos-sdk';
 
 import {
-  nodeExecutionStepName,
+  nodeEffectDecisionStepName,
   parallelBranchWorkflowName,
   runExecutionWorkflowName,
 } from '../../src/dbos/dbos-names.js';
@@ -194,10 +194,10 @@ export const runDetailsSteps = (): Map<string, readonly TestStepInfo[]> => {
     [
       scopeWorkflowId(rootScope.id),
       [
-        step(1, nodeExecutionStepName('main/root-work', 1), {
+        step(1, nodeEffectDecisionStepName('main/root-work', 1), {
           output: storedNodeExecution('main/root-work', 'completed'),
         }),
-        step(2, nodeExecutionStepName('main/review/check', 1), {
+        step(2, nodeEffectDecisionStepName('main/review/check', 1), {
           output: storedNodeExecution('main/review/check', 'failed'),
         }),
         step(3, parallelBranchWorkflowName, { childWorkflowID: scopeWorkflowId(branchA.id) }),
@@ -209,7 +209,7 @@ export const runDetailsSteps = (): Map<string, readonly TestStepInfo[]> => {
     [
       scopeWorkflowId(branchA.id),
       [
-        step(1, nodeExecutionStepName('main/batch/a', 1), {
+        step(1, nodeEffectDecisionStepName('main/batch/a', 1), {
           output: storedNodeExecution('main/batch/a', 'completed'),
         }),
       ],
@@ -217,8 +217,11 @@ export const runDetailsSteps = (): Map<string, readonly TestStepInfo[]> => {
     [
       scopeWorkflowId(branchB.id),
       [
-        step(1, nodeExecutionStepName('main/batch/b', 1), {
-          error: new DBOSError.DBOSStepTimeoutError(nodeExecutionStepName('main/batch/b', 1), 10),
+        step(1, nodeEffectDecisionStepName('main/batch/b', 1), {
+          error: new DBOSError.DBOSStepTimeoutError(
+            nodeEffectDecisionStepName('main/batch/b', 1),
+            10,
+          ),
         }),
       ],
     ],

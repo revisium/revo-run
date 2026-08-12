@@ -80,15 +80,8 @@ export const executionScenarioAudit = [
   },
   {
     intentId: 'rr-011',
-    requiredCapabilities: [
-      'effectReconciliation',
-      'managerRestartRecovery',
-      'deduplicatedExecution',
-    ],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['effectReconciliation', 'deduplicatedExecution'],
-    },
+    requiredCapabilities: ['effectReconciliation', 'managerRestartRecovery', 'noBlindEffectRepeat'],
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-011' },
   },
   {
     intentId: 'rr-012',
@@ -96,48 +89,32 @@ export const executionScenarioAudit = [
       'effectReconciliation',
       'unknownOutcomeResolution',
       'managerRestartRecovery',
-      'deduplicatedExecution',
+      'noBlindEffectRepeat',
     ],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: [
-        'effectReconciliation',
-        'unknownOutcomeResolution',
-        'deduplicatedExecution',
-      ],
+      missingCapabilities: ['unknownOutcomeResolution'],
     },
   },
   {
     intentId: 'rr-013',
     requiredCapabilities: ['effectReconciliation', 'unknownOutcomeFailure'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['effectReconciliation', 'unknownOutcomeFailure'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-013' },
   },
   {
     intentId: 'rr-014',
-    requiredCapabilities: ['managerRestartRecovery', 'deduplicatedExecution'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['deduplicatedExecution'],
-    },
+    requiredCapabilities: ['managerRestartRecovery', 'noBlindEffectRepeat'],
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-014' },
   },
   {
     intentId: 'rr-015',
     requiredCapabilities: ['effectReconciliation', 'reconciliationAttemptLimit'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['effectReconciliation', 'reconciliationAttemptLimit'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-015' },
   },
   {
     intentId: 'rr-016',
-    requiredCapabilities: ['effectReconciliation', 'deduplicatedExecution'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['effectReconciliation', 'deduplicatedExecution'],
-    },
+    requiredCapabilities: ['effectReconciliation', 'noBlindEffectRepeat'],
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-016' },
   },
   {
     intentId: 'rr-017',

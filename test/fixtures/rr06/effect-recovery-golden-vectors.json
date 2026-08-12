@@ -1,0 +1,98 @@
+{
+  "contract": "rr-06-effect-recovery",
+  "artifactVersion": 1,
+  "sourceRevision": "d0287e798a0e3d62acb0b08f2ee7d545df9efa63",
+  "cloudRevision": "Xx-qwSEgx953UpLTLlTjo",
+  "vectors": [
+    {
+      "id": "effect-completed-result",
+      "operation": "validateReconciliationResult",
+      "input": {
+        "kind": "effectCompleted",
+        "result": {
+          "kind": "completed",
+          "outcome": "completed",
+          "output": { "result": { "kind": "json", "value": { "adopted": true } } }
+        }
+      },
+      "expected": { "kind": "output", "value": true }
+    },
+    {
+      "id": "effect-failed-result",
+      "operation": "validateReconciliationResult",
+      "input": {
+        "kind": "effectFailed",
+        "error": { "code": "provider_failed", "message": "Provider rejected the effect." }
+      },
+      "expected": { "kind": "output", "value": true }
+    },
+    {
+      "id": "effect-not-found-result",
+      "operation": "validateReconciliationResult",
+      "input": { "kind": "effectNotFound" },
+      "expected": { "kind": "output", "value": true }
+    },
+    {
+      "id": "outcome-unknown-result",
+      "operation": "validateReconciliationResult",
+      "input": { "kind": "outcomeUnknown" },
+      "expected": { "kind": "output", "value": true }
+    },
+    {
+      "id": "extended-result-is-invalid",
+      "operation": "validateReconciliationResult",
+      "input": { "kind": "effectNotFound", "retry": true },
+      "expected": { "kind": "output", "value": false }
+    },
+    {
+      "id": "malformed-durable-intent",
+      "operation": "parseIntent",
+      "input": { "kind": "runNodeEffectIntent", "request": {}, "recoveryGeneration": 0 },
+      "expected": { "kind": "error", "message": "Stored node effect intent is invalid." }
+    },
+    {
+      "id": "malformed-durable-decision",
+      "operation": "parseDecision",
+      "input": {
+        "kind": "mustReconcile",
+        "request": {},
+        "storedRecoveryGeneration": 0,
+        "liveRecoveryGeneration": 1
+      },
+      "expected": { "kind": "error", "message": "Stored node effect decision is invalid." }
+    },
+    {
+      "id": "malformed-durable-reconciliation",
+      "operation": "parseReconciliation",
+      "input": {
+        "kind": "runNodeReconciliation",
+        "request": {},
+        "reconciliationRound": 1,
+        "result": { "kind": "effectNotFound", "retry": true }
+      },
+      "expected": { "kind": "error", "message": "Stored node reconciliation is invalid." }
+    },
+    {
+      "id": "round-addressed-reconciliation-identity",
+      "operation": "parseReconciliationStepIdentity",
+      "input": "node-effect-reconcile:2:3:main/review",
+      "expected": {
+        "kind": "output",
+        "value": {
+          "attemptOrdinal": 2,
+          "reconciliationRound": 3,
+          "displayPath": "main/review"
+        }
+      }
+    },
+    {
+      "id": "outcome-unknown-observation",
+      "operation": "mapOutcomeUnknownObservation",
+      "input": { "reconciliationRound": 2 },
+      "expected": {
+        "kind": "output",
+        "value": { "status": "outcomeUnknown", "recovery": { "reconciliationRound": 2 } }
+      }
+    }
+  ]
+}

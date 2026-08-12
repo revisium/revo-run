@@ -17,8 +17,7 @@ import { taskExecutionPlan } from '../support/execution-plan.fixture.js';
 
 type AttemptResponse =
   | RunExecutorResult
-  | { readonly kind: 'executionLimitExceeded' }
-  | { readonly kind: 'timedOut' };
+  | Exclude<Awaited<ReturnType<ExecuteNodeEffect>>, { readonly kind: 'effectResult' }>;
 
 class RecordingAttemptRuntime {
   readonly delays: number[] = [];
@@ -36,9 +35,23 @@ class RecordingAttemptRuntime {
     if (response === undefined) {
       throw new Error('No recorded attempt response remains.');
     }
-    return response.kind === 'executionLimitExceeded' || response.kind === 'timedOut'
-      ? response
-      : { kind: 'runNodeExecution', request, result: response };
+    switch (response.kind) {
+      case 'effectNotFound':
+      case 'executionLimitExceeded':
+      case 'outcomeUnknown':
+      case 'recoveryExhausted':
+      case 'timedOut':
+        return response;
+      case 'completed':
+      case 'failed':
+      case 'inputResolutionFailed':
+        return {
+          kind: 'effectResult',
+          execution: { kind: 'runNodeExecution', request, result: response },
+          nextReconciliationRound: 1,
+        };
+    }
+    throw new Error('Recorded attempt response is unsupported.');
   };
 
   readonly wait: WaitForRetry = async (delayMs) => {
@@ -205,6 +218,47 @@ describe('task node logical attempts', () => {
     expect(runtime.requests).toHaveLength(1);
     expect(runtime.events).toMatchObject([
       { type: 'nodeExecution.timedOut', data: { attemptOrdinal: 1 } },
+    ]);
+  });
+
+  it('reports coordinator denial after effectNotFound without dispatching another effect', async () => {
+    const node: TaskNode = { kind: 'task', key: 'work' };
+    const runtime = new RecordingAttemptRuntime([
+      { kind: 'effectNotFound', nextReconciliationRound: 2 },
+      { kind: 'executionLimitExceeded' },
+    ]);
+
+    const { result } = await executeTask(node, runtime);
+
+    expect(result).toMatchObject({ kind: 'finished', result: { status: 'failed' } });
+    expect(runtime.requests.map(({ attemptOrdinal }) => attemptOrdinal)).toEqual([1, 2]);
+    expect(runtime.events).toMatchObject([
+      { type: 'nodeExecution.failed', data: { attemptOrdinal: 1, errorCode: 'effect_not_found' } },
+      {
+        type: 'pipeline.invalidState',
+        data: { errorCode: 'maximum_total_node_executions_exceeded' },
+      },
+    ]);
+  });
+
+  it('emits recovery exhaustion before failing the attempt', async () => {
+    const node: TaskNode = { kind: 'task', key: 'work' };
+    const runtime = new RecordingAttemptRuntime([
+      { kind: 'recoveryExhausted', reconciliationRound: 3 },
+    ]);
+
+    const { result } = await executeTask(node, runtime);
+
+    expect(result).toMatchObject({ kind: 'continued', outcome: 'failed' });
+    expect(runtime.events).toMatchObject([
+      {
+        type: 'nodeExecution.recoveryExhausted',
+        data: { attemptOrdinal: 1, reconciliationRound: 3 },
+      },
+      {
+        type: 'nodeExecution.failed',
+        data: { attemptOrdinal: 1, errorCode: 'recovery_exhausted' },
+      },
     ]);
   });
 });

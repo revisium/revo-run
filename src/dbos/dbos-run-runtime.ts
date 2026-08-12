@@ -17,6 +17,7 @@ import { RunManagerError } from '../contracts/run/run-manager-error.js';
 import type { RunSnapshot } from '../contracts/run/run.js';
 import type { WaitForTerminalInput } from '../contracts/run/wait-for-terminal.js';
 import type { RunWorkflowInput } from '../contracts/workflow/run-workflow-input.js';
+import { recoveryAdmissionError } from '../validation/execution-plan-recovery.js';
 import { parseRunWorkflowInput } from '../validation/parse-run-workflow-data.js';
 import { runWorkflowName } from './dbos-names.js';
 import { loadRunDetails } from './read-model/load-run-details.js';
@@ -63,6 +64,14 @@ export class DbosRunRuntime {
   }
 
   async startRun(runId: string, executionPlan: ExecutionPlan, input: JsonValue): Promise<void> {
+    const recoveryError = recoveryAdmissionError(
+      executionPlan,
+      this.executor.reconcile !== undefined,
+    );
+    if (recoveryError !== undefined) {
+      throw new RunManagerError(recoveryError);
+    }
+
     const workflowId = runWorkflowId(runId);
     let status;
     try {

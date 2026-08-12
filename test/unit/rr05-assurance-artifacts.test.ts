@@ -8,7 +8,7 @@ import Schema from 'typebox/schema';
 import { describe, expect, it } from 'vitest';
 
 import { RunExecutorResultSchema } from '../../src/contracts/executor/run-executor.js';
-import { nodeExecutionStepIdentity, nodeExecutionStepName } from '../../src/dbos/dbos-names.js';
+import { nodeAttemptStepIdentity, nodeEffectDecisionStepName } from '../../src/dbos/dbos-names.js';
 import { mapRunAttempt } from '../../src/dbos/read-model/map-run-attempt.js';
 import { runWorkflowId } from '../../src/dbos/workflow-id.js';
 import type { RunExecutorRequest } from '../../src/index.js';
@@ -69,8 +69,8 @@ const GoldenVectorSchema = Type.Object(
     operation: Type.Union([
       Type.Literal('runWorkflowId'),
       Type.Literal('parseRunWorkflowInput'),
-      Type.Literal('nodeExecutionStepName'),
-      Type.Literal('nodeExecutionStepIdentity'),
+      Type.Literal('nodeEffectDecisionStepName'),
+      Type.Literal('nodeAttemptStepIdentity'),
       Type.Literal('createAttemptId'),
       Type.Literal('mapRunAttempts'),
     ]),
@@ -201,7 +201,11 @@ const mapAttempts = (attempts: Type.Static<typeof MapAttemptsInputSchema>) =>
             },
           };
     return mapRunAttempt(
-      step(index + 1, nodeExecutionStepName(candidate.displayPath, attempt.ordinal), operation),
+      step(
+        index + 1,
+        nodeEffectDecisionStepName(candidate.displayPath, attempt.ordinal),
+        operation,
+      ),
       candidate,
       runId,
       attempt.ordinal,
@@ -218,13 +222,13 @@ const execute = (operation: string, input: unknown): unknown => {
       case 'parseRunWorkflowInput':
         value = parseRunWorkflowInput(validateInput(operation, input, workflowInputValidator));
         break;
-      case 'nodeExecutionStepName': {
+      case 'nodeEffectDecisionStepName': {
         const stepInput = validateInput(operation, input, stepNameInputValidator);
-        value = nodeExecutionStepName(stepInput.path, stepInput.ordinal);
+        value = nodeEffectDecisionStepName(stepInput.path, stepInput.ordinal);
         break;
       }
-      case 'nodeExecutionStepIdentity':
-        value = nodeExecutionStepIdentity(validateInput(operation, input, runIdInputValidator));
+      case 'nodeAttemptStepIdentity':
+        value = nodeAttemptStepIdentity(validateInput(operation, input, runIdInputValidator));
         break;
       case 'createAttemptId': {
         const attemptInput = validateInput(operation, input, attemptIdInputValidator);
@@ -271,7 +275,7 @@ describe('RR-05 repository-owned assurance artifacts', () => {
     const { bytes, value } = load('attempt-retry-timeout-golden-vectors.json', goldenValidator);
 
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '12683032df20e30528e49db6bf9602d34ff40c0d7773a64405e207fb5b9be4a4',
+      '50c1c5eb02ce961a4ab8f98bf259a0b75b98537c0ba60984ca58c8487c3b551b',
     );
     expect(value.sourceRevision).toBe(sourceRevision);
     expect(new Set(value.vectors.map(({ id }) => id)).size).toBe(value.vectors.length);

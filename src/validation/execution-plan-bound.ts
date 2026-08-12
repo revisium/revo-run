@@ -56,7 +56,12 @@ export const executionPlanFitsBound = (plan: ExecutionPlan): boolean => {
   const nodeBound = (node: PipelineNode): number | undefined => {
     switch (node.kind) {
       case 'task':
-        return node.retry?.maximumAttempts ?? 1;
+        return maximum([
+          node.retry?.maximumAttempts ?? 1,
+          node.recovery?.reconciliation === 'required'
+            ? add(1, node.recovery.maximumAttempts, limit)
+            : 1,
+        ]);
       case 'sequence':
         return sum(node.children.map(nodeBound), limit);
       case 'outcomeSwitch': {

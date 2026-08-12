@@ -1,3 +1,4 @@
+import type { AttemptId } from '../../contracts/execution-identity.js';
 import type {
   RunExecutor,
   RunExecutorContext,
@@ -30,5 +31,16 @@ export class RunExecutorProvider {
     }
 
     return this.executor.execute(request, context);
+  }
+
+  supportsReconciliation(): boolean {
+    return this.executor?.reconcile !== undefined;
+  }
+
+  async reconcile(request: RunExecutorRequest, attemptId: AttemptId, context: RunExecutorContext) {
+    if (this.executor?.reconcile === undefined) {
+      throw new Error('Run executor reconciliation is not bound.');
+    }
+    return this.executor.reconcile(request, attemptId, context);
   }
 }

@@ -6,7 +6,11 @@ import type {
   RunExecutorResult,
 } from '../../src/contracts/executor/run-executor.js';
 import type { RunNodeExecution } from '../../src/contracts/executor/run-node-execution.js';
-import { nodeExecutionStepName } from '../../src/dbos/dbos-names.js';
+import {
+  nodeEffectDecisionStepName,
+  nodeReconciliationOutcomeStepName,
+  nodeReconciliationStepName,
+} from '../../src/dbos/dbos-names.js';
 import { mapRunAttempt } from '../../src/dbos/read-model/map-run-attempt.js';
 import { createAttemptId } from '../../src/pipeline/identity/execution-identity.js';
 import { observable, plan, runId, step } from '../support/run-details.fixture.js';
@@ -75,7 +79,7 @@ const identityMismatches: ReadonlyArray<
 describe('stored run attempt mapping', () => {
   it('maps a completed execution and its timestamps', () => {
     const attempt = mapRunAttempt(
-      step(1, nodeExecutionStepName('main/root-work', 1), {
+      step(1, nodeEffectDecisionStepName('main/root-work', 1), {
         output: storedExecution({
           kind: 'completed',
           outcome: 'approved',
@@ -105,7 +109,7 @@ describe('stored run attempt mapping', () => {
     const request = executionRequest({ attemptId, attemptOrdinal });
 
     const attempt = mapRunAttempt(
-      step(2, nodeExecutionStepName('main/root-work', attemptOrdinal), {
+      step(2, nodeEffectDecisionStepName('main/root-work', attemptOrdinal), {
         output: storedExecution({ kind: 'completed', outcome: 'approved' }, request),
       }),
       candidate,
@@ -118,7 +122,7 @@ describe('stored run attempt mapping', () => {
 
   it('redacts executor failure details', () => {
     const attempt = mapRunAttempt(
-      step(1, nodeExecutionStepName('main/root-work', 1), {
+      step(1, nodeEffectDecisionStepName('main/root-work', 1), {
         output: storedExecution({
           kind: 'failed',
           error: { code: 'provider_failed', message: 'secret executor detail' },
@@ -136,9 +140,83 @@ describe('stored run attempt mapping', () => {
     expect(JSON.stringify(attempt)).not.toContain('secret executor detail');
   });
 
+  it('maps a reconciled completed effect without exposing recovery internals', () => {
+    const attempt = mapRunAttempt(
+      step(2, nodeReconciliationStepName('main/root-work', 1, 1), {
+        output: {
+          kind: 'runNodeReconciliation',
+          request: executionRequest(),
+          reconciliationRound: 1,
+          result: {
+            kind: 'effectCompleted',
+            result: { kind: 'completed', outcome: 'approved' },
+          },
+        },
+      }),
+      candidate,
+      runId,
+      1,
+    );
+
+    expect(attempt).toMatchObject({ status: 'completed', outcome: 'approved' });
+    expect(attempt).not.toHaveProperty('recovery');
+  });
+
+  it('rejects a reconciliation whose durable name and output disagree on the round', () => {
+    expect(() =>
+      mapRunAttempt(
+        step(2, nodeReconciliationStepName('main/root-work', 1, 2), {
+          output: {
+            kind: 'runNodeReconciliation',
+            request: executionRequest(),
+            reconciliationRound: 1,
+            result: { kind: 'effectNotFound' },
+          },
+        }),
+        candidate,
+        runId,
+        1,
+      ),
+    ).toThrow('Stored node reconciliation round is invalid.');
+  });
+
+  it('maps a checkpointed unknown outcome with its reconciliation round', () => {
+    const attempt = mapRunAttempt(
+      step(3, nodeReconciliationOutcomeStepName('main/root-work', 1, 2), {
+        output: {
+          kind: 'runNodeReconciliation',
+          request: executionRequest(),
+          reconciliationRound: 2,
+          result: { kind: 'outcomeUnknown' },
+        },
+      }),
+      candidate,
+      runId,
+      1,
+    );
+
+    expect(attempt).toMatchObject({
+      status: 'outcomeUnknown',
+      recovery: { reconciliationRound: 2 },
+    });
+  });
+
+  it('does not project an intermediate failed reconciliation round', () => {
+    const attempt = mapRunAttempt(
+      step(2, nodeReconciliationStepName('main/root-work', 1, 1), {
+        error: new Error('provider unavailable'),
+      }),
+      candidate,
+      runId,
+      1,
+    );
+
+    expect(attempt).toBeUndefined();
+  });
+
   it('maps a DBOS step timeout without exposing the provider error', () => {
     const attempt = mapRunAttempt(
-      step(1, nodeExecutionStepName('main/root-work', 1), {
+      step(1, nodeEffectDecisionStepName('main/root-work', 1), {
         error: new DBOSError.DBOSStepTimeoutError('secret timeout detail', 10),
       }),
       candidate,
@@ -152,7 +230,7 @@ describe('stored run attempt mapping', () => {
 
   it('sanitizes a non-timeout DBOS step error', () => {
     const attempt = mapRunAttempt(
-      step(1, nodeExecutionStepName('main/root-work', 1), {
+      step(1, nodeEffectDecisionStepName('main/root-work', 1), {
         error: new Error('secret provider detail'),
       }),
       candidate,
@@ -165,12 +243,12 @@ describe('stored run attempt mapping', () => {
   });
 
   it('rejects a malformed stored execution schema', () => {
-    const malformed = step(1, nodeExecutionStepName('main/root-work', 1), {
+    const malformed = step(1, nodeEffectDecisionStepName('main/root-work', 1), {
       output: { kind: 'runNodeExecution', request: {}, result: { kind: 'completed' } },
     });
 
     expect(() => mapRunAttempt(malformed, candidate, runId, 1)).toThrow(
-      'Stored node execution is invalid.',
+      'Stored node effect decision is invalid.',
     );
   });
 
@@ -182,7 +260,7 @@ describe('stored run attempt mapping', () => {
 
     expect(() =>
       mapRunAttempt(
-        step(1, nodeExecutionStepName('main/root-work', 1), { output: execution }),
+        step(1, nodeEffectDecisionStepName('main/root-work', 1), { output: execution }),
         candidate,
         runId,
         1,

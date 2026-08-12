@@ -1,6 +1,7 @@
 import { pipelineNodePath } from '../contracts/pipeline/node-path.js';
 import type { PipelineNode } from '../contracts/pipeline/pipeline-node.js';
 import type { ExecutionPlan } from '../contracts/run/execution-plan.js';
+import { pipelineChildNodes } from './pipeline-node-traversal.js';
 
 type PipelineGraphErrorCode =
   | 'duplicate_node_key'
@@ -25,36 +26,6 @@ type PipelineInspection =
       readonly nodeKinds: ReadonlyMap<string, PipelineNode['kind']>;
     }
   | { readonly valid: false; readonly code: Exclude<PipelineGraphErrorCode, 'pipeline_not_found'> };
-
-const optionalNode = (node: PipelineNode | undefined): readonly PipelineNode[] =>
-  node === undefined ? [] : [node];
-
-const childNodes = (node: PipelineNode): readonly PipelineNode[] => {
-  switch (node.kind) {
-    case 'branch':
-      return [...Object.values(node.cases), ...optionalNode(node.default)];
-    case 'consensus':
-      return Object.values(node.participants);
-    case 'map':
-    case 'repeat':
-      return [node.body];
-    case 'outcomeSwitch':
-      return [node.source, ...Object.values(node.cases), ...optionalNode(node.default)];
-    case 'parallel':
-      return Object.values(node.branches);
-    case 'sequence':
-      return node.children;
-    case 'delay':
-    case 'end':
-    case 'humanGate':
-    case 'subpipeline':
-    case 'task':
-      return [];
-  }
-
-  node satisfies never;
-  return node;
-};
 
 const nodeValidationError = (
   node: PipelineNode,
@@ -138,7 +109,7 @@ const inspectPipeline = (root: PipelineNode, maximumDepth: number): PipelineInsp
     if (!inspection.valid) {
       return inspection;
     }
-    for (const child of childNodes(current.node)) {
+    for (const child of pipelineChildNodes(current.node)) {
       pending.push({ node: child, depth: current.depth + 1, parentPath: inspection.path });
     }
   }
