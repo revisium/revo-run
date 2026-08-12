@@ -18,10 +18,7 @@ export const executionScenarioAudit = [
   {
     intentId: 'rr-003',
     requiredCapabilities: ['agentTaskExecution', 'taskTimeoutRouting', 'dbosSafeTimeAdvancement'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['taskTimeoutRouting', 'dbosSafeTimeAdvancement'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-003' },
   },
   {
     intentId: 'rr-004',
@@ -44,10 +41,7 @@ export const executionScenarioAudit = [
       'taskTimeoutRouting',
       'dbosSafeTimeAdvancement',
     ],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['taskTimeoutRouting', 'dbosSafeTimeAdvancement'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-006' },
   },
   {
     intentId: 'rr-007',
@@ -57,10 +51,7 @@ export const executionScenarioAudit = [
       'durableBackoff',
       'dbosSafeTimeAdvancement',
     ],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['retryableFailureRetry', 'durableBackoff', 'dbosSafeTimeAdvancement'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-007' },
   },
   {
     intentId: 'rr-008',
@@ -70,15 +61,12 @@ export const executionScenarioAudit = [
       'durableBackoff',
       'dbosSafeTimeAdvancement',
     ],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['retryAttemptLimit', 'durableBackoff', 'dbosSafeTimeAdvancement'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-008' },
   },
   {
     intentId: 'rr-009',
     requiredCapabilities: ['retryErrorFiltering', 'singleAttemptExecution'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['retryErrorFiltering'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-009' },
   },
   {
     intentId: 'rr-010',
@@ -88,10 +76,7 @@ export const executionScenarioAudit = [
       'managerRestartRecovery',
       'dbosSafeTimeAdvancement',
     ],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['retryableFailureRetry', 'durableBackoff', 'dbosSafeTimeAdvancement'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-010' },
   },
   {
     intentId: 'rr-011',
@@ -164,7 +149,7 @@ export const executionScenarioAudit = [
     requiredCapabilities: ['runCancellation', 'durableBackoff', 'dbosSafeTimeAdvancement'],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: ['runCancellation', 'durableBackoff', 'dbosSafeTimeAdvancement'],
+      missingCapabilities: ['runCancellation'],
     },
   },
   {

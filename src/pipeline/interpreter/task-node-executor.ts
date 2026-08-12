@@ -1,8 +1,14 @@
+import type { RunExecutorRequest } from '../../contracts/executor/run-executor.js';
 import type { TaskNode } from '../../contracts/pipeline/pipeline-node.js';
+import type { RetryPolicy } from '../../contracts/pipeline/task-policy.js';
 import type { ExecutionBinding } from '../../contracts/run/execution-binding.js';
 import { InputResolver } from '../data/input-resolver.js';
 import { createAttemptId } from '../identity/execution-identity.js';
-import type { ExecuteNodeEffect, PipelineExecutionContext } from './interpreter-context.js';
+import type {
+  ExecuteNodeEffect,
+  PipelineExecutionContext,
+  WaitForRetry,
+} from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
 import {
   inputResolutionFailedEvent,
@@ -13,12 +19,23 @@ import {
 import type { NodeExecutionResult } from './pipeline-node-result.js';
 import { continuedExecution } from './pipeline-node-result.js';
 
+type ResolvedTaskRequest = Omit<
+  RunExecutorRequest,
+  'attemptId' | 'attemptOrdinal' | 'displayPath' | 'nodePath' | 'pipelineId' | 'runId'
+>;
+
 export class TaskNodeExecutor {
   private readonly executeEffect: ExecuteNodeEffect;
+  private readonly waitForRetry: WaitForRetry;
   private readonly events: PipelineEventSink;
 
-  constructor(executeEffect: ExecuteNodeEffect, events: PipelineEventSink) {
+  constructor(
+    executeEffect: ExecuteNodeEffect,
+    waitForRetry: WaitForRetry,
+    events: PipelineEventSink,
+  ) {
     this.executeEffect = executeEffect;
+    this.waitForRetry = waitForRetry;
     this.events = events;
   }
 
@@ -41,19 +58,39 @@ export class TaskNodeExecutor {
       return { kind: 'finished', result: { status: 'failed', outcome: 'invalid' } };
     }
 
-    const attemptOrdinal = 1;
-    const attemptId = createAttemptId({ nodeInstanceId: identity.nodeInstanceId, attemptOrdinal });
-    const request = {
+    return this.executeAttempt(
+      node,
+      context,
+      nodePath,
+      {
+        ...identity,
+        binding,
+        input: input.value,
+      },
+      1,
+    );
+  }
+
+  private async executeAttempt(
+    node: TaskNode,
+    context: PipelineExecutionContext,
+    nodePath: string,
+    input: ResolvedTaskRequest,
+    attemptOrdinal: number,
+  ): Promise<NodeExecutionResult> {
+    const attemptId = createAttemptId({
+      nodeInstanceId: input.nodeInstanceId,
+      attemptOrdinal,
+    });
+    const request: RunExecutorRequest = {
       runId: context.runId,
-      ...identity,
+      ...input,
       attemptId,
       attemptOrdinal,
       displayPath: runtimePath(context, nodePath),
       pipelineId: context.pipelineId,
       nodePath,
-      binding,
-      input: input.value,
-    } as const;
+    };
     const execution = await this.executeEffect(
       request,
       node.timeoutMs ?? context.plan.policies.defaultTaskTimeoutMs,
@@ -73,28 +110,72 @@ export class TaskNodeExecutor {
     if (execution.kind === 'timedOut') {
       await this.events.write({
         type: 'nodeExecution.timedOut',
-        data: { ...identity, attemptId, attemptOrdinal },
+        data: this.attemptEventIdentity(request),
       });
       return continuedExecution('timedOut', runtimePath(context, nodePath));
     }
     if (execution.result.kind === 'inputResolutionFailed') {
-      return this.inputResolutionFailed(node, nodePath, context, execution.result.error.code);
+      await this.events.write(
+        inputResolutionFailedEvent(node, context, nodePath, execution.result.error.code),
+      );
+      await this.writeAttemptFailure(request, execution.result.error.code);
+      return continuedExecution('failed', runtimePath(context, nodePath));
     }
     if (execution.result.kind === 'failed') {
-      await this.events.write({
-        type: 'nodeExecution.failed',
-        data: { ...identity, attemptId, attemptOrdinal, errorCode: execution.result.error.code },
-      });
+      await this.writeAttemptFailure(request, execution.result.error.code);
+      if (this.shouldRetry(node.retry, attemptOrdinal, execution.result.error.code)) {
+        await this.waitForRetry(this.retryDelay(node.retry, attemptOrdinal));
+        return this.executeAttempt(node, context, nodePath, input, attemptOrdinal + 1);
+      }
       return continuedExecution('failed', runtimePath(context, nodePath));
     }
 
     await this.events.write({
       type: 'nodeExecution.completed',
-      data: { ...identity, attemptId, attemptOrdinal, outcome: execution.result.outcome },
+      data: { ...this.attemptEventIdentity(request), outcome: execution.result.outcome },
     });
     const output = execution.result.output ?? {};
     context.outputs.set(nodePath, output);
     return continuedExecution(execution.result.outcome, runtimePath(context, nodePath), output);
+  }
+
+  private async writeAttemptFailure(request: RunExecutorRequest, errorCode: string): Promise<void> {
+    await this.events.write({
+      type: 'nodeExecution.failed',
+      data: { ...this.attemptEventIdentity(request), errorCode },
+    });
+  }
+
+  private attemptEventIdentity(request: RunExecutorRequest) {
+    return {
+      scopeId: request.scopeId,
+      authoredNodeId: request.authoredNodeId,
+      nodeInstanceId: request.nodeInstanceId,
+      attemptId: request.attemptId,
+      attemptOrdinal: request.attemptOrdinal,
+    };
+  }
+
+  private shouldRetry(
+    policy: RetryPolicy | undefined,
+    attemptOrdinal: number,
+    errorCode: string,
+  ): policy is RetryPolicy {
+    return (
+      policy !== undefined &&
+      attemptOrdinal < policy.maximumAttempts &&
+      policy.retryableErrorCodes.includes(errorCode)
+    );
+  }
+
+  private retryDelay(policy: RetryPolicy, attemptOrdinal: number): number {
+    if (policy.backoff.kind === 'constant') {
+      return policy.backoff.delayMs;
+    }
+    return Math.min(
+      policy.backoff.initialDelayMs * 2 ** (attemptOrdinal - 1),
+      policy.backoff.maximumDelayMs,
+    );
   }
 
   private bindingFor(

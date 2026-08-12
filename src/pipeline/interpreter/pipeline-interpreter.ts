@@ -9,7 +9,11 @@ import type {
   ParallelBranchRunner,
 } from '../parallel/parallel-branch-runner.js';
 import { ParallelNodeExecutor } from '../parallel/parallel-node-executor.js';
-import type { PipelineExecutionContext, ExecuteNodeEffect } from './interpreter-context.js';
+import type {
+  PipelineExecutionContext,
+  ExecuteNodeEffect,
+  WaitForRetry,
+} from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
 import {
   inputResolutionFailedEvent,
@@ -28,12 +32,13 @@ export class PipelineInterpreter {
 
   constructor(
     executeEffect: ExecuteNodeEffect,
+    waitForRetry: WaitForRetry,
     executeBranches: ParallelBranchRunner,
     events: PipelineEventSink,
   ) {
     this.events = events;
     this.parallel = new ParallelNodeExecutor(executeBranches, events);
-    this.tasks = new TaskNodeExecutor(executeEffect, events);
+    this.tasks = new TaskNodeExecutor(executeEffect, waitForRetry, events);
   }
 
   async execute(

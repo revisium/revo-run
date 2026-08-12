@@ -1,3 +1,3 @@
-export const runWorkflowId = (runId: string): string => `rr:run:v2:${runId}`;
+export const runWorkflowId = (runId: string): string => `rr:run:v1:${runId}`;
 
-export const scopeWorkflowId = (scopeId: string): string => `rr:scope:v2:${scopeId}`;
+export const scopeWorkflowId = (scopeId: string): string => `rr:scope:v1:${scopeId}`;

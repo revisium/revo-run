@@ -4,6 +4,7 @@ import {
   completeNode,
   end,
   executionPlan,
+  expectJsonOutput,
   expectNodeExecutions,
   expectRunStatus,
   failNode,
@@ -41,9 +42,18 @@ export const retryScenarios: readonly RunScenario[] = [
       failNode('main/review', 'rate_limited', 1),
       advanceTime(1_000),
       expectNodeExecutions('main/review'),
-      completeNode('main/review', 'completed', undefined, 2),
+      completeNode('main/review', 'completed', { verdict: 'approved' }, 2),
       { kind: 'expectExecutionCount', path: 'main/review', count: 2 },
       expectRunStatus('succeeded'),
+      expectJsonOutput('main/review', 'result', { verdict: 'approved' }),
+      {
+        kind: 'expectRunDetails',
+        nodePaths: ['main/review'],
+        attempts: [
+          { nodePath: 'main/review', ordinal: 1, status: 'failed' },
+          { nodePath: 'main/review', ordinal: 2, status: 'completed' },
+        ],
+      },
     ],
   }),
   scenario({
@@ -72,6 +82,15 @@ export const retryScenarios: readonly RunScenario[] = [
       failNode('main/publish', 'provider_unavailable', 3),
       { kind: 'expectExecutionCount', path: 'main/publish', count: 3 },
       expectRunStatus('failed'),
+      {
+        kind: 'expectRunDetails',
+        nodePaths: ['main/publish'],
+        attempts: [
+          { nodePath: 'main/publish', ordinal: 1, status: 'failed' },
+          { nodePath: 'main/publish', ordinal: 2, status: 'failed' },
+          { nodePath: 'main/publish', ordinal: 3, status: 'failed' },
+        ],
+      },
     ],
   }),
   scenario({

@@ -23,7 +23,7 @@ fi
 query_args=(
   --get "${SONAR_HOST_URL}/api/issues/search"
   --data-urlencode "componentKeys=${PROJECT_KEY}"
-  --data-urlencode "issueStatuses=OPEN"
+  --data-urlencode "issueStatuses=OPEN,CONFIRMED"
   --data-urlencode "ps=500"
 )
 
@@ -51,22 +51,69 @@ fi
 
 node -e '
 const payload = JSON.parse(process.argv[1]);
-const issues = payload.issues ?? [];
+if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+  throw new Error("Sonar issue response is invalid.");
+}
+if (
+  !Array.isArray(payload.issues) ||
+  !Number.isSafeInteger(payload.total) ||
+  payload.total < payload.issues.length
+) {
+  throw new Error("Sonar issue response is invalid.");
+}
+
+const unresolvedStatuses = new Set(["OPEN", "CONFIRMED", "REOPENED"]);
+const resolvedStatuses = new Set([
+  "ACCEPTED",
+  "CLOSED",
+  "FALSE_POSITIVE",
+  "FIXED",
+  "IN_SANDBOX",
+  "RESOLVED",
+]);
+const issues = payload.issues.filter((issue) => {
+  if (issue === null || typeof issue !== "object" || Array.isArray(issue)) {
+    throw new Error("Sonar issue response is invalid.");
+  }
+  if (
+    typeof issue.component !== "string" ||
+    typeof issue.rule !== "string" ||
+    typeof issue.severity !== "string" ||
+    typeof issue.message !== "string" ||
+    (issue.line !== undefined && (!Number.isSafeInteger(issue.line) || issue.line < 1))
+  ) {
+    throw new Error("Sonar issue response is invalid.");
+  }
+  const status = issue.issueStatus ?? issue.status;
+  if (typeof status !== "string") {
+    throw new Error("Sonar issue response is invalid.");
+  }
+  if (unresolvedStatuses.has(status)) {
+    return true;
+  }
+  if (resolvedStatuses.has(status)) {
+    return false;
+  }
+  throw new Error(`Sonar issue response has unknown status ${status}.`);
+});
 
 if (issues.length === 0) {
+  if (payload.total > payload.issues.length) {
+    throw new Error("Sonar issue response was truncated before all statuses could be inspected.");
+  }
   console.log("Sonar open issues: 0");
   process.exit(0);
 }
 
-console.error(`Sonar open issues: ${payload.total ?? issues.length}`);
+console.error(`Sonar open issues: ${issues.length}`);
 for (const issue of issues.slice(0, 50)) {
   const component = String(issue.component ?? "").replace(/^[^:]+:/, "");
   const line = issue.line ? `:${issue.line}` : "";
   console.error(`- ${component}${line} ${issue.rule} ${issue.severity}: ${issue.message}`);
 }
 
-if ((payload.total ?? issues.length) > issues.length) {
-  console.error(`Only the first ${issues.length} issue(s) were returned.`);
+if (payload.total > payload.issues.length) {
+  console.error(`Only the first ${payload.issues.length} issue(s) were returned.`);
 }
 
 process.exit(1);

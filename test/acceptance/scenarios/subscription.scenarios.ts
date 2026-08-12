@@ -125,9 +125,9 @@ export const subscriptionScenarios: readonly RunScenario[] = [
           'main/review/assurance/qa',
         ],
         attempts: [
-          { nodePath: 'main/review/product', status: 'completed' },
-          { nodePath: 'main/review/assurance/security', status: 'completed' },
-          { nodePath: 'main/review/assurance/qa', status: 'completed' },
+          { nodePath: 'main/review/product', ordinal: 1, status: 'completed' },
+          { nodePath: 'main/review/assurance/security', ordinal: 1, status: 'completed' },
+          { nodePath: 'main/review/assurance/qa', ordinal: 1, status: 'completed' },
         ],
       },
     ],

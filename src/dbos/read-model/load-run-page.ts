@@ -50,7 +50,7 @@ const queryFrom = (input: ListRunsInput): GetWorkflowsInput => {
   const status = dbosStatuses(input.statuses);
   return {
     workflowName: runWorkflowName,
-    workflow_id_prefix: 'rr:run:v2:',
+    workflow_id_prefix: 'rr:run:v1:',
     ...(status === undefined ? {} : { status }),
     ...(input.createdFrom === undefined ? {} : { startTime: input.createdFrom.toISOString() }),
     ...(input.createdThrough === undefined ? {} : { endTime: input.createdThrough.toISOString() }),

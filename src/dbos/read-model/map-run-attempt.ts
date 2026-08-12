@@ -1,5 +1,6 @@
 import type { RunExecutorRequest } from '../../contracts/executor/run-executor.js';
 import type { RunAttempt } from '../../contracts/run/run-details.js';
+import { createAttemptId } from '../../pipeline/identity/execution-identity.js';
 import { parseRunNodeExecution } from '../../validation/run-node-execution.validator.js';
 import { isDbosStepTimeout } from '../steps/step-timeout.js';
 import type { DbosStepRecord } from './dbos-step-pages.js';
@@ -18,14 +19,16 @@ const assertStoredExecutionIdentity = (
   request: RunExecutorRequest,
   candidate: ObservableNodeCandidate,
   runId: string,
+  attemptOrdinal: number,
 ): void => {
+  const attemptId = createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal });
   if (
     request.runId !== runId ||
     request.scopeId !== candidate.scopeId ||
     request.authoredNodeId !== candidate.authoredNodeId ||
     request.nodeInstanceId !== candidate.id ||
-    request.attemptId !== candidate.attemptId ||
-    request.attemptOrdinal !== 1 ||
+    request.attemptId !== attemptId ||
+    request.attemptOrdinal !== attemptOrdinal ||
     request.pipelineId !== candidate.pipelineId ||
     request.nodePath !== candidate.nodePath ||
     request.displayPath !== candidate.displayPath
@@ -38,24 +41,26 @@ export const mapRunAttempt = (
   step: DbosStepRecord,
   candidate: ObservableNodeCandidate,
   runId: string,
+  attemptOrdinal: number,
 ): RunAttempt => {
   const timestamps = attemptTimestamps(step);
+  const attemptId = createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal });
   if (step.error !== null) {
     if (!(step.error instanceof Error)) {
       throw new Error('DBOS node step error is invalid.');
     }
     return isDbosStepTimeout(step.error)
       ? {
-          id: candidate.attemptId,
+          id: attemptId,
           nodeInstanceId: candidate.id,
-          ordinal: 1,
+          ordinal: attemptOrdinal,
           status: 'timedOut',
           ...timestamps,
         }
       : {
-          id: candidate.attemptId,
+          id: attemptId,
           nodeInstanceId: candidate.id,
-          ordinal: 1,
+          ordinal: attemptOrdinal,
           status: 'failed',
           error: { code: 'step_failed' },
           ...timestamps,
@@ -63,12 +68,12 @@ export const mapRunAttempt = (
   }
 
   const execution = parseRunNodeExecution(step.output);
-  assertStoredExecutionIdentity(execution.request, candidate, runId);
+  assertStoredExecutionIdentity(execution.request, candidate, runId, attemptOrdinal);
   if (execution.result.kind === 'completed') {
     return {
-      id: candidate.attemptId,
+      id: attemptId,
       nodeInstanceId: candidate.id,
-      ordinal: 1,
+      ordinal: attemptOrdinal,
       status: 'completed',
       outcome: execution.result.outcome,
       ...(execution.result.output === undefined ? {} : { output: execution.result.output }),
@@ -76,9 +81,9 @@ export const mapRunAttempt = (
     };
   }
   return {
-    id: candidate.attemptId,
+    id: attemptId,
     nodeInstanceId: candidate.id,
-    ordinal: 1,
+    ordinal: attemptOrdinal,
     status: 'failed',
     error: { code: execution.result.error.code },
     ...timestamps,

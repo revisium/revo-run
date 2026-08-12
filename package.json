@@ -41,7 +41,7 @@
     "format:check": "oxfmt --check .",
     "test": "dotenv -e .env.test -- vitest run",
     "test:cov": "dotenv -e .env.test -- vitest run --coverage",
-    "verify:shell": "bash -n scripts/*.sh",
+    "verify:shell": "bash -n scripts/*.sh test/scripts/*.sh && bash test/scripts/sonar-issues-local.test.sh",
     "verify": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run test:cov && pnpm run verify:shell",
     "sonar:local": "bash scripts/sonar-local.sh",
     "sonar:issues:local": "bash scripts/sonar-issues-local.sh",

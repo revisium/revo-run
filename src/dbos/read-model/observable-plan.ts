@@ -2,7 +2,6 @@ import { childNodePath, pipelineNodePath } from '../../contracts/pipeline/node-p
 import type { PipelineNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
 import {
-  createAttemptId,
   createAuthoredNodeId,
   createNodeInstanceId,
   createParallelBranchScopeId,
@@ -46,7 +45,6 @@ export interface ObservableNodeCandidate {
   readonly id: string;
   readonly scopeId: string;
   readonly authoredNodeId: string;
-  readonly attemptId: string;
   readonly pipelineId: string;
   readonly nodePath: string;
   readonly displayPath: string;
@@ -174,7 +172,6 @@ class ObservablePlanBuilder {
       id,
       scopeId: context.logicalScopeId,
       authoredNodeId,
-      attemptId: createAttemptId({ nodeInstanceId: id, attemptOrdinal: 1 }),
       pipelineId: context.pipelineId,
       nodePath,
       displayPath: displayPath(context, nodePath),

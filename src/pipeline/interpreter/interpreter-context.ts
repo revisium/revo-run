@@ -23,3 +23,5 @@ export type ExecuteNodeEffect = (
 ) => Promise<
   RunNodeExecution | { readonly kind: 'executionLimitExceeded' } | { readonly kind: 'timedOut' }
 >;
+
+export type WaitForRetry = (delayMs: number) => Promise<void>;

@@ -9,7 +9,6 @@ export const AdmissionTokenSchema = Type.String({ pattern: '^[A-Za-z0-9_-]{43}$'
 
 export const RunWorkflowInputSchema = Type.Object(
   {
-    contractVersion: Type.Literal(2),
     runId: RunIdSchema,
     admissionToken: AdmissionTokenSchema,
     executionPlan: ExecutionPlanSchema,

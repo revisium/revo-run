@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbos = vi.hoisted(() => ({
-  workflowID: 'rr:run:v2:run-1',
+  workflowID: 'rr:run:v1:run-1',
   recv: vi.fn<(topic: string, options?: unknown) => Promise<unknown>>(),
   startWorkflow:
     vi.fn<(workflow: unknown, options: unknown) => (input: unknown) => Promise<unknown>>(),
@@ -38,14 +38,13 @@ import type { RunExecutionWorkflow } from '../../src/dbos/workflows/run-executio
 import { createRunWorkflow } from '../../src/dbos/workflows/run-workflow.js';
 
 const digest = (character: string): string => character.repeat(43);
-const scopeWorkflowId = `rr:scope:v2:sc1_${digest('a')}`;
+const scopeWorkflowId = `rr:scope:v1:sc1_${digest('a')}`;
 const nodeIdentity = {
   scopeId: `sc1_${digest('b')}`,
   authoredNodeId: `an1_${digest('c')}`,
   nodeInstanceId: `ni1_${digest('d')}`,
 } as const;
 const workflowInput = {
-  contractVersion: 2,
   runId: 'run-1',
   admissionToken: digest('e'),
   executionPlan: {
@@ -68,7 +67,7 @@ const workflowInput = {
 
 describe('run workflow event budget result', () => {
   beforeEach(() => {
-    dbos.workflowID = 'rr:run:v2:run-1';
+    dbos.workflowID = 'rr:run:v1:run-1';
     dbos.recv.mockReset();
     stream.append.mockReset().mockResolvedValue(undefined);
     stream.close.mockReset().mockResolvedValue(undefined);

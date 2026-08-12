@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type { RunScenario, ScenarioCommandRejectionReason } from '../dsl/run-scenario.js';
-import { advanceLogicalTime, advanceTime, expectCommandAccepted } from '../dsl/run-scenario.js';
+import {
+  advanceLogicalTime,
+  advanceTime,
+  expectCommandAccepted,
+  scenarioTimeoutMs,
+} from '../dsl/run-scenario.js';
 import { plannedPipelineScenarios } from './capability-matrix.js';
 import { implementedCapabilities } from './scenario-readiness.js';
 
@@ -14,8 +19,8 @@ const scenarioByIntentId = (intentId: string): RunScenario => {
 };
 
 describe('acceptance scenario DSL', () => {
-  it('requires explicit unimplemented DBOS-safe time advancement in both directions', () => {
-    expect(implementedCapabilities).not.toContain('dbosSafeTimeAdvancement');
+  it('requires implemented DBOS-safe time advancement in both directions', () => {
+    expect(implementedCapabilities).toContain('dbosSafeTimeAdvancement');
     for (const scenario of plannedPipelineScenarios) {
       const advancesTime = scenario.steps.some(({ kind }) => kind === 'advanceTime');
       const requiresSafeTime = scenario.requiredCapabilities.includes('dbosSafeTimeAdvancement');
@@ -55,6 +60,7 @@ describe('acceptance scenario DSL', () => {
 
     expect(elapsedAtRestart).toEqual([30_000]);
     expect(elapsedTimeMs).toBe(60_000);
+    expect(scenarioTimeoutMs(restartDelayScenario.steps)).toBe(90_000);
   });
 
   it('binds command-result expectations bidirectionally to command rejection', () => {

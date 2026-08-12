@@ -10,7 +10,7 @@ export const enterpriseLifecycleScenarioAudit = [
     ],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: ['durableDelayRecovery', 'dbosSafeTimeAdvancement'],
+      missingCapabilities: ['durableDelayRecovery'],
     },
   },
   {
@@ -18,7 +18,7 @@ export const enterpriseLifecycleScenarioAudit = [
     requiredCapabilities: ['durableDelayCancellation', 'dbosSafeTimeAdvancement'],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: ['durableDelayCancellation', 'dbosSafeTimeAdvancement'],
+      missingCapabilities: ['durableDelayCancellation'],
     },
   },
   {

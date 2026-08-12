@@ -3,6 +3,7 @@ import { RunCoordinatorClient } from '../coordination/run-coordinator-client.js'
 import type { RunExecutorProvider } from '../executor/run-executor-provider.js';
 import { DbosParallelBranchRunner } from '../parallel/dbos-parallel-branch-runner.js';
 import { NodeExecutionStep } from '../steps/node-execution-step.js';
+import { waitForDurableRetry } from '../wait/dbos-retry-wait.js';
 import type { ParallelBranchWorkflowProvider } from './parallel-branch-workflow-provider.js';
 
 export interface PipelineExecution {
@@ -18,6 +19,7 @@ export const createPipelineExecution = (
   const coordinator = new RunCoordinatorClient(runId);
   const interpreter = new PipelineInterpreter(
     coordinator.executionStep(new NodeExecutionStep(executor)),
+    waitForDurableRetry,
     new DbosParallelBranchRunner(parallelBranchWorkflows, coordinator),
     coordinator,
   );

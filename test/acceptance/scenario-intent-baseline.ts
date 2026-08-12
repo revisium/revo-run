@@ -12,8 +12,14 @@ export const approvedScenarioIntents = [
 export const provenExecutableIntentIds = [
   'rr-001',
   'rr-002',
+  'rr-003',
   'rr-004',
   'rr-005',
+  'rr-006',
+  'rr-007',
+  'rr-008',
+  'rr-009',
+  'rr-010',
   'rr-021',
   'rr-022',
   'rr-023',
@@ -67,4 +73,4 @@ export const provenExecutableIntentIds = [
   'rr-103',
 ] as const satisfies readonly ScenarioIntentId[];
 
-export const maximumPendingScenarioCount = 48;
+export const maximumPendingScenarioCount = 42;

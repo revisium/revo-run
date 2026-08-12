@@ -184,6 +184,7 @@ export type ScenarioStep =
       readonly scopePaths?: readonly string[];
       readonly attempts?: readonly {
         readonly nodePath: string;
+        readonly ordinal: number;
         readonly status: RunNodeExecutionStatus;
       }[];
     }

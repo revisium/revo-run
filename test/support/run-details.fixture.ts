@@ -8,7 +8,8 @@ import {
 } from '../../src/dbos/dbos-names.js';
 import { buildObservablePlan } from '../../src/dbos/read-model/observable-plan.js';
 import { runWorkflowId, scopeWorkflowId } from '../../src/dbos/workflow-id.js';
-import type { ExecutionPlan, RunSnapshot } from '../../src/index.js';
+import type { ExecutionPlan, RunNodeExecution, RunSnapshot } from '../../src/index.js';
+import { createAttemptId } from '../../src/pipeline/identity/execution-identity.js';
 import { agentBinding, end, executionPlan, sequence, task } from '../dsl/pipeline-builder.js';
 
 export interface TestStepInfo {
@@ -96,7 +97,11 @@ export const step = (
   completedAtEpochMs: 6 + functionID,
 });
 
-const execution = (path: string, kind: 'completed' | 'failed') => {
+export const storedNodeExecution = (
+  path: string,
+  kind: 'completed' | 'failed',
+  attemptOrdinal = 1,
+): RunNodeExecution => {
   const candidate = observable.nodesByDisplayPath.get(path);
   if (candidate === undefined) {
     throw new Error(`Missing candidate ${path}.`);
@@ -115,8 +120,8 @@ const execution = (path: string, kind: 'completed' | 'failed') => {
       authoredNodeId: candidate.authoredNodeId,
       scopeId: candidate.scopeId,
       nodeInstanceId: candidate.id,
-      attemptId: candidate.attemptId,
-      attemptOrdinal: 1,
+      attemptId: createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal }),
+      attemptOrdinal,
       displayPath: candidate.displayPath,
       pipelineId: candidate.pipelineId,
       nodePath: candidate.nodePath,
@@ -189,11 +194,11 @@ export const runDetailsSteps = (): Map<string, readonly TestStepInfo[]> => {
     [
       scopeWorkflowId(rootScope.id),
       [
-        step(1, nodeExecutionStepName('main/root-work'), {
-          output: execution('main/root-work', 'completed'),
+        step(1, nodeExecutionStepName('main/root-work', 1), {
+          output: storedNodeExecution('main/root-work', 'completed'),
         }),
-        step(2, nodeExecutionStepName('main/review/check'), {
-          output: execution('main/review/check', 'failed'),
+        step(2, nodeExecutionStepName('main/review/check', 1), {
+          output: storedNodeExecution('main/review/check', 'failed'),
         }),
         step(3, parallelBranchWorkflowName, { childWorkflowID: scopeWorkflowId(branchA.id) }),
         step(4, 'DBOS.getResult', { childWorkflowID: scopeWorkflowId(branchA.id) }),
@@ -204,16 +209,16 @@ export const runDetailsSteps = (): Map<string, readonly TestStepInfo[]> => {
     [
       scopeWorkflowId(branchA.id),
       [
-        step(1, nodeExecutionStepName('main/batch/a'), {
-          output: execution('main/batch/a', 'completed'),
+        step(1, nodeExecutionStepName('main/batch/a', 1), {
+          output: storedNodeExecution('main/batch/a', 'completed'),
         }),
       ],
     ],
     [
       scopeWorkflowId(branchB.id),
       [
-        step(1, nodeExecutionStepName('main/batch/b'), {
-          error: new DBOSError.DBOSStepTimeoutError('execute-node:main/batch/b', 10),
+        step(1, nodeExecutionStepName('main/batch/b', 1), {
+          error: new DBOSError.DBOSStepTimeoutError(nodeExecutionStepName('main/batch/b', 1), 10),
         }),
       ],
     ],

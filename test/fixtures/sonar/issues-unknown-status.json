@@ -1,0 +1,15 @@
+{
+  "total": 1,
+  "issues": [
+    {
+      "key": "unknown-status",
+      "component": "revisium_revo-run:src/unknown.ts",
+      "line": 30,
+      "rule": "typescript:S0003",
+      "severity": "MAJOR",
+      "message": "Unknown status issue",
+      "status": "UNKNOWN",
+      "issueStatus": "UNKNOWN"
+    }
+  ]
+}

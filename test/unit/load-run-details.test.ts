@@ -19,7 +19,7 @@ vi.mock('@dbos-inc/dbos-sdk', async (importOriginal) => {
   return { ...actual, DBOS: dbos };
 });
 
-import { runExecutionWorkflowName } from '../../src/dbos/dbos-names.js';
+import { nodeExecutionStepName, runExecutionWorkflowName } from '../../src/dbos/dbos-names.js';
 import { loadRunDetails } from '../../src/dbos/read-model/load-run-details.js';
 import { scopeWorkflowId } from '../../src/dbos/workflow-id.js';
 import {
@@ -27,8 +27,11 @@ import {
   runDetailsStatuses,
   runDetailsSteps,
   snapshot,
+  storedNodeExecution,
   step,
 } from '../support/run-details.fixture.js';
+
+let workflowSteps: Map<string, readonly TestStepInfo[]>;
 
 describe('recursive run details projection', () => {
   beforeEach(() => {
@@ -37,10 +40,10 @@ describe('recursive run details projection', () => {
     const statuses = runDetailsStatuses();
     dbos.getWorkflowStatus.mockImplementation(async (id: string) => statuses.get(id) ?? null);
 
-    const steps = runDetailsSteps();
+    workflowSteps = runDetailsSteps();
     dbos.listWorkflowSteps.mockImplementation(
       async (id: string, { limit = 100, offset = 0 } = {}) =>
-        (steps.get(id) ?? []).slice(offset, offset + limit),
+        (workflowSteps.get(id) ?? []).slice(offset, offset + limit),
     );
   });
 
@@ -77,6 +80,54 @@ describe('recursive run details projection', () => {
     expect(observableDetails).not.toContain('secret detail');
     expect(observableDetails).not.toContain('binding');
     expect(observableDetails).not.toContain('input');
+  });
+
+  it('groups contiguous ordered attempts under one node instance', async () => {
+    if (rootScope === undefined) {
+      throw new Error('Root scope is missing.');
+    }
+    const workflowId = scopeWorkflowId(rootScope.id);
+    const rootSteps = workflowSteps.get(workflowId) ?? [];
+    workflowSteps.set(workflowId, [
+      ...rootSteps.map((value) =>
+        value.functionID === 1
+          ? { ...value, output: storedNodeExecution('main/root-work', 'failed', 1) }
+          : value,
+      ),
+      step(7, nodeExecutionStepName('main/root-work', 2), {
+        output: storedNodeExecution('main/root-work', 'completed', 2),
+      }),
+    ]);
+
+    const details = await loadRunDetails(snapshot);
+    const node = details.nodeInstances.find(({ displayPath }) => displayPath === 'main/root-work');
+    const attempts = details.attempts.filter(({ nodeInstanceId }) => nodeInstanceId === node?.id);
+
+    expect(node).toMatchObject({
+      status: 'completed',
+      startedAt: new Date(6),
+      completedAt: new Date(13),
+    });
+    expect(node?.attemptIds).toEqual(attempts.map(({ id }) => id));
+    expect(attempts.map(({ ordinal, status }) => ({ ordinal, status }))).toEqual([
+      { ordinal: 1, status: 'failed' },
+      { ordinal: 2, status: 'completed' },
+    ]);
+  });
+
+  it('rejects non-contiguous stored attempt ordinals', async () => {
+    if (rootScope === undefined) {
+      throw new Error('Root scope is missing.');
+    }
+    const workflowId = scopeWorkflowId(rootScope.id);
+    workflowSteps.set(workflowId, [
+      ...(workflowSteps.get(workflowId) ?? []),
+      step(7, nodeExecutionStepName('main/root-work', 3), {
+        output: storedNodeExecution('main/root-work', 'completed', 3),
+      }),
+    ]);
+
+    await expect(loadRunDetails(snapshot)).rejects.toThrow('attempts are not contiguous');
   });
 
   it('rejects a duplicate child reference instead of silently deduplicating it', async () => {

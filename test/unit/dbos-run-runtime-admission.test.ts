@@ -43,12 +43,11 @@ import { terminalExecutionPlan } from '../support/execution-plan.fixture.js';
 import { noopRunExecutor } from '../support/executor/noop-run-executor.js';
 
 const runId = 'Race_1';
-const rootWorkflowId = 'rr:run:v2:Race_1';
+const rootWorkflowId = 'rr:run:v1:Race_1';
 const executionPlan = terminalExecutionPlan();
 const admissionToken = 'a'.repeat(43);
 
 const durableInput = (overrides: Readonly<Record<string, unknown>> = {}) => ({
-  contractVersion: 2,
   runId,
   admissionToken,
   executionPlan,
@@ -101,7 +100,8 @@ describe('DBOS create-only run admission', () => {
     expect(dbos.startWorkflow).toHaveBeenCalledWith(expect.any(Function), {
       workflowID: rootWorkflowId,
     });
-    expect(startedInput).toMatchObject({ contractVersion: 2, runId, executionPlan, input: null });
+    expect(startedInput).toMatchObject({ runId, executionPlan, input: null });
+    expect(startedInput).not.toHaveProperty('contractVersion');
     expect(startedInput).toHaveProperty('admissionToken', expect.stringMatching(/^[\w-]{43}$/));
     expect(dbos.retrieveWorkflow).toHaveBeenCalledWith(rootWorkflowId);
   });
@@ -160,9 +160,9 @@ describe('DBOS create-only run admission', () => {
 
   it.each([
     ['foreign workflow', [durableInput()], 'foreign.workflow.v1'],
-    ['missing token', [{ contractVersion: 2, runId, executionPlan, input: null }], runWorkflowName],
+    ['missing token', [{ runId, executionPlan, input: null }], runWorkflowName],
     ['extra property', [durableInput({ extra: true })], runWorkflowName],
-    ['wrong contract version', [durableInput({ contractVersion: 1 })], runWorkflowName],
+    ['contract version selector', [durableInput({ contractVersion: 1 })], runWorkflowName],
     ['stored run ID mismatch', [durableInput({ runId: 'Other_1' })], runWorkflowName],
   ])('maps %s after start to conflict', async (_label, inputs, workflowName) => {
     dbos.getWorkflowStatus
@@ -230,7 +230,7 @@ describe('DBOS mapped run reads', () => {
 
   it.each([
     ['foreign workflow', status([durableInput()], 'foreign.workflow.v1')],
-    ['mapped workflow ID mismatch', { ...status(), workflowID: 'rr:run:v2:Other_1' }],
+    ['mapped workflow ID mismatch', { ...status(), workflowID: 'rr:run:v1:Other_1' }],
     ['stored run ID mismatch', status([durableInput({ runId: 'Other_1' })])],
   ])('treats %s as not found', async (_label, workflowStatus) => {
     dbos.getWorkflowStatus.mockResolvedValueOnce(workflowStatus);
@@ -238,7 +238,7 @@ describe('DBOS mapped run reads', () => {
   });
 
   it('maps malformed arguments to run_read_failed for an owned workflow', async () => {
-    const workflowStatus = status([{ contractVersion: 2 }]);
+    const workflowStatus = status([{ runId }]);
     dbos.getWorkflowStatus.mockResolvedValueOnce(workflowStatus);
     await expect(runtime().getRun(runId)).rejects.toMatchObject({ code: 'run_read_failed' });
   });

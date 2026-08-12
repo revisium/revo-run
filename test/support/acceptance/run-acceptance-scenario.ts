@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as wait } from 'node:timers/promises';
 
 import { vi } from 'vitest';
 
@@ -11,8 +12,10 @@ import type {
   RunManager,
   RunStatus,
 } from '../../../src/index.js';
+import { advanceLogicalTime } from '../../dsl/scenario-time.js';
 import type { RunScenario, ScenarioStep } from '../../dsl/scenario.js';
 import { ControlledRunExecutor } from '../executor/controlled-run-executor.js';
+import { runRetryRecoveryScenario } from '../process/run-retry-recovery-scenario.js';
 import { runSubscriptionRecoveryScenario } from '../process/run-subscription-recovery-scenario.js';
 import { testDatabaseUrl } from '../test-environment.js';
 import { RunEventExpectations } from './run-event-expectations.js';
@@ -22,20 +25,18 @@ const terminal = (status: RunStatus): boolean => status !== 'pending' && status 
 
 class AcceptanceScenarioRunner {
   private readonly executor = new ControlledRunExecutor();
-  private readonly manager: RunManager;
   private readonly runId = `acceptance-${randomUUID()}`;
   private readonly executorSideInputFailures = new Set<string>();
   private readonly eventExpectations = new RunEventExpectations(this.runId);
-  private readonly observation: RunObservationAssertions;
+  private manager: RunManager;
+  private observation: RunObservationAssertions;
   private eventIterator: AsyncIterator<RunEvent> | undefined;
+  private logicalTimeMs = 0;
   private startError: Error | undefined;
   private subscriptionError: Error | undefined;
 
   constructor() {
-    this.manager = createRunManager({
-      database: { url: testDatabaseUrl() },
-      executor: this.executor,
-    });
+    this.manager = this.createManager();
     this.observation = new RunObservationAssertions(
       this.manager,
       this.runId,
@@ -93,14 +94,18 @@ class AcceptanceScenarioRunner {
         await this.executor.expectInput(step.path, step.value);
         return;
       case 'completeNode':
-        await this.executor.complete(step.path, {
-          kind: 'completed',
-          outcome: step.outcome,
-          ...(step.output === undefined ? {} : { output: step.output }),
-        });
+        await this.executor.complete(
+          step.path,
+          {
+            kind: 'completed',
+            outcome: step.outcome,
+            ...(step.output === undefined ? {} : { output: step.output }),
+          },
+          step.attempt,
+        );
         return;
       case 'failNode':
-        await this.executor.fail(step.path, step.errorCode);
+        await this.executor.fail(step.path, step.errorCode, step.attempt);
         return;
       case 'failInputResolution':
         await this.failInputResolution(plan, step.path, step.errorCode);
@@ -170,22 +175,65 @@ class AcceptanceScenarioRunner {
         assert(this.startError instanceof RunManagerError);
         assert.equal(this.startError.code, step.errorCode);
         return;
+      case 'advanceTime':
+        await this.advanceTime(step.durationMs);
+        return;
+      case 'crashManager':
+        await this.crashManager();
+        return;
+      case 'restartManager':
+        await this.restartManager();
+        return;
       case 'answerHumanGate':
       case 'cancelRun':
       case 'completeConsensusParticipant':
-      case 'crashManager':
       case 'expectCommandResult':
       case 'expectHumanGateWaiting':
       case 'expectIteration':
       case 'expectNoDuplicateExecution':
       case 'reconcileNode':
       case 'resolveUnknownOutcome':
-      case 'restartManager':
-      case 'advanceTime':
         throw new Error(`Scenario step ${step.kind} is not implemented.`);
     }
 
     step satisfies never;
+  }
+
+  private createManager(): RunManager {
+    return createRunManager({
+      database: { url: testDatabaseUrl() },
+      executor: this.executor,
+    });
+  }
+
+  private async advanceTime(durationMs: number): Promise<void> {
+    this.logicalTimeMs = advanceLogicalTime(this.logicalTimeMs, durationMs);
+    await this.waitForElapsedTime(performance.now(), durationMs);
+  }
+
+  private async waitForElapsedTime(startedAt: number, durationMs: number): Promise<void> {
+    const remainingMs = durationMs - (performance.now() - startedAt);
+    if (remainingMs <= 0) {
+      return;
+    }
+    await wait(remainingMs);
+    await this.waitForElapsedTime(startedAt, durationMs);
+  }
+
+  private async crashManager(): Promise<void> {
+    await this.eventIterator?.return?.();
+    this.eventIterator = undefined;
+    await this.manager.stop();
+  }
+
+  private async restartManager(): Promise<void> {
+    this.manager = this.createManager();
+    this.observation = new RunObservationAssertions(
+      this.manager,
+      this.runId,
+      this.eventExpectations,
+    );
+    await this.manager.start();
   }
 
   private async startRun(
@@ -266,6 +314,10 @@ class AcceptanceScenarioRunner {
 }
 
 export const runAcceptanceScenario = async (scenario: RunScenario): Promise<void> => {
+  if (scenario.intentId === 'rr-010') {
+    await runRetryRecoveryScenario(scenario);
+    return;
+  }
   if (scenario.intentId === 'rr-084') {
     await runSubscriptionRecoveryScenario(scenario);
     return;

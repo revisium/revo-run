@@ -76,7 +76,6 @@ export class DbosRunRuntime {
 
     const admissionToken = randomBytes(32).toString('base64url');
     const durableInput: RunWorkflowInput = {
-      contractVersion: 2,
       runId,
       admissionToken,
       executionPlan,

@@ -36,7 +36,7 @@ export interface RunNodeInstance {
   readonly nodePath: string;
   readonly displayPath: string;
   readonly status: RunNodeExecutionStatus;
-  readonly attemptIds: readonly [AttemptId];
+  readonly attemptIds: readonly AttemptId[];
   readonly startedAt?: Date;
   readonly completedAt?: Date;
 }
@@ -44,7 +44,7 @@ export interface RunNodeInstance {
 interface RunAttemptBase {
   readonly id: AttemptId;
   readonly nodeInstanceId: NodeInstanceId;
-  readonly ordinal: 1;
+  readonly ordinal: number;
   readonly startedAt?: Date;
   readonly completedAt?: Date;
 }

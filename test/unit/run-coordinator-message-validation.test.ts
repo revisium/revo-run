@@ -7,7 +7,7 @@ import {
 
 const digest = 'a'.repeat(43);
 const attemptId = `at1_${digest}`;
-const scopeWorkflowId = `rr:scope:v2:sc1_${digest}`;
+const scopeWorkflowId = `rr:scope:v1:sc1_${digest}`;
 const eventIdentity = {
   scopeId: `sc1_${digest}`,
   authoredNodeId: `an1_${digest}`,
@@ -60,20 +60,26 @@ describe('run coordinator message validation', () => {
     },
   );
 
-  it.each(['workflow_01', `sc1_${digest}`, 'rr:run:v2:Run_1', `rr:scope:v2:ni1_${digest}`])(
-    'rejects invalid scope workflow ID %s',
-    (invalidWorkflowId) => {
-      for (const message of [
-        { kind: 'reserveExecution', attemptId, replyWorkflowId: invalidWorkflowId },
-        { kind: 'scopeRegistered', workflowId: invalidWorkflowId },
-        { kind: 'scopeSettled', workflowId: invalidWorkflowId },
-      ]) {
-        expect(() => parseRunCoordinatorMessage(message)).toThrow(
-          'Run coordinator received an invalid message.',
-        );
-      }
-    },
-  );
+  it.each([
+    'workflow_01',
+    `sc1_${digest}`,
+    `rr:scope:sc1_${digest}`,
+    `rr:scope:v2:sc1_${digest}`,
+    `rr:scope:v3:sc1_${digest}`,
+    'rr:run:v1:Run_1',
+    `rr:scope:v1:ni1_${digest}`,
+    'rr:scope:v1:sc1_short',
+  ])('rejects invalid scope workflow ID %s', (invalidWorkflowId) => {
+    for (const message of [
+      { kind: 'reserveExecution', attemptId, replyWorkflowId: invalidWorkflowId },
+      { kind: 'scopeRegistered', workflowId: invalidWorkflowId },
+      { kind: 'scopeSettled', workflowId: invalidWorkflowId },
+    ]) {
+      expect(() => parseRunCoordinatorMessage(message)).toThrow(
+        'Run coordinator received an invalid message.',
+      );
+    }
+  });
 
   it('rejects malformed nested events', () => {
     expect(() =>

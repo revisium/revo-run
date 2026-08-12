@@ -17,6 +17,18 @@ const environment = (name: string): string => {
   return value;
 };
 
+const optionalPositiveInteger = (name: string): number | undefined => {
+  const value = process.env[name];
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive safe integer.`);
+  }
+  return parsed;
+};
+
 const send = (message: object): void => {
   process.send?.(message);
 };
@@ -30,7 +42,13 @@ class ProcessRunExecutor implements RunExecutor {
   }
 
   execute(request: RunExecutorRequest, context: RunExecutorContext): Promise<RunExecutorResult> {
-    send({ kind: 'dispatched', path: request.displayPath });
+    send({ kind: 'dispatched', path: request.displayPath, attemptOrdinal: request.attemptOrdinal });
+    if (this.scenario === 'retry' && request.attemptOrdinal === 1) {
+      return Promise.resolve({
+        kind: 'failed',
+        error: { code: 'rate_limited', message: 'retry later' },
+      });
+    }
     if (this.scenario === 'timeout' && request.displayPath === 'main/work') {
       return new Promise(() => {
         context.signal.addEventListener('abort', () => {
@@ -56,7 +74,10 @@ class ProcessRunExecutor implements RunExecutor {
 }
 
 const scenario = environment('REVO_RUN_TEST_SCENARIO');
-const plan = recoveryExecutionPlan(scenario);
+const plan = recoveryExecutionPlan(
+  scenario,
+  optionalPositiveInteger('REVO_RUN_TEST_RETRY_DELAY_MS'),
+);
 const executor = new ProcessRunExecutor(scenario);
 const manager = createRunManager({
   database: { url: environment('REVO_RUN_TEST_DATABASE_URL') },
@@ -80,6 +101,7 @@ await manager.start();
 if (environment('REVO_RUN_TEST_MODE') === 'start') {
   await manager.startRun({ runId, executionPlan: plan, input: null });
 }
+send({ kind: 'ready' });
 
 const watchTerminalRun = async (): Promise<void> => {
   const details = await manager.getRunDetails(runId);

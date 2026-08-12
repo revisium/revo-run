@@ -72,9 +72,9 @@
       "id": "dbos-workflow-status-envelope",
       "operation": "parseDbosWorkflowStatus",
       "input": {
-        "workflowID": "rr:run:v2:Golden_1",
+        "workflowID": "rr:run:v1:Golden_1",
         "status": "PENDING",
-        "workflowName": "revo.run.v2",
+        "workflowName": "revo-run.run.v1",
         "workflowClassName": "",
         "input": [],
         "createdAt": 1,
@@ -85,9 +85,9 @@
       "expected": {
         "kind": "output",
         "value": {
-          "workflowID": "rr:run:v2:Golden_1",
+          "workflowID": "rr:run:v1:Golden_1",
           "status": "PENDING",
-          "workflowName": "revo.run.v2",
+          "workflowName": "revo-run.run.v1",
           "workflowClassName": "",
           "input": [],
           "createdAt": 1,
@@ -101,9 +101,9 @@
       "id": "dbos-workflow-status-rejects-unapproved-envelope-field",
       "operation": "parseDbosWorkflowStatus",
       "input": {
-        "workflowID": "rr:run:v2:Golden_1",
+        "workflowID": "rr:run:v1:Golden_1",
         "status": "PENDING",
-        "workflowName": "revo.run.v2",
+        "workflowName": "revo-run.run.v1",
         "workflowClassName": "",
         "createdAt": 1,
         "priority": 0,

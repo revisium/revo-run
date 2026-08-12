@@ -51,7 +51,7 @@ export const coordinationHumanScenarioAudit = [
     requiredCapabilities: ['humanGateDeadlineRouting', 'dbosSafeTimeAdvancement'],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: ['humanGateDeadlineRouting', 'dbosSafeTimeAdvancement'],
+      missingCapabilities: ['humanGateDeadlineRouting'],
     },
   },
   {

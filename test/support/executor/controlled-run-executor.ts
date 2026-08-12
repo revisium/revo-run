@@ -43,8 +43,9 @@ export class ControlledRunExecutor implements RunExecutor {
   async complete(
     path: string,
     result: Extract<RunExecutorResult, { readonly kind: 'completed' }>,
+    attemptOrdinal = 1,
   ): Promise<void> {
-    const execution = await this.take(path);
+    const execution = await this.takeAttempt(path, attemptOrdinal);
     this.resolveSecrets(execution.request.input);
     this.recordExternalEffect(path);
     execution.resolve(result);
@@ -60,8 +61,8 @@ export class ControlledRunExecutor implements RunExecutor {
     execution.resolve(result);
   }
 
-  async fail(path: string, errorCode: string): Promise<void> {
-    const execution = await this.take(path);
+  async fail(path: string, errorCode: string, attemptOrdinal = 1): Promise<void> {
+    const execution = await this.takeAttempt(path, attemptOrdinal);
     this.recordExternalEffect(path);
     execution.resolve({
       kind: 'failed',
@@ -70,7 +71,7 @@ export class ControlledRunExecutor implements RunExecutor {
   }
 
   async failInputResolution(path: string, errorCode: string): Promise<void> {
-    const execution = await this.take(path);
+    const execution = await this.takeAttempt(path, 1);
     execution.resolve({
       kind: 'inputResolutionFailed',
       error: { code: errorCode, message: `Input resolution failed with ${errorCode}.` },
@@ -150,15 +151,21 @@ export class ControlledRunExecutor implements RunExecutor {
     return request;
   }
 
-  private async take(path: string): Promise<PendingExecution> {
+  private async takeAttempt(path: string, attemptOrdinal: number): Promise<PendingExecution> {
     await vi.waitFor(() => {
-      assert((this.pending.get(path)?.length ?? 0) > 0);
+      assert(
+        this.pending.get(path)?.some(({ request }) => request.attemptOrdinal === attemptOrdinal),
+      );
     });
 
     const pending = this.pending.get(path);
-    const execution = pending?.shift();
+    const executionIndex = pending?.findIndex(
+      ({ request }) => request.attemptOrdinal === attemptOrdinal,
+    );
+    const execution =
+      executionIndex === undefined ? undefined : pending?.splice(executionIndex, 1)[0];
     if (execution === undefined) {
-      throw new Error(`Execution ${path} was not started.`);
+      throw new Error(`Execution ${path} attempt ${attemptOrdinal} was not started.`);
     }
     return execution;
   }
