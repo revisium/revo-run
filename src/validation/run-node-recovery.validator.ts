@@ -2,9 +2,11 @@ import { isDeepStrictEqual } from 'node:util';
 
 import Schema from 'typebox/schema';
 
-import type { RunExecutorRequest } from '../contracts/executor/run-executor.js';
-import { RunExecutorReconciliationResultSchema } from '../contracts/executor/run-executor.js';
-import type { RunExecutorReconciliationResult } from '../contracts/executor/run-executor.js';
+import {
+  RunExecutorReconciliationResultSchema,
+  type RunExecutorReconciliationResult,
+  type RunExecutorRequest,
+} from '../contracts/executor/run-executor.js';
 import {
   RunNodeEffectDecisionSchema,
   RunNodeEffectIntentSchema,

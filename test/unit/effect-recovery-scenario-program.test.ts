@@ -40,11 +40,13 @@ describe('effect recovery scenario program', () => {
     const original = scenario('rr-011');
     const restart = original.steps.findIndex(({ kind }) => kind === 'restartManager');
     const reconciliation = original.steps.findIndex(({ kind }) => kind === 'reconcileNode');
-    assert(restart >= 0 && reconciliation >= 0);
+    assert(restart >= 0, 'RR-011 must declare process recovery.');
+    assert(reconciliation >= 0, 'RR-011 must declare effect reconciliation.');
     const steps = [...original.steps];
     const restartStep = steps[restart];
     const reconciliationStep = steps[reconciliation];
-    assert(restartStep !== undefined && reconciliationStep !== undefined);
+    assert(restartStep !== undefined, 'RR-011 process recovery step must exist.');
+    assert(reconciliationStep !== undefined, 'RR-011 effect reconciliation step must exist.');
     steps[restart] = reconciliationStep;
     steps[reconciliation] = restartStep;
 

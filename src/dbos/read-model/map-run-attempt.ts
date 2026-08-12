@@ -46,6 +46,117 @@ const assertStoredExecutionIdentity = (
   }
 };
 
+const mapErroredAttempt = (
+  step: DbosStepRecord,
+  candidate: ObservableNodeCandidate,
+  attemptId: RunAttempt['id'],
+  attemptOrdinal: number,
+  timestamps: { readonly startedAt?: Date; readonly completedAt?: Date },
+): RunAttempt | undefined => {
+  if (!(step.error instanceof Error)) {
+    throw new Error('DBOS node step error is invalid.');
+  }
+  if (isNodeReconciliationStepName(step.name)) {
+    return undefined;
+  }
+
+  return isDbosStepTimeout(step.error)
+    ? {
+        id: attemptId,
+        nodeInstanceId: candidate.id,
+        ordinal: attemptOrdinal,
+        status: 'timedOut',
+        ...timestamps,
+      }
+    : {
+        id: attemptId,
+        nodeInstanceId: candidate.id,
+        ordinal: attemptOrdinal,
+        status: 'failed',
+        error: { code: 'step_failed' },
+        ...timestamps,
+      };
+};
+
+const mapEffectDecisionAttempt = (
+  step: DbosStepRecord,
+  candidate: ObservableNodeCandidate,
+  runId: string,
+  attemptOrdinal: number,
+  timestamps: { readonly startedAt?: Date; readonly completedAt?: Date },
+): RunAttempt | undefined => {
+  const decision = parseRunNodeEffectDecision(step.output);
+  if (decision.kind === 'mustReconcile') {
+    assertStoredExecutionIdentity(decision.request, candidate, runId, attemptOrdinal);
+    return undefined;
+  }
+  return mapExecution(decision, candidate, runId, attemptOrdinal, timestamps);
+};
+
+const mapReconciledAttempt = (
+  step: DbosStepRecord,
+  candidate: ObservableNodeCandidate,
+  runId: string,
+  attemptOrdinal: number,
+  timestamps: { readonly startedAt?: Date; readonly completedAt?: Date },
+): RunAttempt | undefined => {
+  const stepIdentity = nodeReconciliationStepIdentity(step.name);
+  const reconciliation = parseRunNodeReconciliation(step.output);
+  assertStoredExecutionIdentity(reconciliation.request, candidate, runId, attemptOrdinal);
+  if (stepIdentity.reconciliationRound !== reconciliation.reconciliationRound) {
+    throw new Error('Stored node reconciliation round is invalid.');
+  }
+  if (reconciliation.kind === 'reconciliationFailed') {
+    return undefined;
+  }
+
+  switch (reconciliation.result.kind) {
+    case 'effectCompleted':
+      return mapExecution(
+        {
+          kind: 'runNodeExecution',
+          request: reconciliation.request,
+          result: reconciliation.result.result,
+        },
+        candidate,
+        runId,
+        attemptOrdinal,
+        timestamps,
+      );
+    case 'effectFailed':
+      return mapExecution(
+        {
+          kind: 'runNodeExecution',
+          request: reconciliation.request,
+          result: { kind: 'failed', error: reconciliation.result.error },
+        },
+        candidate,
+        runId,
+        attemptOrdinal,
+        timestamps,
+      );
+    case 'effectNotFound':
+      return {
+        id: createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal }),
+        nodeInstanceId: candidate.id,
+        ordinal: attemptOrdinal,
+        status: 'failed',
+        error: { code: 'effect_not_found' },
+        ...timestamps,
+      };
+    case 'outcomeUnknown':
+      return {
+        id: createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal }),
+        nodeInstanceId: candidate.id,
+        ordinal: attemptOrdinal,
+        status: 'outcomeUnknown',
+        recovery: { reconciliationRound: reconciliation.reconciliationRound },
+        ...timestamps,
+      };
+  }
+  throw new Error('DBOS node attempt outcome step is unsupported.');
+};
+
 export const mapRunAttempt = (
   step: DbosStepRecord,
   candidate: ObservableNodeCandidate,
@@ -55,92 +166,14 @@ export const mapRunAttempt = (
   const timestamps = attemptTimestamps(step);
   const attemptId = createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal });
   if (step.error !== null) {
-    if (!(step.error instanceof Error)) {
-      throw new Error('DBOS node step error is invalid.');
-    }
-    if (isNodeReconciliationStepName(step.name)) {
-      return undefined;
-    }
-    return isDbosStepTimeout(step.error)
-      ? {
-          id: attemptId,
-          nodeInstanceId: candidate.id,
-          ordinal: attemptOrdinal,
-          status: 'timedOut',
-          ...timestamps,
-        }
-      : {
-          id: attemptId,
-          nodeInstanceId: candidate.id,
-          ordinal: attemptOrdinal,
-          status: 'failed',
-          error: { code: 'step_failed' },
-          ...timestamps,
-        };
+    return mapErroredAttempt(step, candidate, attemptId, attemptOrdinal, timestamps);
   }
 
   if (isNodeEffectDecisionStepName(step.name)) {
-    const decision = parseRunNodeEffectDecision(step.output);
-    if (decision.kind === 'mustReconcile') {
-      assertStoredExecutionIdentity(decision.request, candidate, runId, attemptOrdinal);
-      return undefined;
-    }
-    return mapExecution(decision, candidate, runId, attemptOrdinal, timestamps);
+    return mapEffectDecisionAttempt(step, candidate, runId, attemptOrdinal, timestamps);
   }
   if (isNodeReconciliationStepName(step.name)) {
-    const stepIdentity = nodeReconciliationStepIdentity(step.name);
-    const reconciliation = parseRunNodeReconciliation(step.output);
-    assertStoredExecutionIdentity(reconciliation.request, candidate, runId, attemptOrdinal);
-    if (stepIdentity.reconciliationRound !== reconciliation.reconciliationRound) {
-      throw new Error('Stored node reconciliation round is invalid.');
-    }
-    if (reconciliation.kind === 'reconciliationFailed') {
-      return undefined;
-    }
-    switch (reconciliation.result.kind) {
-      case 'effectCompleted':
-        return mapExecution(
-          {
-            kind: 'runNodeExecution',
-            request: reconciliation.request,
-            result: reconciliation.result.result,
-          },
-          candidate,
-          runId,
-          attemptOrdinal,
-          timestamps,
-        );
-      case 'effectFailed':
-        return mapExecution(
-          {
-            kind: 'runNodeExecution',
-            request: reconciliation.request,
-            result: { kind: 'failed', error: reconciliation.result.error },
-          },
-          candidate,
-          runId,
-          attemptOrdinal,
-          timestamps,
-        );
-      case 'effectNotFound':
-        return {
-          id: createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal }),
-          nodeInstanceId: candidate.id,
-          ordinal: attemptOrdinal,
-          status: 'failed',
-          error: { code: 'effect_not_found' },
-          ...timestamps,
-        };
-      case 'outcomeUnknown':
-        return {
-          id: createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal }),
-          nodeInstanceId: candidate.id,
-          ordinal: attemptOrdinal,
-          status: 'outcomeUnknown',
-          recovery: { reconciliationRound: reconciliation.reconciliationRound },
-          ...timestamps,
-        };
-    }
+    return mapReconciledAttempt(step, candidate, runId, attemptOrdinal, timestamps);
   }
   throw new Error('DBOS node attempt outcome step is unsupported.');
 };
