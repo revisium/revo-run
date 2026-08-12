@@ -3,7 +3,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 
 import { describe, expect, it } from 'vitest';
 
-import { isNodeExecutionStepName } from '../../src/dbos/dbos-names.js';
+import { isNodeEffectDecisionStepName } from '../../src/dbos/dbos-names.js';
 import { RecoveryProcess } from '../support/process/recovery-process.js';
 import { RetryBackoffRecords } from '../support/process/retry-backoff-records.js';
 
@@ -35,7 +35,11 @@ describe('process recovery', () => {
       await firstProcess.kill();
 
       recoveredProcess = new RecoveryProcess('recover', runId);
-      await recoveredProcess.waitFor({ kind: 'dispatched', path: 'main/second' });
+      await recoveredProcess.waitFor({
+        kind: 'dispatched',
+        path: 'main/second',
+        attemptOrdinal: 2,
+      });
       expect(recoveredProcess.dispatched('main/first')).toBe(0);
 
       recoveredProcess.complete('main/second');
@@ -45,6 +49,8 @@ describe('process recovery', () => {
       expect(events.types).toStrictEqual([
         'nodeExecution.started',
         'nodeExecution.completed',
+        'nodeExecution.started',
+        'nodeExecution.failed',
         'nodeExecution.started',
         'nodeExecution.completed',
         'run.completed',
@@ -71,7 +77,11 @@ describe('process recovery', () => {
       await firstProcess.kill();
 
       recoveredProcess = new RecoveryProcess('recover', runId, 'timeout');
-      await recoveredProcess.waitFor({ kind: 'dispatched', path: 'main/after-timeout' });
+      await recoveredProcess.waitFor({
+        kind: 'dispatched',
+        path: 'main/after-timeout',
+        attemptOrdinal: 2,
+      });
       expect(recoveredProcess.dispatched('main/work')).toBe(0);
 
       recoveredProcess.complete('main/after-timeout');
@@ -139,8 +149,8 @@ describe('process recovery', () => {
         }),
       ]);
       expect(
-        operations.filter(({ name }) => isNodeExecutionStepName(name)).map(({ name }) => name),
-      ).toStrictEqual(['execute-node-attempt:1:main/work', 'execute-node-attempt:2:main/work']);
+        operations.filter(({ name }) => isNodeEffectDecisionStepName(name)).map(({ name }) => name),
+      ).toStrictEqual(['node-effect-decision:1:main/work', 'node-effect-decision:2:main/work']);
       await recoveredProcess.waitFor({ kind: 'stopped' });
     } finally {
       try {
@@ -165,7 +175,11 @@ describe('process recovery', () => {
       await firstProcess.kill();
 
       recoveredProcess = new RecoveryProcess('recover', runId, 'parallel');
-      await recoveredProcess.waitFor({ kind: 'dispatched', path: 'main/work/b' });
+      await recoveredProcess.waitFor({
+        kind: 'dispatched',
+        path: 'main/work/b',
+        attemptOrdinal: 2,
+      });
       expect(recoveredProcess.dispatched('main/work/a')).toBe(0);
 
       recoveredProcess.complete('main/work/b');

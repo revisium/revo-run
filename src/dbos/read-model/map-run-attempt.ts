@@ -2,6 +2,15 @@ import type { RunExecutorRequest } from '../../contracts/executor/run-executor.j
 import type { RunAttempt } from '../../contracts/run/run-details.js';
 import { createAttemptId } from '../../pipeline/identity/execution-identity.js';
 import { parseRunNodeExecution } from '../../validation/run-node-execution.validator.js';
+import {
+  parseRunNodeEffectDecision,
+  parseRunNodeReconciliation,
+} from '../../validation/run-node-recovery.validator.js';
+import {
+  isNodeEffectDecisionStepName,
+  isNodeReconciliationStepName,
+  nodeReconciliationStepIdentity,
+} from '../dbos-names.js';
 import { isDbosStepTimeout } from '../steps/step-timeout.js';
 import type { DbosStepRecord } from './dbos-step-pages.js';
 import type { ObservableNodeCandidate } from './observable-plan.js';
@@ -42,12 +51,15 @@ export const mapRunAttempt = (
   candidate: ObservableNodeCandidate,
   runId: string,
   attemptOrdinal: number,
-): RunAttempt => {
+): RunAttempt | undefined => {
   const timestamps = attemptTimestamps(step);
   const attemptId = createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal });
   if (step.error !== null) {
     if (!(step.error instanceof Error)) {
       throw new Error('DBOS node step error is invalid.');
+    }
+    if (isNodeReconciliationStepName(step.name)) {
+      return undefined;
     }
     return isDbosStepTimeout(step.error)
       ? {
@@ -67,8 +79,81 @@ export const mapRunAttempt = (
         };
   }
 
-  const execution = parseRunNodeExecution(step.output);
+  if (isNodeEffectDecisionStepName(step.name)) {
+    const decision = parseRunNodeEffectDecision(step.output);
+    if (decision.kind === 'mustReconcile') {
+      assertStoredExecutionIdentity(decision.request, candidate, runId, attemptOrdinal);
+      return undefined;
+    }
+    return mapExecution(decision, candidate, runId, attemptOrdinal, timestamps);
+  }
+  if (isNodeReconciliationStepName(step.name)) {
+    const stepIdentity = nodeReconciliationStepIdentity(step.name);
+    const reconciliation = parseRunNodeReconciliation(step.output);
+    assertStoredExecutionIdentity(reconciliation.request, candidate, runId, attemptOrdinal);
+    if (stepIdentity.reconciliationRound !== reconciliation.reconciliationRound) {
+      throw new Error('Stored node reconciliation round is invalid.');
+    }
+    if (reconciliation.kind === 'reconciliationFailed') {
+      return undefined;
+    }
+    switch (reconciliation.result.kind) {
+      case 'effectCompleted':
+        return mapExecution(
+          {
+            kind: 'runNodeExecution',
+            request: reconciliation.request,
+            result: reconciliation.result.result,
+          },
+          candidate,
+          runId,
+          attemptOrdinal,
+          timestamps,
+        );
+      case 'effectFailed':
+        return mapExecution(
+          {
+            kind: 'runNodeExecution',
+            request: reconciliation.request,
+            result: { kind: 'failed', error: reconciliation.result.error },
+          },
+          candidate,
+          runId,
+          attemptOrdinal,
+          timestamps,
+        );
+      case 'effectNotFound':
+        return {
+          id: createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal }),
+          nodeInstanceId: candidate.id,
+          ordinal: attemptOrdinal,
+          status: 'failed',
+          error: { code: 'effect_not_found' },
+          ...timestamps,
+        };
+      case 'outcomeUnknown':
+        return {
+          id: createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal }),
+          nodeInstanceId: candidate.id,
+          ordinal: attemptOrdinal,
+          status: 'outcomeUnknown',
+          recovery: { reconciliationRound: reconciliation.reconciliationRound },
+          ...timestamps,
+        };
+    }
+  }
+  throw new Error('DBOS node attempt outcome step is unsupported.');
+};
+
+const mapExecution = (
+  execution: ReturnType<typeof parseRunNodeExecution>,
+  candidate: ObservableNodeCandidate,
+  runId: string,
+  attemptOrdinal: number,
+  timestamps: { readonly startedAt?: Date; readonly completedAt?: Date },
+): RunAttempt => {
   assertStoredExecutionIdentity(execution.request, candidate, runId, attemptOrdinal);
+  const attemptId = createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal });
   if (execution.result.kind === 'completed') {
     return {
       id: attemptId,

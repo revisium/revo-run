@@ -4,7 +4,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { isNodeExecutionStepName } from '../../src/dbos/dbos-names.js';
+import { isNodeEffectDecisionStepName } from '../../src/dbos/dbos-names.js';
 import { runWorkflowId, scopeWorkflowId } from '../../src/dbos/workflow-id.js';
 import { createRunManager } from '../../src/index.js';
 import type {
@@ -98,8 +98,8 @@ describe('task retry', () => {
     expect(scopeId).toBeDefined();
     const steps = await DBOS.listWorkflowSteps(scopeWorkflowId(scopeId ?? ''));
     expect(
-      steps?.filter(({ name }) => isNodeExecutionStepName(name)).map(({ name }) => name),
-    ).toStrictEqual(['execute-node-attempt:1:main/work', 'execute-node-attempt:2:main/work']);
+      steps?.filter(({ name }) => isNodeEffectDecisionStepName(name)).map(({ name }) => name),
+    ).toStrictEqual(['node-effect-decision:1:main/work', 'node-effect-decision:2:main/work']);
 
     await expect(manager.getRunDetails(runId)).resolves.toMatchObject({
       nodeInstances: [
@@ -247,7 +247,7 @@ describe('task retry', () => {
         ),
       ).toStrictEqual([]);
       expect(
-        operationsAfterDeadline.filter(({ name }) => name === 'execute-node-attempt:2:main/work'),
+        operationsAfterDeadline.filter(({ name }) => name === 'node-effect-decision:2:main/work'),
       ).toStrictEqual([]);
 
       await DBOS.cancelWorkflow(runWorkflowId(runId));

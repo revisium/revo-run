@@ -64,14 +64,14 @@
     },
     {
       "id": "ordinal-addressed-node-step",
-      "operation": "nodeExecutionStepName",
+      "operation": "nodeEffectDecisionStepName",
       "input": { "path": "main/review", "ordinal": 2 },
-      "expected": { "kind": "output", "value": "execute-node-attempt:2:main/review" }
+      "expected": { "kind": "output", "value": "node-effect-decision:2:main/review" }
     },
     {
       "id": "ordinal-addressed-node-step-identity",
-      "operation": "nodeExecutionStepIdentity",
-      "input": "execute-node-attempt:2:main/review",
+      "operation": "nodeAttemptStepIdentity",
+      "input": "node-effect-decision:2:main/review",
       "expected": {
         "kind": "output",
         "value": { "attemptOrdinal": 2, "displayPath": "main/review" }
@@ -79,8 +79,8 @@
     },
     {
       "id": "delimiterless-node-step-identity-is-invalid",
-      "operation": "nodeExecutionStepIdentity",
-      "input": "execute-node-attempt:12",
+      "operation": "nodeAttemptStepIdentity",
+      "input": "node-effect-decision:12",
       "expected": {
         "kind": "error",
         "message": "DBOS node execution step identity is invalid."

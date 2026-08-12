@@ -8,6 +8,13 @@ const policies = {
   maximumTotalNodeExecutions: 2,
 } as const;
 
+const recoverAbsentEffect = {
+  reconciliation: 'required',
+  maximumAttempts: 1,
+  timeoutMs: 1_000,
+  unknownOutcome: 'fail',
+} as const;
+
 const sequencePlan: ExecutionPlan = {
   schemaVersion: 1,
   rootPipelineId: 'main',
@@ -16,8 +23,8 @@ const sequencePlan: ExecutionPlan = {
       root: {
         kind: 'sequence',
         children: [
-          { kind: 'task', key: 'first' },
-          { kind: 'task', key: 'second' },
+          { kind: 'task', key: 'first', recovery: recoverAbsentEffect },
+          { kind: 'task', key: 'second', recovery: recoverAbsentEffect },
           { kind: 'end', status: 'succeeded', outcome: 'completed' },
         ],
       },
@@ -35,7 +42,7 @@ const sequencePlan: ExecutionPlan = {
       script: { id: 'test.second', revision: 1 },
     },
   ],
-  policies,
+  policies: { ...policies, maximumTotalNodeExecutions: 4 },
 };
 
 const timeoutPlan: ExecutionPlan = {
@@ -45,13 +52,13 @@ const timeoutPlan: ExecutionPlan = {
     main: {
       root: {
         kind: 'outcomeSwitch',
-        source: { kind: 'task', key: 'work', timeoutMs: 25 },
+        source: { kind: 'task', key: 'work', timeoutMs: 25, recovery: recoverAbsentEffect },
         cases: {
           completed: { kind: 'end', status: 'failed', outcome: 'unexpected' },
           timedOut: {
             kind: 'sequence',
             children: [
-              { kind: 'task', key: 'after-timeout' },
+              { kind: 'task', key: 'after-timeout', recovery: recoverAbsentEffect },
               { kind: 'end', status: 'succeeded', outcome: 'timeout-handled' },
             ],
           },
@@ -71,7 +78,7 @@ const timeoutPlan: ExecutionPlan = {
       script: { id: 'test.after-timeout', revision: 1 },
     },
   ],
-  policies,
+  policies: { ...policies, maximumTotalNodeExecutions: 4 },
 };
 
 const retryPlan = (delayMs: number): ExecutionPlan => ({
@@ -89,6 +96,7 @@ const retryPlan = (delayMs: number): ExecutionPlan => ({
             backoff: { kind: 'constant', delayMs },
             retryableErrorCodes: ['rate_limited'],
           },
+          recovery: recoverAbsentEffect,
         },
         cases: {
           completed: { kind: 'end', status: 'succeeded', outcome: 'completed' },
@@ -118,7 +126,10 @@ const parallelPlan: ExecutionPlan = {
           {
             kind: 'parallel',
             key: 'work',
-            branches: { a: { kind: 'task', key: 'a' }, b: { kind: 'task', key: 'b' } },
+            branches: {
+              a: { kind: 'task', key: 'a', recovery: recoverAbsentEffect },
+              b: { kind: 'task', key: 'b', recovery: recoverAbsentEffect },
+            },
             join: {
               kind: 'all',
               successfulOutcomes: ['completed'],
@@ -142,7 +153,7 @@ const parallelPlan: ExecutionPlan = {
       script: { id: 'test.b', revision: 1 },
     },
   ],
-  policies: { ...policies, maximumActiveNodeExecutions: 2 },
+  policies: { ...policies, maximumActiveNodeExecutions: 2, maximumTotalNodeExecutions: 4 },
 };
 
 export const recoveryExecutionPlan = (scenario: string, retryDelayMs = 5_000): ExecutionPlan => {

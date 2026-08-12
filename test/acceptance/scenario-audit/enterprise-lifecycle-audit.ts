@@ -28,10 +28,10 @@ export const enterpriseLifecycleScenarioAudit = [
   },
   {
     intentId: 'rr-078',
-    requiredCapabilities: ['parallelRecovery', 'managerRestartRecovery', 'deduplicatedExecution'],
+    requiredCapabilities: ['parallelRecovery', 'managerRestartRecovery', 'noBlindEffectRepeat'],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: ['parallelRecovery', 'deduplicatedExecution'],
+      missingCapabilities: ['parallelRecovery'],
     },
   },
   {

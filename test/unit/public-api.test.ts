@@ -47,6 +47,7 @@ describe('root-only public API', () => {
       'RunEventPageSchema',
       'RunEventSchema',
       'RunEventSubscriptionInputSchema',
+      'RunExecutorReconciliationResultSchema',
       'RunExecutorRequestSchema',
       'RunExecutorResultSchema',
       'RunIdSchema',

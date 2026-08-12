@@ -19,7 +19,12 @@ vi.mock('@dbos-inc/dbos-sdk', async (importOriginal) => {
   return { ...actual, DBOS: dbos };
 });
 
-import { nodeExecutionStepName, runExecutionWorkflowName } from '../../src/dbos/dbos-names.js';
+import {
+  nodeEffectDecisionStepName,
+  nodeReconciliationOutcomeStepName,
+  nodeReconciliationStepName,
+  runExecutionWorkflowName,
+} from '../../src/dbos/dbos-names.js';
 import { loadRunDetails } from '../../src/dbos/read-model/load-run-details.js';
 import { scopeWorkflowId } from '../../src/dbos/workflow-id.js';
 import {
@@ -94,7 +99,7 @@ describe('recursive run details projection', () => {
           ? { ...value, output: storedNodeExecution('main/root-work', 'failed', 1) }
           : value,
       ),
-      step(7, nodeExecutionStepName('main/root-work', 2), {
+      step(7, nodeEffectDecisionStepName('main/root-work', 2), {
         output: storedNodeExecution('main/root-work', 'completed', 2),
       }),
     ]);
@@ -115,6 +120,41 @@ describe('recursive run details projection', () => {
     ]);
   });
 
+  it('projects only the terminal outcome after bounded reconciliation failures', async () => {
+    if (rootScope === undefined) {
+      throw new Error('Root scope is missing.');
+    }
+    const workflowId = scopeWorkflowId(rootScope.id);
+    const request = storedNodeExecution('main/root-work', 'completed').request;
+    const steps = workflowSteps.get(workflowId) ?? [];
+    workflowSteps.set(workflowId, [
+      ...steps.filter(({ functionID }) => functionID !== 1),
+      step(7, nodeReconciliationStepName('main/root-work', 1, 1), {
+        error: new Error('first reconciliation unavailable'),
+      }),
+      step(8, nodeReconciliationOutcomeStepName('main/root-work', 1, 1), {
+        output: {
+          kind: 'runNodeReconciliation',
+          request,
+          reconciliationRound: 1,
+          result: { kind: 'outcomeUnknown' },
+        },
+      }),
+    ]);
+
+    const details = await loadRunDetails(snapshot);
+    const node = details.nodeInstances.find(({ displayPath }) => displayPath === 'main/root-work');
+    const attempts = details.attempts.filter(({ nodeInstanceId }) => nodeInstanceId === node?.id);
+
+    expect(node?.status).toBe('outcomeUnknown');
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({
+      ordinal: 1,
+      status: 'outcomeUnknown',
+      recovery: { reconciliationRound: 1 },
+    });
+  });
+
   it('rejects non-contiguous stored attempt ordinals', async () => {
     if (rootScope === undefined) {
       throw new Error('Root scope is missing.');
@@ -122,7 +162,7 @@ describe('recursive run details projection', () => {
     const workflowId = scopeWorkflowId(rootScope.id);
     workflowSteps.set(workflowId, [
       ...(workflowSteps.get(workflowId) ?? []),
-      step(7, nodeExecutionStepName('main/root-work', 3), {
+      step(7, nodeEffectDecisionStepName('main/root-work', 3), {
         output: storedNodeExecution('main/root-work', 'completed', 3),
       }),
     ]);

@@ -80,6 +80,20 @@ const nodeExecutionFailed = eventVariant(
     { additionalProperties: false },
   ),
 );
+const nodeExecutionRecoveryExhausted = eventVariant(
+  'nodeExecution.recoveryExhausted',
+  Type.Object(
+    {
+      scopeId: ScopeIdSchema,
+      authoredNodeId: AuthoredNodeIdSchema,
+      nodeInstanceId: NodeInstanceIdSchema,
+      attemptId: AttemptIdSchema,
+      attemptOrdinal: PositiveSafeIntegerSchema,
+      reconciliationRound: PositiveSafeIntegerSchema,
+    },
+    { additionalProperties: false },
+  ),
+);
 const nodeExecutionTimedOut = eventVariant('nodeExecution.timedOut', AttemptIdentitySchema);
 const inputResolutionFailed = eventVariant(
   'inputResolution.failed',
@@ -121,6 +135,7 @@ export const PipelineEventDraftSchema = Type.Union([
   nodeExecutionStarted.draft,
   nodeExecutionCompleted.draft,
   nodeExecutionFailed.draft,
+  nodeExecutionRecoveryExhausted.draft,
   nodeExecutionTimedOut.draft,
   inputResolutionFailed.draft,
   pipelineInvalidState.draft,
@@ -133,6 +148,7 @@ export const RunEventDraftSchema = Type.Union([
   nodeExecutionStarted.draft,
   nodeExecutionCompleted.draft,
   nodeExecutionFailed.draft,
+  nodeExecutionRecoveryExhausted.draft,
   nodeExecutionTimedOut.draft,
   inputResolutionFailed.draft,
   pipelineInvalidState.draft,
@@ -147,6 +163,7 @@ export const RunEventSchema = Type.Union([
   nodeExecutionStarted.stored,
   nodeExecutionCompleted.stored,
   nodeExecutionFailed.stored,
+  nodeExecutionRecoveryExhausted.stored,
   nodeExecutionTimedOut.stored,
   inputResolutionFailed.stored,
   pipelineInvalidState.stored,

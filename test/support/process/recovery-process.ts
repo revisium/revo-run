@@ -1,22 +1,50 @@
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import type { JsonValue, NodeOutput } from '../../../src/index.js';
 import { testDatabaseUrl } from '../test-environment.js';
+import type { RecoveryInstruction } from './effect-recovery-scenario-program.js';
+
+interface ReportedAttempt {
+  readonly ordinal: number;
+  readonly output?: NodeOutput;
+  readonly recovery?: { readonly reconciliationRound: number };
+  readonly status: string;
+}
+
+interface ReportedEvent {
+  readonly data: unknown;
+  readonly type: string;
+}
+
+export interface RecoveryProcessOptions {
+  readonly holdReconciliation?: boolean;
+  readonly input?: JsonValue;
+  readonly instructions?: readonly RecoveryInstruction[];
+  readonly pauseBeforeIntent?: boolean;
+}
 
 export interface RecoveryWorkerMessage {
   readonly kind:
+    | 'beforeIntent'
     | 'checkpointed'
+    | 'details'
     | 'dispatched'
     | 'error'
     | 'events'
     | 'ready'
+    | 'reconciled'
     | 'stopped'
     | 'terminal'
     | 'timeoutSignalled';
   readonly message?: string;
+  readonly attempts?: readonly ReportedAttempt[];
   readonly cursors?: readonly string[];
+  readonly events?: readonly ReportedEvent[];
   readonly attemptOrdinal?: number;
+  readonly attemptId?: string;
   readonly path?: string;
+  readonly nodeInstanceId?: string;
   readonly status?: string;
   readonly types?: readonly string[];
 }
@@ -32,6 +60,7 @@ export class RecoveryProcess {
     runId: string,
     scenario = 'sequence',
     retryDelayMs?: number,
+    options: RecoveryProcessOptions = {},
   ) {
     const worker = fileURLToPath(new URL('./recovery-process-worker.ts', import.meta.url));
     this.child = fork(worker, {
@@ -41,6 +70,18 @@ export class RecoveryProcess {
         REVO_RUN_TEST_MODE: mode,
         REVO_RUN_TEST_RUN_ID: runId,
         REVO_RUN_TEST_SCENARIO: scenario,
+        ...(options.input === undefined
+          ? {}
+          : { REVO_RUN_TEST_INPUT: JSON.stringify(options.input) }),
+        ...(options.instructions === undefined
+          ? {}
+          : { REVO_RUN_TEST_RECONCILIATIONS: JSON.stringify(options.instructions) }),
+        ...(options.pauseBeforeIntent === true
+          ? { REVO_RUN_TEST_PAUSE_BEFORE_INTENT: 'true' }
+          : {}),
+        ...(options.holdReconciliation === true
+          ? { REVO_RUN_TEST_HOLD_RECONCILIATION: 'true' }
+          : {}),
         ...(retryDelayMs === undefined
           ? {}
           : { REVO_RUN_TEST_RETRY_DELAY_MS: String(retryDelayMs) }),
@@ -55,13 +96,23 @@ export class RecoveryProcess {
     this.child.stderr?.on('data', (chunk: Buffer) => this.errors.push(chunk.toString()));
   }
 
-  complete(path: string): void {
-    this.child.send({ kind: 'complete', path });
+  complete(
+    path: string,
+    result: { readonly outcome: string; readonly output?: NodeOutput } = { outcome: 'completed' },
+  ): void {
+    this.child.send({
+      kind: 'complete',
+      path,
+      result: {
+        outcome: result.outcome,
+        ...(result.output === undefined ? {} : { output: result.output }),
+      },
+    });
   }
 
-  async waitFor(expected: Partial<RecoveryWorkerMessage>): Promise<void> {
+  async waitFor(expected: Partial<RecoveryWorkerMessage>): Promise<RecoveryWorkerMessage> {
     const deadline = Date.now() + 10_000;
-    await this.pollFor(expected, deadline);
+    return this.pollFor(expected, deadline);
   }
 
   dispatched(path: string, attemptOrdinal?: number): number {
@@ -73,12 +124,34 @@ export class RecoveryProcess {
     ).length;
   }
 
+  count(kind: RecoveryWorkerMessage['kind'], path?: string): number {
+    return this.messages.filter(
+      (message) => message.kind === kind && (path === undefined || message.path === path),
+    ).length;
+  }
+
   eventStream(): { readonly cursors: readonly string[]; readonly types: readonly string[] } {
     const message = this.messages.findLast(({ kind }) => kind === 'events');
     if (message?.cursors === undefined || message.types === undefined) {
       throw new Error('Recovery worker did not report its event stream.');
     }
     return { cursors: message.cursors, types: message.types };
+  }
+
+  reportedAttempts(): readonly ReportedAttempt[] {
+    const message = this.messages.findLast(({ kind }) => kind === 'details');
+    if (message?.attempts === undefined) {
+      throw new Error('Recovery worker did not report run attempts.');
+    }
+    return message.attempts;
+  }
+
+  reportedEvents(): readonly ReportedEvent[] {
+    const message = this.messages.findLast(({ kind }) => kind === 'events');
+    if (message?.events === undefined) {
+      throw new Error('Recovery worker did not report run events.');
+    }
+    return message.events;
   }
 
   async kill(): Promise<void> {
@@ -98,14 +171,19 @@ export class RecoveryProcess {
       (expected.message === undefined || message.message === expected.message) &&
       (expected.attemptOrdinal === undefined ||
         message.attemptOrdinal === expected.attemptOrdinal) &&
+      (expected.attemptId === undefined || message.attemptId === expected.attemptId) &&
       (expected.path === undefined || message.path === expected.path) &&
       (expected.status === undefined || message.status === expected.status)
     );
   }
 
-  private async pollFor(expected: Partial<RecoveryWorkerMessage>, deadline: number): Promise<void> {
-    if (this.messages.some((message) => this.matches(message, expected))) {
-      return;
+  private async pollFor(
+    expected: Partial<RecoveryWorkerMessage>,
+    deadline: number,
+  ): Promise<RecoveryWorkerMessage> {
+    const message = this.messages.find((candidate) => this.matches(candidate, expected));
+    if (message !== undefined) {
+      return message;
     }
     if (
       Date.now() >= deadline ||
@@ -122,6 +200,6 @@ export class RecoveryProcess {
     }
 
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await this.pollFor(expected, deadline);
+    return this.pollFor(expected, deadline);
   }
 }

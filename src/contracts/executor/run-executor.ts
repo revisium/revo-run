@@ -2,6 +2,7 @@ import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
 import {
+  type AttemptId,
   AttemptIdSchema,
   AuthoredNodeIdSchema,
   NodeInstanceIdSchema,
@@ -63,10 +64,42 @@ export const RunExecutorResultSchema = Type.Union([
 
 export type RunExecutorResult = DeepReadonly<Type.Static<typeof RunExecutorResultSchema>>;
 
+export const RunExecutorReconciliationResultSchema = Type.Union([
+  Type.Object(
+    {
+      kind: Type.Literal('effectCompleted'),
+      result: Type.Object(
+        {
+          kind: Type.Literal('completed'),
+          outcome: IdentifierSchema,
+          output: Type.Optional(NodeOutputSchema),
+        },
+        { additionalProperties: false },
+      ),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { kind: Type.Literal('effectFailed'), error: ExecutionErrorSchema },
+    { additionalProperties: false },
+  ),
+  Type.Object({ kind: Type.Literal('effectNotFound') }, { additionalProperties: false }),
+  Type.Object({ kind: Type.Literal('outcomeUnknown') }, { additionalProperties: false }),
+]);
+
+export type RunExecutorReconciliationResult = DeepReadonly<
+  Type.Static<typeof RunExecutorReconciliationResultSchema>
+>;
+
 export interface RunExecutorContext {
   readonly signal: AbortSignal;
 }
 
 export interface RunExecutor {
   execute(request: RunExecutorRequest, context: RunExecutorContext): Promise<RunExecutorResult>;
+  reconcile?(
+    request: RunExecutorRequest,
+    attemptId: AttemptId,
+    context: RunExecutorContext,
+  ): Promise<RunExecutorReconciliationResult>;
 }

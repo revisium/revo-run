@@ -14,3 +14,8 @@ const timeoutCode = stepTimeoutErrorCode();
 
 export const isDbosStepTimeout = (error: unknown): boolean =>
   error instanceof Error && DBOSError.getDBOSErrorCode(error) === timeoutCode;
+
+export const isDbosWorkflowCancelled = (
+  error: unknown,
+): error is InstanceType<typeof DBOSError.DBOSWorkflowCancelledError> =>
+  error instanceof DBOSError.DBOSWorkflowCancelledError;

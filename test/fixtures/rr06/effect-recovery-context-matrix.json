@@ -1,0 +1,120 @@
+{
+  "contract": "rr-06-effect-recovery",
+  "artifactVersion": 1,
+  "sourceRevision": "d0287e798a0e3d62acb0b08f2ee7d545df9efa63",
+  "cloudRevision": "Xx-qwSEgx953UpLTLlTjo",
+  "axes": {
+    "dispatchPhase": ["initial", "ordinaryRecovery"],
+    "reconciliationSupport": ["required", "unsupported"],
+    "unknownPolicy": ["fail", "requireHumanResolution"],
+    "crashBoundary": ["beforeIntent", "afterEffectBeforeCheckpoint"],
+    "reconciliationRound": ["first", "exhausted"],
+    "reconciliationConcurrency": ["sequentialRestart", "crashDuringReconcile", "timeoutOverlap"],
+    "physicalScope": ["rootExecution", "parallelBranchChild"]
+  },
+  "cases": [
+    {
+      "id": "initial-generation-executes",
+      "covers": {
+        "dispatchPhase": ["initial"],
+        "reconciliationSupport": ["required"],
+        "unknownPolicy": ["fail"],
+        "physicalScope": ["rootExecution"]
+      },
+      "evidence": [
+        {
+          "file": "test/unit/node-reconciliation-state-machine.test.ts",
+          "anchor": "executes the initial generation and checkpoints its result"
+        }
+      ]
+    },
+    {
+      "id": "ordinary-recovery-reconciles-first",
+      "covers": {
+        "dispatchPhase": ["ordinaryRecovery"],
+        "crashBoundary": ["afterEffectBeforeCheckpoint"],
+        "reconciliationRound": ["first"],
+        "reconciliationConcurrency": ["sequentialRestart"]
+      },
+      "evidence": [
+        {
+          "file": "test/integration/effect-recovery-process.test.ts",
+          "anchor": "fences recovered execute in the registered %s workflow"
+        }
+      ]
+    },
+    {
+      "id": "unsupported-recovery-fails-closed",
+      "covers": { "reconciliationSupport": ["unsupported"] },
+      "evidence": [
+        {
+          "file": "test/unit/node-reconciliation-state-machine.test.ts",
+          "anchor": "fails an unsupported ambiguous effect without provider work"
+        }
+      ]
+    },
+    {
+      "id": "before-intent-restart-executes-once",
+      "covers": { "crashBoundary": ["beforeIntent"] },
+      "evidence": [
+        {
+          "file": "test/acceptance/scenarios/recovery.scenarios.ts",
+          "anchor": "executes an effect once after restarting before the effect begins"
+        }
+      ]
+    },
+    {
+      "id": "bounded-reconciliation-exhaustion",
+      "covers": { "reconciliationRound": ["exhausted"] },
+      "evidence": [
+        {
+          "file": "test/unit/node-reconciliation-state-machine.test.ts",
+          "anchor": "exhausts only after every failed round has a typed durable result"
+        }
+      ]
+    },
+    {
+      "id": "reconciliation-process-crash",
+      "covers": { "reconciliationConcurrency": ["crashDuringReconcile"] },
+      "evidence": [
+        {
+          "file": "test/integration/effect-recovery-process.test.ts",
+          "anchor": "restarts a crashed product reconciliation without repeating execute"
+        }
+      ]
+    },
+    {
+      "id": "overlapping-timeout-observations",
+      "covers": { "reconciliationConcurrency": ["timeoutOverlap"] },
+      "evidence": [
+        {
+          "file": "test/integration/effect-recovery-semantics.test.ts",
+          "anchor": "allows overlapping timed-out observations without repeating the effect"
+        }
+      ]
+    },
+    {
+      "id": "both-registered-physical-scopes",
+      "covers": { "physicalScope": ["rootExecution", "parallelBranchChild"] },
+      "evidence": [
+        {
+          "file": "test/integration/effect-recovery-process.test.ts",
+          "anchor": "fences recovered execute in the registered %s workflow"
+        }
+      ]
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "human-resolution-owned-by-rr07",
+      "covers": { "unknownPolicy": ["requireHumanResolution"] },
+      "reason": "RR-06 keeps the policy schema-valid but rejects it before DBOS or provider work; RR-07 owns waiting and resolution transport.",
+      "evidence": [
+        {
+          "file": "test/unit/dbos-run-runtime-recovery-admission.test.ts",
+          "anchor": "rejects human resolution before DBOS or provider access"
+        }
+      ]
+    }
+  ]
+}

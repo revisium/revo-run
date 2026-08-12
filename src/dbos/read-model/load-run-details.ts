@@ -10,8 +10,8 @@ import type {
 import type { RunSnapshot } from '../../contracts/run/run.js';
 import { parseDbosWorkflowStatus } from '../../validation/dbos-workflow-status.validator.js';
 import {
-  isNodeExecutionStepName,
-  nodeExecutionStepIdentity,
+  isNodeAttemptOutcomeStepName,
+  nodeAttemptStepIdentity,
   parallelBranchWorkflowName,
   runExecutionWorkflowName,
 } from '../dbos-names.js';
@@ -113,7 +113,7 @@ class RunDetailsLoader {
     const introduced = new Set<string>();
     await steps.reduce<Promise<void>>(async (previous, step) => {
       await previous;
-      if (isNodeExecutionStepName(step.name)) {
+      if (isNodeAttemptOutcomeStepName(step.name)) {
         this.includeAttempt(step, candidate);
       }
       const childWorkflowId = introducedScopeWorkflow(step, introduced);
@@ -178,12 +178,15 @@ class RunDetailsLoader {
   }
 
   private includeAttempt(step: DbosStepRecord, physicalScope: DurableScopeCandidate): void {
-    const stepIdentity = nodeExecutionStepIdentity(step.name);
+    const stepIdentity = nodeAttemptStepIdentity(step.name);
     const candidate = this.plan.nodesByDisplayPath.get(stepIdentity.displayPath);
     if (candidate?.physicalScopeId !== physicalScope.id) {
       throw new Error('DBOS node step is not present in its admitted scope.');
     }
     const attempt = mapRunAttempt(step, candidate, this.run.id, stepIdentity.attemptOrdinal);
+    if (attempt === undefined) {
+      return;
+    }
     this.includeScopeForNode(candidate);
     if (this.includedAttempts.has(attempt.id)) {
       throw new Error('DBOS node attempt is duplicated.');

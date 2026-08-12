@@ -15,6 +15,7 @@ import type {
 import { advanceLogicalTime } from '../../dsl/scenario-time.js';
 import type { RunScenario, ScenarioStep } from '../../dsl/scenario.js';
 import { ControlledRunExecutor } from '../executor/controlled-run-executor.js';
+import { runEffectRecoveryScenario } from '../process/run-effect-recovery-scenario.js';
 import { runRetryRecoveryScenario } from '../process/run-retry-recovery-scenario.js';
 import { runSubscriptionRecoveryScenario } from '../process/run-subscription-recovery-scenario.js';
 import { testDatabaseUrl } from '../test-environment.js';
@@ -314,6 +315,10 @@ class AcceptanceScenarioRunner {
 }
 
 export const runAcceptanceScenario = async (scenario: RunScenario): Promise<void> => {
+  if (['rr-011', 'rr-013', 'rr-014', 'rr-015', 'rr-016'].includes(scenario.intentId)) {
+    await runEffectRecoveryScenario(scenario);
+    return;
+  }
   if (scenario.intentId === 'rr-010') {
     await runRetryRecoveryScenario(scenario);
     return;

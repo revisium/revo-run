@@ -32,12 +32,8 @@ export const recoveryScenarios: readonly RunScenario[] = [
     intentId: 'rr-011',
     category: 'recovery',
     name: 'adopts a reconciled external effect after a crash before its checkpoint',
-    requiredCapabilities: [
-      'effectReconciliation',
-      'managerRestartRecovery',
-      'deduplicatedExecution',
-    ],
-    plan: executionPlan(sequence(task('merge', { recovery: reconcileOrAsk }), end('succeeded')), {
+    requiredCapabilities: ['effectReconciliation', 'managerRestartRecovery', 'noBlindEffectRepeat'],
+    plan: executionPlan(sequence(task('merge', { recovery: reconcileOrFail }), end('succeeded')), {
       bindings: [scriptBinding('merge', 'github.merge')],
     }),
     steps: [
@@ -62,7 +58,7 @@ export const recoveryScenarios: readonly RunScenario[] = [
       'effectReconciliation',
       'unknownOutcomeResolution',
       'managerRestartRecovery',
-      'deduplicatedExecution',
+      'noBlindEffectRepeat',
     ],
     plan: executionPlan(sequence(task('publish', { recovery: reconcileOrAsk }), end('succeeded')), {
       bindings: [scriptBinding('publish', 'package.publish')],
@@ -109,8 +105,8 @@ export const recoveryScenarios: readonly RunScenario[] = [
     intentId: 'rr-014',
     category: 'recovery',
     name: 'executes an effect once after restarting before the effect begins',
-    requiredCapabilities: ['managerRestartRecovery', 'deduplicatedExecution'],
-    plan: executionPlan(sequence(task('commit', { recovery: reconcileOrAsk }), end('succeeded')), {
+    requiredCapabilities: ['managerRestartRecovery', 'noBlindEffectRepeat'],
+    plan: executionPlan(sequence(task('commit', { recovery: reconcileOrFail }), end('succeeded')), {
       bindings: [scriptBinding('commit', 'git.commit')],
     }),
     steps: [
@@ -149,10 +145,13 @@ export const recoveryScenarios: readonly RunScenario[] = [
     intentId: 'rr-016',
     category: 'recovery',
     name: 'retries safely after reconciliation proves the external effect is absent',
-    requiredCapabilities: ['effectReconciliation', 'deduplicatedExecution'],
-    plan: executionPlan(sequence(task('publish', { recovery: reconcileOrAsk }), end('succeeded')), {
-      bindings: [scriptBinding('publish', 'package.publish')],
-    }),
+    requiredCapabilities: ['effectReconciliation', 'noBlindEffectRepeat'],
+    plan: executionPlan(
+      sequence(task('publish', { recovery: reconcileOrFail }), end('succeeded')),
+      {
+        bindings: [scriptBinding('publish', 'package.publish')],
+      },
+    ),
     steps: [
       startRun(),
       { kind: 'crashManager', moment: 'afterEffect' },

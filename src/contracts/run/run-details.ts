@@ -2,7 +2,7 @@ import type { AttemptId, AuthoredNodeId, NodeInstanceId, ScopeId } from '../exec
 import type { NodeOutput } from '../pipeline/node-output.js';
 import type { RunSnapshot } from './run.js';
 
-export type RunNodeExecutionStatus = 'completed' | 'failed' | 'timedOut';
+export type RunNodeExecutionStatus = 'completed' | 'failed' | 'outcomeUnknown' | 'timedOut';
 
 interface RunWorkflowScopeBase {
   readonly id: ScopeId;
@@ -58,6 +58,10 @@ export type RunAttempt =
   | (RunAttemptBase & {
       readonly status: 'failed';
       readonly error: { readonly code: string };
+    })
+  | (RunAttemptBase & {
+      readonly status: 'outcomeUnknown';
+      readonly recovery: { readonly reconciliationRound: number };
     })
   | (RunAttemptBase & { readonly status: 'timedOut' });
 
