@@ -150,11 +150,7 @@ export const coordinationCoreScenarioAudit = [
     ],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: [
-        'consensusExecution',
-        'consensusTimeoutRouting',
-        'dbosSafeTimeAdvancement',
-      ],
+      missingCapabilities: ['consensusExecution', 'consensusTimeoutRouting'],
     },
   },
 ] as const satisfies readonly ScenarioAuditEntry[];

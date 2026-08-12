@@ -11,7 +11,7 @@ import type { RunSnapshot } from '../../contracts/run/run.js';
 import { parseDbosWorkflowStatus } from '../../validation/dbos-workflow-status.validator.js';
 import {
   isNodeExecutionStepName,
-  nodeExecutionDisplayPath,
+  nodeExecutionStepIdentity,
   parallelBranchWorkflowName,
   runExecutionWorkflowName,
 } from '../dbos-names.js';
@@ -54,7 +54,7 @@ class RunDetailsLoader {
   private readonly nodeInstances: RunNodeInstance[] = [];
   private readonly attempts: RunAttempt[] = [];
   private readonly includedScopes = new Set<string>();
-  private readonly includedNodes = new Set<string>();
+  private readonly nodeIndexes = new Map<string, number>();
   private readonly includedAttempts = new Set<string>();
   private readonly visitedWorkflows = new Set<string>();
   private readonly activeWorkflows = new Set<string>();
@@ -178,18 +178,23 @@ class RunDetailsLoader {
   }
 
   private includeAttempt(step: DbosStepRecord, physicalScope: DurableScopeCandidate): void {
-    const path = nodeExecutionDisplayPath(step.name);
-    const candidate = this.plan.nodesByDisplayPath.get(path);
+    const stepIdentity = nodeExecutionStepIdentity(step.name);
+    const candidate = this.plan.nodesByDisplayPath.get(stepIdentity.displayPath);
     if (candidate?.physicalScopeId !== physicalScope.id) {
       throw new Error('DBOS node step is not present in its admitted scope.');
     }
-    const attempt = mapRunAttempt(step, candidate, this.run.id);
+    const attempt = mapRunAttempt(step, candidate, this.run.id, stepIdentity.attemptOrdinal);
     this.includeScopeForNode(candidate);
-    if (this.includedNodes.has(candidate.id) || this.includedAttempts.has(attempt.id)) {
+    if (this.includedAttempts.has(attempt.id)) {
       throw new Error('DBOS node attempt is duplicated.');
     }
+    const nodeIndex = this.nodeIndexes.get(candidate.id);
+    const previous = nodeIndex === undefined ? undefined : this.nodeInstances[nodeIndex];
+    if (attempt.ordinal !== (previous?.attemptIds.length ?? 0) + 1) {
+      throw new Error('DBOS node attempts are not contiguous.');
+    }
     this.attempts.push(attempt);
-    this.nodeInstances.push({
+    const nodeInstance: RunNodeInstance = {
       id: candidate.id,
       scopeId: candidate.scopeId,
       authoredNodeId: candidate.authoredNodeId,
@@ -197,11 +202,18 @@ class RunDetailsLoader {
       nodePath: candidate.nodePath,
       displayPath: candidate.displayPath,
       status: attempt.status,
-      attemptIds: [candidate.attemptId],
-      ...(attempt.startedAt === undefined ? {} : { startedAt: attempt.startedAt }),
+      attemptIds: [...(previous?.attemptIds ?? []), attempt.id],
+      ...(previous?.startedAt === undefined && attempt.startedAt === undefined
+        ? {}
+        : { startedAt: previous?.startedAt ?? attempt.startedAt }),
       ...(attempt.completedAt === undefined ? {} : { completedAt: attempt.completedAt }),
-    });
-    this.includedNodes.add(candidate.id);
+    };
+    if (nodeIndex === undefined) {
+      this.nodeIndexes.set(candidate.id, this.nodeInstances.length);
+      this.nodeInstances.push(nodeInstance);
+    } else {
+      this.nodeInstances[nodeIndex] = nodeInstance;
+    }
     this.includedAttempts.add(attempt.id);
   }
 

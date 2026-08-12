@@ -34,7 +34,7 @@ export class NodeExecutionStep {
           return { kind: 'runNodeExecution', request, result };
         },
         {
-          name: nodeExecutionStepName(request.displayPath),
+          name: nodeExecutionStepName(request.displayPath, request.attemptOrdinal),
           retriesAllowed: false,
           timeoutMS: timeoutMs,
         },

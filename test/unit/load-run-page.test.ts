@@ -19,7 +19,6 @@ const status = (runId: string, overrides: Partial<WorkflowStatus> = {}): Workflo
   createdAt: 100,
   input: [
     {
-      contractVersion: 2,
       runId,
       admissionToken: 'a'.repeat(43),
       executionPlan: terminalExecutionPlan(),
@@ -31,7 +30,7 @@ const status = (runId: string, overrides: Partial<WorkflowStatus> = {}): Workflo
   status: 'SUCCESS',
   updatedAt: 200,
   workflowClassName: '',
-  workflowID: `rr:run:v2:${runId}`,
+  workflowID: `rr:run:v1:${runId}`,
   workflowName: runWorkflowName,
   ...overrides,
 });
@@ -57,7 +56,7 @@ describe('DBOS-backed run listing', () => {
     expect(dbos.listWorkflows).toHaveBeenCalledWith(
       expect.objectContaining({
         workflowName: runWorkflowName,
-        workflow_id_prefix: 'rr:run:v2:',
+        workflow_id_prefix: 'rr:run:v1:',
         offset: 0,
         sortDesc: true,
         loadInput: true,
@@ -75,7 +74,6 @@ describe('DBOS-backed run listing', () => {
       status('Run_1', {
         input: [
           {
-            contractVersion: 2,
             runId: 'Other_1',
             admissionToken: 'a'.repeat(43),
             executionPlan: terminalExecutionPlan(),
@@ -95,5 +93,27 @@ describe('DBOS-backed run listing', () => {
     dbos.listWorkflows.mockResolvedValue([status('Run_1', { input: [] })]);
 
     await expect(loadRunPage({})).rejects.toThrow('Run workflow input is invalid.');
+  });
+
+  it('excludes rows from unversioned, retired, abandoned, and cross-kind ID namespaces', async () => {
+    dbos.listWorkflows.mockResolvedValue([
+      status('Unversioned_1', { workflowID: 'rr:run:Unversioned_1' }),
+      status('Retired_2', { workflowID: 'rr:run:v2:Retired_2' }),
+      status('Abandoned_3', { workflowID: 'rr:run:v3:Abandoned_3' }),
+      status('CrossKind_1', { workflowID: 'rr:scope:v1:CrossKind_1' }),
+      status('Owned_1'),
+    ]);
+
+    await expect(loadRunPage({})).resolves.toEqual({
+      items: [expect.objectContaining({ id: 'Owned_1' })],
+    });
+  });
+
+  it('fails closed for a malformed ID in the owned namespace', async () => {
+    dbos.listWorkflows.mockResolvedValue([
+      status('Malformed_1', { workflowID: 'rr:run:v1:malformed:run' }),
+    ]);
+
+    await expect(loadRunPage({})).rejects.toThrow('Owned run workflow ID is invalid.');
   });
 });

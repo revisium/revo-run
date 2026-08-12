@@ -6,6 +6,7 @@ import type { TaskNode } from '../../src/contracts/pipeline/pipeline-node.js';
 import type {
   ExecuteNodeEffect,
   PipelineExecutionContext,
+  WaitForRetry,
 } from '../../src/pipeline/interpreter/interpreter-context.js';
 import type { PipelineEventSink } from '../../src/pipeline/interpreter/pipeline-event-sink.js';
 import { TaskNodeExecutor } from '../../src/pipeline/interpreter/task-node-executor.js';
@@ -28,8 +29,9 @@ describe('task node executor budget backstop', () => {
     const execute = vi
       .fn<ExecuteNodeEffect>()
       .mockResolvedValue({ kind: 'executionLimitExceeded' });
+    const waitForRetry = vi.fn<WaitForRetry>().mockResolvedValue(undefined);
     const write = vi.fn<PipelineEventSink['write']>().mockResolvedValue(undefined);
-    const executor = new TaskNodeExecutor(execute, { write });
+    const executor = new TaskNodeExecutor(execute, waitForRetry, { write });
 
     await expect(executor.execute(node, context, 'work')).resolves.toEqual({
       kind: 'finished',

@@ -9,7 +9,7 @@ export const ScopeIdSchema = Type.String({ pattern: `^sc1_${digestPattern}$` });
 export const NodeInstanceIdSchema = Type.String({ pattern: `^ni1_${digestPattern}$` });
 export const AttemptIdSchema = Type.String({ pattern: `^at1_${digestPattern}$` });
 export const ScopeWorkflowIdSchema = Type.String({
-  pattern: `^rr:scope:v2:sc1_${digestPattern}$`,
+  pattern: `^rr:scope:v1:sc1_${digestPattern}$`,
 });
 
 export type AttemptId = DeepReadonly<Type.Static<typeof AttemptIdSchema>>;

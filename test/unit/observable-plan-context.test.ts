@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { buildObservablePlan } from '../../src/dbos/read-model/observable-plan.js';
 import { runWorkflowId, scopeWorkflowId } from '../../src/dbos/workflow-id.js';
 import {
-  createAttemptId,
   createAuthoredNodeId,
   createNodeInstanceId,
   createParallelBranchScopeId,
@@ -117,10 +116,8 @@ describe('observable plan context matrix', () => {
         ...context,
         id: nodeInstanceId,
         authoredNodeId,
-        attemptId: createAttemptId({ nodeInstanceId, attemptOrdinal: 1 }),
       });
       expect(candidate?.id).toMatch(/^ni1_[A-Za-z0-9_-]{43}$/);
-      expect(candidate?.attemptId).toMatch(/^at1_[A-Za-z0-9_-]{43}$/);
     }
   });
 });

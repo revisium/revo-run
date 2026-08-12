@@ -151,7 +151,7 @@ describe('durable run', () => {
   it('keeps the valid admission token private across observation surfaces', async () => {
     const { details, runId } = await runConcurrentIdenticalAdmissionScenario();
 
-    const rootWorkflowId = `rr:run:v2:${runId}`;
+    const rootWorkflowId = `rr:run:v1:${runId}`;
     const durableStatus = await DBOS.getWorkflowStatus(rootWorkflowId);
     expect(durableStatus?.workflowID).toBe(rootWorkflowId);
     expect(rootWorkflowId).toContain(':');
@@ -168,7 +168,7 @@ describe('durable run', () => {
 
   it('recovers a real durable commit after admission confirmation becomes ambiguous', async () => {
     const runId = `ambiguous-commit-${randomUUID()}`;
-    const rootWorkflowId = `rr:run:v2:${runId}`;
+    const rootWorkflowId = `rr:run:v1:${runId}`;
     const getWorkflowStatus = DBOS.getWorkflowStatus.bind(DBOS);
     let rootStatusReads = 0;
     const statusSpy = vi.spyOn(DBOS, 'getWorkflowStatus').mockImplementation(async (workflowId) => {

@@ -68,7 +68,11 @@ export class RunObservationAssertions {
             node.attemptIds.map((attemptId) => {
               const attempt = details.attempts.find(({ id }) => id === attemptId);
               assert(attempt !== undefined);
-              return { nodePath: node.displayPath, status: attempt.status };
+              return {
+                nodePath: node.displayPath,
+                ordinal: attempt.ordinal,
+                status: attempt.status,
+              };
             }),
           );
           assert.deepStrictEqual(attempts, expected.attempts);
@@ -117,6 +121,16 @@ export class RunObservationAssertions {
 
   private attemptForPath(details: RunDetails, path: string) {
     const node = details.nodeInstances.find(({ displayPath }) => displayPath === path);
-    return details.attempts.find(({ id }) => id === node?.attemptIds[0]);
+    let latestCompleted: RunDetails['attempts'][number] | undefined;
+    for (const attemptId of node?.attemptIds ?? []) {
+      const attempt = details.attempts.find(({ id }) => id === attemptId);
+      if (
+        attempt?.status === 'completed' &&
+        (latestCompleted === undefined || attempt.ordinal > latestCompleted.ordinal)
+      ) {
+        latestCompleted = attempt;
+      }
+    }
+    return latestCompleted;
   }
 }

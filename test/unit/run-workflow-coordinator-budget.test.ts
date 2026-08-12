@@ -20,8 +20,8 @@ import {
 } from '../../src/dbos/streams/run-event-stream.js';
 
 const digest = (character: string): string => character.repeat(43);
-const firstScope = `rr:scope:v2:sc1_${digest('a')}`;
-const secondScope = `rr:scope:v2:sc1_${digest('b')}`;
+const firstScope = `rr:scope:v1:sc1_${digest('a')}`;
+const secondScope = `rr:scope:v1:sc1_${digest('b')}`;
 const firstAttempt = `at1_${digest('c')}`;
 const secondAttempt = `at1_${digest('d')}`;
 const eventDraft = {

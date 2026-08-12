@@ -74,6 +74,39 @@ const timeoutPlan: ExecutionPlan = {
   policies,
 };
 
+const retryPlan = (delayMs: number): ExecutionPlan => ({
+  schemaVersion: 1,
+  rootPipelineId: 'main',
+  pipelines: {
+    main: {
+      root: {
+        kind: 'outcomeSwitch',
+        source: {
+          kind: 'task',
+          key: 'work',
+          retry: {
+            maximumAttempts: 2,
+            backoff: { kind: 'constant', delayMs },
+            retryableErrorCodes: ['rate_limited'],
+          },
+        },
+        cases: {
+          completed: { kind: 'end', status: 'succeeded', outcome: 'completed' },
+          failed: { kind: 'end', status: 'failed', outcome: 'failed' },
+        },
+      },
+    },
+  },
+  bindings: [
+    {
+      kind: 'script',
+      target: { pipelineId: 'main', nodePath: 'work' },
+      script: { id: 'test.retry', revision: 1 },
+    },
+  ],
+  policies,
+});
+
 const parallelPlan: ExecutionPlan = {
   schemaVersion: 1,
   rootPipelineId: 'main',
@@ -112,9 +145,12 @@ const parallelPlan: ExecutionPlan = {
   policies: { ...policies, maximumActiveNodeExecutions: 2 },
 };
 
-export const recoveryExecutionPlan = (scenario: string): ExecutionPlan => {
+export const recoveryExecutionPlan = (scenario: string, retryDelayMs = 5_000): ExecutionPlan => {
   if (scenario === 'timeout') {
     return timeoutPlan;
+  }
+  if (scenario === 'retry') {
+    return retryPlan(retryDelayMs);
   }
   if (scenario === 'parallel') {
     return parallelPlan;

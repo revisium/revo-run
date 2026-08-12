@@ -7,7 +7,6 @@ import { terminalExecutionPlan } from '../support/execution-plan.fixture.js';
 
 const runId = 'run-id';
 const workflowInput = () => ({
-  contractVersion: 2,
   runId,
   admissionToken: 'a'.repeat(43),
   executionPlan: terminalExecutionPlan(),
@@ -23,7 +22,7 @@ const workflowStatus = (overrides: Partial<WorkflowStatus> = {}): WorkflowStatus
   status: 'SUCCESS',
   updatedAt: 2,
   workflowClassName: '',
-  workflowID: `rr:run:v2:${runId}`,
+  workflowID: `rr:run:v1:${runId}`,
   workflowName: runWorkflowName,
   ...overrides,
 });
@@ -165,6 +164,19 @@ describe('run snapshot mapping', () => {
     expect(() =>
       mapRunSnapshot(workflowStatus({ workflowName: 'foreign' }), runWorkflowName, runId),
     ).toThrow('Workflow is not a Revo run.');
+  });
+
+  it.each([
+    ['unversioned', `rr:run:${runId}`],
+    ['retired v2', `rr:run:v2:${runId}`],
+    ['abandoned v3', `rr:run:v3:${runId}`],
+    ['wrong kind', `rr:other:v1:${runId}`],
+    ['cross-kind', `rr:scope:v1:${runId}`],
+    ['malformed', 'rr:run:v1:run:reserved'],
+  ])('rejects a %s root workflow ID', (_caseName, workflowID) => {
+    expect(() => mapRunSnapshot(workflowStatus({ workflowID }), runWorkflowName, runId)).toThrow(
+      'Workflow is not a Revo run.',
+    );
   });
 
   it('rejects malformed durable workflow input', () => {

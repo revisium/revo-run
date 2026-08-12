@@ -6,7 +6,9 @@ import type {
   RunExecutorResult,
 } from '../../src/contracts/executor/run-executor.js';
 import type { RunNodeExecution } from '../../src/contracts/executor/run-node-execution.js';
+import { nodeExecutionStepName } from '../../src/dbos/dbos-names.js';
 import { mapRunAttempt } from '../../src/dbos/read-model/map-run-attempt.js';
+import { createAttemptId } from '../../src/pipeline/identity/execution-identity.js';
 import { observable, plan, runId, step } from '../support/run-details.fixture.js';
 
 const candidate = observable.nodesByDisplayPath.get('main/root-work');
@@ -26,7 +28,7 @@ const executionRequest = (overrides: Partial<RunExecutorRequest> = {}): RunExecu
   authoredNodeId: candidate.authoredNodeId,
   scopeId: candidate.scopeId,
   nodeInstanceId: candidate.id,
-  attemptId: candidate.attemptId,
+  attemptId: createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal: 1 }),
   attemptOrdinal: 1,
   displayPath: candidate.displayPath,
   pipelineId: candidate.pipelineId,
@@ -73,7 +75,7 @@ const identityMismatches: ReadonlyArray<
 describe('stored run attempt mapping', () => {
   it('maps a completed execution and its timestamps', () => {
     const attempt = mapRunAttempt(
-      step(1, 'execute-node:main/root-work', {
+      step(1, nodeExecutionStepName('main/root-work', 1), {
         output: storedExecution({
           kind: 'completed',
           outcome: 'approved',
@@ -82,10 +84,11 @@ describe('stored run attempt mapping', () => {
       }),
       candidate,
       runId,
+      1,
     );
 
     expect(attempt).toEqual({
-      id: candidate.attemptId,
+      id: createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal: 1 }),
       nodeInstanceId: candidate.id,
       ordinal: 1,
       status: 'completed',
@@ -96,9 +99,26 @@ describe('stored run attempt mapping', () => {
     });
   });
 
+  it('maps a later attempt from its ordinal-derived identity', () => {
+    const attemptOrdinal = 2;
+    const attemptId = createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal });
+    const request = executionRequest({ attemptId, attemptOrdinal });
+
+    const attempt = mapRunAttempt(
+      step(2, nodeExecutionStepName('main/root-work', attemptOrdinal), {
+        output: storedExecution({ kind: 'completed', outcome: 'approved' }, request),
+      }),
+      candidate,
+      runId,
+      attemptOrdinal,
+    );
+
+    expect(attempt).toMatchObject({ id: attemptId, ordinal: attemptOrdinal, status: 'completed' });
+  });
+
   it('redacts executor failure details', () => {
     const attempt = mapRunAttempt(
-      step(1, 'execute-node:main/root-work', {
+      step(1, nodeExecutionStepName('main/root-work', 1), {
         output: storedExecution({
           kind: 'failed',
           error: { code: 'provider_failed', message: 'secret executor detail' },
@@ -106,6 +126,7 @@ describe('stored run attempt mapping', () => {
       }),
       candidate,
       runId,
+      1,
     );
 
     expect(attempt).toMatchObject({
@@ -117,11 +138,12 @@ describe('stored run attempt mapping', () => {
 
   it('maps a DBOS step timeout without exposing the provider error', () => {
     const attempt = mapRunAttempt(
-      step(1, 'execute-node:main/root-work', {
+      step(1, nodeExecutionStepName('main/root-work', 1), {
         error: new DBOSError.DBOSStepTimeoutError('secret timeout detail', 10),
       }),
       candidate,
       runId,
+      1,
     );
 
     expect(attempt).toMatchObject({ status: 'timedOut' });
@@ -130,11 +152,12 @@ describe('stored run attempt mapping', () => {
 
   it('sanitizes a non-timeout DBOS step error', () => {
     const attempt = mapRunAttempt(
-      step(1, 'execute-node:main/root-work', {
+      step(1, nodeExecutionStepName('main/root-work', 1), {
         error: new Error('secret provider detail'),
       }),
       candidate,
       runId,
+      1,
     );
 
     expect(attempt).toMatchObject({ status: 'failed', error: { code: 'step_failed' } });
@@ -142,11 +165,11 @@ describe('stored run attempt mapping', () => {
   });
 
   it('rejects a malformed stored execution schema', () => {
-    const malformed = step(1, 'execute-node:main/root-work', {
+    const malformed = step(1, nodeExecutionStepName('main/root-work', 1), {
       output: { kind: 'runNodeExecution', request: {}, result: { kind: 'completed' } },
     });
 
-    expect(() => mapRunAttempt(malformed, candidate, runId)).toThrow(
+    expect(() => mapRunAttempt(malformed, candidate, runId, 1)).toThrow(
       'Stored node execution is invalid.',
     );
   });
@@ -159,9 +182,10 @@ describe('stored run attempt mapping', () => {
 
     expect(() =>
       mapRunAttempt(
-        step(1, 'execute-node:main/root-work', { output: execution }),
+        step(1, nodeExecutionStepName('main/root-work', 1), { output: execution }),
         candidate,
         runId,
+        1,
       ),
     ).toThrow('Stored node execution identity is invalid.');
   });

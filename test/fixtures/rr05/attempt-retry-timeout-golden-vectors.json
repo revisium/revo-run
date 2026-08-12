@@ -1,0 +1,158 @@
+{
+  "contract": "rr-05-attempt-retry-timeout",
+  "artifactVersion": 1,
+  "sourceRevision": "20bb6b95bb0f94867e177041a9f1d27d7e2f6241",
+  "vectors": [
+    {
+      "id": "v1-run-workflow-id",
+      "operation": "runWorkflowId",
+      "input": "Golden_1",
+      "expected": { "kind": "output", "value": "rr:run:v1:Golden_1" }
+    },
+    {
+      "id": "v1-durable-workflow-input",
+      "operation": "parseRunWorkflowInput",
+      "input": [
+        {
+          "runId": "Golden_1",
+          "admissionToken": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "executionPlan": {
+            "schemaVersion": 1,
+            "rootPipelineId": "main",
+            "pipelines": {
+              "main": {
+                "root": { "kind": "end", "status": "succeeded", "outcome": "completed" }
+              }
+            },
+            "bindings": [],
+            "policies": {
+              "defaultTaskTimeoutMs": 1000,
+              "maximumActiveNodeExecutions": 1,
+              "maximumNodeNestingDepth": 1,
+              "maximumSubpipelineDepth": 1,
+              "maximumTotalNodeExecutions": 1
+            }
+          },
+          "input": { "ticket": "RR-05" }
+        }
+      ],
+      "expected": {
+        "kind": "output",
+        "value": {
+          "runId": "Golden_1",
+          "admissionToken": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "executionPlan": {
+            "schemaVersion": 1,
+            "rootPipelineId": "main",
+            "pipelines": {
+              "main": {
+                "root": { "kind": "end", "status": "succeeded", "outcome": "completed" }
+              }
+            },
+            "bindings": [],
+            "policies": {
+              "defaultTaskTimeoutMs": 1000,
+              "maximumActiveNodeExecutions": 1,
+              "maximumNodeNestingDepth": 1,
+              "maximumSubpipelineDepth": 1,
+              "maximumTotalNodeExecutions": 1
+            }
+          },
+          "input": { "ticket": "RR-05" }
+        }
+      }
+    },
+    {
+      "id": "ordinal-addressed-node-step",
+      "operation": "nodeExecutionStepName",
+      "input": { "path": "main/review", "ordinal": 2 },
+      "expected": { "kind": "output", "value": "execute-node-attempt:2:main/review" }
+    },
+    {
+      "id": "ordinal-addressed-node-step-identity",
+      "operation": "nodeExecutionStepIdentity",
+      "input": "execute-node-attempt:2:main/review",
+      "expected": {
+        "kind": "output",
+        "value": { "attemptOrdinal": 2, "displayPath": "main/review" }
+      }
+    },
+    {
+      "id": "delimiterless-node-step-identity-is-invalid",
+      "operation": "nodeExecutionStepIdentity",
+      "input": "execute-node-attempt:12",
+      "expected": {
+        "kind": "error",
+        "message": "DBOS node execution step identity is invalid."
+      }
+    },
+    {
+      "id": "ordinal-derived-attempt-id",
+      "operation": "createAttemptId",
+      "input": {
+        "nodeInstanceId": "ni1_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "ordinal": 2
+      },
+      "expected": {
+        "kind": "output",
+        "value": "at1_kUjf_KiBWkyC5w8iOy3JCMjEyiCnBXELNUlcZQMYPN8"
+      }
+    },
+    {
+      "id": "terminal-multi-attempt-mapping-redacts-executor-message",
+      "operation": "mapRunAttempts",
+      "input": [
+        {
+          "ordinal": 1,
+          "result": {
+            "kind": "failed",
+            "error": { "code": "rate_limited", "message": "secret provider detail" }
+          }
+        },
+        { "ordinal": 2, "result": { "kind": "completed", "outcome": "approved" } }
+      ],
+      "expected": {
+        "kind": "output",
+        "value": [
+          {
+            "id": "at1_B1dzqDljI2mnNwLl6WKQI64OKTB1qmyeRSietdX-POw",
+            "nodeInstanceId": "ni1_ITjeAYbOR4Xxzswfm4Mz33H6rdFlkxjLosiryBouLso",
+            "ordinal": 1,
+            "status": "failed",
+            "error": { "code": "rate_limited" },
+            "startedAt": "1970-01-01T00:00:00.006Z",
+            "completedAt": "1970-01-01T00:00:00.007Z"
+          },
+          {
+            "id": "at1_rousvVc-R--Mgm-9eM3sNdZmJ40d9VY2-UFcMmYLMy8",
+            "nodeInstanceId": "ni1_ITjeAYbOR4Xxzswfm4Mz33H6rdFlkxjLosiryBouLso",
+            "ordinal": 2,
+            "status": "completed",
+            "outcome": "approved",
+            "startedAt": "1970-01-01T00:00:00.007Z",
+            "completedAt": "1970-01-01T00:00:00.008Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "terminal-step-error-is-redacted",
+      "operation": "mapRunAttempts",
+      "input": [{ "ordinal": 1, "stepError": "secret thrown step detail" }],
+      "expected": {
+        "kind": "output",
+        "value": [
+          {
+            "id": "at1_B1dzqDljI2mnNwLl6WKQI64OKTB1qmyeRSietdX-POw",
+            "nodeInstanceId": "ni1_ITjeAYbOR4Xxzswfm4Mz33H6rdFlkxjLosiryBouLso",
+            "ordinal": 1,
+            "status": "failed",
+            "error": { "code": "step_failed" },
+            "startedAt": "1970-01-01T00:00:00.006Z",
+            "completedAt": "1970-01-01T00:00:00.007Z"
+          }
+        ]
+      }
+    }
+  ]
+}
