@@ -43,10 +43,15 @@ describe('DBOS node execution step identity', () => {
     'execute-node-attempt:0:main/review',
     'execute-node-attempt:01:main/review',
     'execute-node-attempt:1.5:main/review',
-    'execute-node-attempt:9007199254740992:main/review',
     'execute-node-attempt:1:',
   ])('rejects malformed durable identity %s', (name) => {
     expect(isNodeExecutionStepName(name)).toBe(true);
     expect(() => nodeExecutionStepIdentity(name)).toThrow('identity');
+  });
+
+  it('rejects an unsafe parsed attempt ordinal with a type error', () => {
+    expect(() =>
+      nodeExecutionStepIdentity('execute-node-attempt:9007199254740992:main/review'),
+    ).toThrow(TypeError);
   });
 });

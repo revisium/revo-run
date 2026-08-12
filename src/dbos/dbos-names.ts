@@ -42,7 +42,7 @@ export const nodeExecutionStepIdentity = (name: string): NodeExecutionStepIdenti
   }
   const attemptOrdinal = Number(ordinalText);
   if (!Number.isSafeInteger(attemptOrdinal)) {
-    throw new Error('DBOS node execution step identity is invalid.');
+    throw new TypeError('DBOS node execution step identity is invalid.');
   }
   return { attemptOrdinal, displayPath };
 };
