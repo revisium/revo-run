@@ -44,7 +44,7 @@ export class ParallelNodeExecutor {
   ): Promise<NodeExecutionResult> {
     const path = runtimePath(context, nodePath);
     const identity = pipelineNodeEventIdentity(node, context, nodePath);
-    if (node.join.remaining === 'cancel') {
+    if (node.join.remaining === 'cancel' && !this.branches.supportsRemainingCancellation) {
       await this.events.write(
         pipelineInvalidStateEvent(node, context, nodePath, 'parallel_cancel_not_implemented'),
       );

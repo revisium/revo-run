@@ -49,6 +49,7 @@ export interface ObservableNodeCandidate {
   readonly nodePath: string;
   readonly displayPath: string;
   readonly physicalScopeId: string;
+  readonly awaitsHumanResolution: boolean;
 }
 
 export interface ObservablePlan {
@@ -176,6 +177,9 @@ class ObservablePlanBuilder {
       nodePath,
       displayPath: displayPath(context, nodePath),
       physicalScopeId: context.physicalScopeId,
+      awaitsHumanResolution:
+        node.recovery?.reconciliation === 'required' &&
+        node.recovery.unknownOutcome === 'requireHumanResolution',
     };
     const existing = this.nodeCandidates.get(candidate.displayPath);
     if (existing !== undefined && existing.id !== candidate.id) {

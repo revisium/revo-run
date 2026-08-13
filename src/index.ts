@@ -12,6 +12,12 @@ export {
 } from './contracts/run/run-event-page.js';
 export { RunEventSchema } from './contracts/run/run-event.js';
 export { RunIdSchema } from './contracts/run/run-id.js';
+export {
+  CancelRunInputSchema,
+  CommandIdSchema,
+  ResolveUnknownOutcomeInputSchema,
+  RunCommandReceiptSchema,
+} from './contracts/run/run-command.js';
 export { RunManagerError, RunManagerErrorCodeSchema } from './contracts/run/run-manager-error.js';
 export { RunErrorSchema, RunResultSchema, RunStatusSchema } from './contracts/run/run.js';
 export { StartRunInputSchema, StartRunResultSchema } from './contracts/run/start-run.js';
@@ -84,6 +90,7 @@ export type {
   RunNodeExecutionStatus,
   RunNodeInstance,
   RunScope,
+  RunCommandDetails,
 } from './contracts/run/run-details.js';
 export type { RunEvent } from './contracts/run/run-event.js';
 export type {
@@ -100,6 +107,12 @@ export type {
   RunSummary,
 } from './contracts/run/run.js';
 export type { RunId } from './contracts/run/run-id.js';
+export type {
+  CancelRunInput,
+  CommandId,
+  ResolveUnknownOutcomeInput,
+  RunCommandReceipt,
+} from './contracts/run/run-command.js';
 export type { RunManagerErrorCode } from './contracts/run/run-manager-error.js';
 export type { StartRunInput, StartRunResult } from './contracts/run/start-run.js';
 export type { WaitForTerminalInput } from './contracts/run/wait-for-terminal.js';

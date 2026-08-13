@@ -29,6 +29,7 @@ const capacities = (total: number, branches: number): readonly number[] => {
 };
 
 export class DbosParallelBranchRunner implements ParallelBranchRunner {
+  readonly supportsRemainingCancellation = false;
   private readonly coordinator: RunCoordinatorClient;
   private readonly workflows: ParallelBranchWorkflowProvider;
 

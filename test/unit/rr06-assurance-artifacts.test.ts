@@ -216,7 +216,7 @@ describe('RR-06 repository-owned assurance artifacts', () => {
     const { bytes, value } = load('effect-recovery-context-matrix.json', matrixValidator);
 
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '3b27ad4242567e43927e86d198a6608c135456bf7aa89fca47e2ce590d2b7921',
+      '7e2eb26c06cf24b0ccb638d962a80d292c6e700903dae5f1de2d5e1e3e6f595e',
     );
     expect(value.sourceRevision).toBe(sourceRevision);
     expect(value.cloudRevision).toBe(cloudRevision);

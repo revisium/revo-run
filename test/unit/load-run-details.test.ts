@@ -27,6 +27,7 @@ import {
 } from '../../src/dbos/dbos-names.js';
 import { loadRunDetails } from '../../src/dbos/read-model/load-run-details.js';
 import { scopeWorkflowId } from '../../src/dbos/workflow-id.js';
+import { runDetailsHumanResolutionFixture } from '../support/run-details-v2.fixture.js';
 import {
   rootScope,
   runDetailsStatuses,
@@ -153,6 +154,41 @@ describe('recursive run details projection', () => {
       status: 'outcomeUnknown',
       recovery: { reconciliationRound: 1 },
     });
+  });
+
+  it('keeps an unknown attempt immutable while mapping accepted adoption to command and node semantics', async () => {
+    const fixture = runDetailsHumanResolutionFixture();
+    dbos.getWorkflowStatus.mockImplementation(
+      async (id: string) => fixture.statuses.get(id) ?? null,
+    );
+    workflowSteps = fixture.beforeReadySteps;
+
+    const beforeReady = await loadRunDetails(fixture.snapshot, 'v2');
+    const { commandId, request } = fixture;
+    expect(beforeReady.attempts.some(({ id }) => id === request.attemptId)).toBe(false);
+
+    workflowSteps = fixture.acceptedAdoptionSteps;
+
+    const details = await loadRunDetails(fixture.snapshot, 'v2');
+    const attempt = details.attempts.find(({ id }) => id === request.attemptId);
+    const node = details.nodeInstances.find(({ id }) => id === request.nodeInstanceId);
+
+    expect(attempt).toMatchObject({
+      status: 'outcomeUnknown',
+      recovery: { reconciliationRound: 1 },
+    });
+    expect(node).toMatchObject({ status: 'completed' });
+    expect(details.commands).toEqual([
+      {
+        commandId,
+        commandKind: 'resolveUnknownOutcome',
+        actorId: 'release-manager',
+        decision: 'accepted',
+        targetAttemptId: request.attemptId,
+        resolution: { kind: 'adoptSuccess', outcome: 'published' },
+      },
+    ]);
+    expect(JSON.stringify(details.commands)).not.toContain('"output"');
   });
 
   it('rejects non-contiguous stored attempt ordinals', async () => {

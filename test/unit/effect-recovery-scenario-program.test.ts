@@ -32,7 +32,7 @@ describe('effect recovery scenario program', () => {
 
   it('rejects the RR-07 human-resolution command subset', () => {
     expect(() => compileEffectRecoveryScenario(scenario('rr-012'))).toThrow(
-      'Recovery scenario step resolveUnknownOutcome is not supported.',
+      'Recovery scenario step captureAttemptId is not supported.',
     );
   });
 

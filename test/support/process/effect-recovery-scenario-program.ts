@@ -143,26 +143,35 @@ export const compileEffectRecoveryScenario = (
       case 'advanceTime':
       case 'answerHumanGate':
       case 'cancelRun':
+      case 'captureAttemptId':
+      case 'captureRunState':
       case 'captureCursorFromAnotherRun':
       case 'completeConsensusParticipant':
       case 'expectAgentExecution':
       case 'expectCommandResult':
+      case 'expectDistinctCommandIds':
+      case 'expectExecutorAborted':
       case 'expectCursorOrder':
       case 'expectHumanGateWaiting':
       case 'expectIteration':
       case 'expectJsonOutput':
       case 'expectMaximumActiveExecutions':
+      case 'expectNoActiveDurableScopes':
       case 'expectNoNodeExecution':
       case 'expectNodeInput':
       case 'expectOutputValue':
       case 'expectPlanRejected':
       case 'expectRunDetails':
+      case 'expectResolutionDetails':
+      case 'expectRunStateUnchanged':
+      case 'expectScopeStatuses':
       case 'expectSecretAbsent':
       case 'expectSecretResolved':
       case 'expectSubscriptionError':
       case 'expectVersionedScriptExecution':
       case 'failInputResolution':
       case 'failNode':
+      case 'ignoreExecutorAbort':
       case 'resolveUnknownOutcome':
       case 'resumeSubscription':
         throw new Error(`Recovery scenario step ${step.kind} is not supported.`);

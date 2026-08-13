@@ -108,11 +108,11 @@
     {
       "id": "human-resolution-owned-by-rr07",
       "covers": { "unknownPolicy": ["requireHumanResolution"] },
-      "reason": "RR-06 keeps the policy schema-valid but rejects it before DBOS or provider work; RR-07 owns waiting and resolution transport.",
+      "reason": "RR-06 excludes human-resolution transport; RR-07 admits the policy and owns durable waiting and attributed resolution.",
       "evidence": [
         {
           "file": "test/unit/dbos-run-runtime-recovery-admission.test.ts",
-          "anchor": "rejects human resolution before DBOS or provider access"
+          "anchor": "admits human resolution when executor reconciliation is available"
         }
       ]
     }

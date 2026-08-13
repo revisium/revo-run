@@ -59,7 +59,7 @@ export const humanGateScenarios: readonly RunScenario[] = [
       answerGate('main/approval', 'approved', 'alice', 'gate-answer-same'),
       answerGate('main/approval', 'approved', 'alice', 'gate-answer-same'),
       answerGate('main/approval', 'rejected', 'alice', 'gate-answer-conflict'),
-      expectCommandRejected('gate-answer-conflict', 'gate_already_resolved'),
+      expectCommandRejected('gate_already_resolved', 'gate-answer-conflict'),
       expectRunStatus('succeeded'),
     ],
   }),
@@ -88,7 +88,7 @@ export const humanGateScenarios: readonly RunScenario[] = [
       answerGate('main/production-approval', 'approved', 'alice', 'approval-alice-2', [
         'production-approvers',
       ]),
-      expectCommandRejected('approval-alice-2', 'actor_already_answered'),
+      expectCommandRejected('actor_already_answered', 'approval-alice-2'),
       answerGate('main/production-approval', 'approved', 'bob', 'approval-bob-1', [
         'production-approvers',
       ]),
@@ -117,7 +117,7 @@ export const humanGateScenarios: readonly RunScenario[] = [
       answerGate('main/production-approval', 'approved', 'mallory', 'approval-mallory-1', [
         'developers',
       ]),
-      expectCommandRejected('approval-mallory-1', 'actor_not_eligible'),
+      expectCommandRejected('actor_not_eligible', 'approval-mallory-1'),
       expectRunStatus('running'),
     ],
   }),
@@ -173,7 +173,7 @@ export const humanGateScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       answerGate('main/approval', 'maybe', 'alice', 'gate-invalid-1'),
-      expectCommandRejected('gate-invalid-1', 'invalid_gate_answer'),
+      expectCommandRejected('invalid_gate_answer', 'gate-invalid-1'),
       expectRunStatus('running'),
     ],
   }),
@@ -225,7 +225,7 @@ export const humanGateScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       { kind: 'expectHumanGateWaiting', path: 'main/approval' },
-      { kind: 'cancelRun', actorId: 'operator', commandId: 'cancel-gate-1' },
+      { kind: 'cancelRun', actorId: 'operator' },
       expectEvent('humanGate.cancelled', { path: 'main/approval' }),
       expectRunStatus('cancelled'),
     ],

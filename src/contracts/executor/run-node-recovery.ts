@@ -34,6 +34,10 @@ const MustReconcileSchema = Type.Object(
 export const RunNodeEffectDecisionSchema = Type.Union([
   RunNodeExecutionSchema,
   MustReconcileSchema,
+  Type.Object(
+    { kind: Type.Literal('runNodeCancelled'), request: RunExecutorRequestSchema },
+    { additionalProperties: false },
+  ),
 ]);
 
 export type RunNodeEffectDecision = DeepReadonly<Type.Static<typeof RunNodeEffectDecisionSchema>>;

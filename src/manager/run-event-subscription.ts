@@ -39,7 +39,9 @@ const eventsWithAbort = <Value>(
 async function* readEvents(
   source: AsyncIterable<RunEvent>,
   lifecycleSignal: AbortSignal,
+  onOpen: () => () => void,
 ): AsyncGenerator<RunEvent> {
+  const close = onOpen();
   const iterator = source[Symbol.asyncIterator]();
   try {
     for await (const event of eventsWithAbort(iterator, lifecycleSignal)) {
@@ -60,10 +62,12 @@ async function* readEvents(
     } else {
       await closing;
     }
+    close();
   }
 }
 
 export const managedRunEventSubscription = (
   source: AsyncIterable<RunEvent>,
   lifecycleSignal: AbortSignal,
-): AsyncIterable<RunEvent> => readEvents(source, lifecycleSignal);
+  onOpen: () => () => void = () => () => undefined,
+): AsyncIterable<RunEvent> => readEvents(source, lifecycleSignal, onOpen);

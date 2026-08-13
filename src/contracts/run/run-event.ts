@@ -9,6 +9,10 @@ import {
   ScopeIdSchema,
 } from '../execution-identity.js';
 import { IdentifierSchema, PositiveSafeIntegerSchema } from '../schema-primitives.js';
+import {
+  RunCommandAcceptedMetadataSchema,
+  RunCommandRejectedMetadataSchema,
+} from './run-command-metadata.js';
 import { RunEventCursorSchema } from './run-event-cursor.js';
 
 const timestampPattern = String.raw`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$`;
@@ -130,6 +134,8 @@ const runFailed = eventVariant(
   'run.failed',
   Type.Object({ outcome: IdentifierSchema }, { additionalProperties: false }),
 );
+const runCommandAccepted = eventVariant('runCommand.accepted', RunCommandAcceptedMetadataSchema);
+const runCommandRejected = eventVariant('runCommand.rejected', RunCommandRejectedMetadataSchema);
 
 export const PipelineEventDraftSchema = Type.Union([
   nodeExecutionStarted.draft,
@@ -157,6 +163,8 @@ export const RunEventDraftSchema = Type.Union([
   subpipelineFailed.draft,
   runCompleted.draft,
   runFailed.draft,
+  runCommandAccepted.draft,
+  runCommandRejected.draft,
 ]);
 
 export const RunEventSchema = Type.Union([
@@ -172,6 +180,8 @@ export const RunEventSchema = Type.Union([
   subpipelineFailed.stored,
   runCompleted.stored,
   runFailed.stored,
+  runCommandAccepted.stored,
+  runCommandRejected.stored,
 ]);
 
 export type PipelineEventDraft = DeepReadonly<Type.Static<typeof PipelineEventDraftSchema>>;

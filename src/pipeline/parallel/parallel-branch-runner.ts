@@ -8,6 +8,7 @@ export interface ParallelBranch {
 }
 
 export interface ParallelBranchRunner {
+  readonly supportsRemainingCancellation: boolean;
   execute(
     branches: readonly ParallelBranch[],
     context: PipelineExecutionContext,

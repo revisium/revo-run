@@ -1,4 +1,9 @@
 import type { ListRunsInput, RunPage } from '../contracts/run/list-runs.js';
+import type {
+  CancelRunInput,
+  ResolveUnknownOutcomeInput,
+  RunCommandReceipt,
+} from '../contracts/run/run-command.js';
 import type { RunDetails } from '../contracts/run/run-details.js';
 import type {
   RunEventPage,
@@ -21,10 +26,13 @@ import {
 import { isValidRunId } from '../validation/run-id.validator.js';
 import { validateStartRunInput } from '../validation/start-run.validator.js';
 import { isWaitForTerminalInput } from '../validation/wait-for-terminal.validator.js';
+import { RunCommandDispatcher } from './run-command-dispatcher.js';
 import { managedRunEventSubscription } from './run-event-subscription.js';
+import { RunManagerLifecycle } from './run-manager-lifecycle.js';
 
 type RunRuntime = Pick<
   DbosRunRuntime,
+  | 'cancelRun'
   | 'getRun'
   | 'getRunDetails'
   | 'getRunEvents'
@@ -33,56 +41,27 @@ type RunRuntime = Pick<
   | 'startRun'
   | 'stop'
   | 'subscribeRunEvents'
+  | 'resolveUnknownOutcome'
   | 'waitForTerminal'
 >;
 
 export class RunManager {
   private readonly runtime: RunRuntime;
-  private started = false;
-  private startOperation: Promise<void> | undefined;
-  private stopOperation: Promise<void> | undefined;
-  private lifecycle = new AbortController();
+  private readonly commands: RunCommandDispatcher;
+  private readonly lifecycle: RunManagerLifecycle;
 
   constructor(runtime: RunRuntime) {
     this.runtime = runtime;
+    this.commands = new RunCommandDispatcher(runtime);
+    this.lifecycle = new RunManagerLifecycle(runtime);
   }
 
   async start(): Promise<void> {
-    if (this.stopOperation !== undefined) {
-      await this.waitForStop(this.stopOperation);
-    }
-    if (this.started) {
-      return;
-    }
-    if (this.startOperation !== undefined) {
-      return this.waitForStart(this.startOperation);
-    }
-
-    const operation = this.startRuntime();
-    this.startOperation = operation;
-    try {
-      await this.waitForStart(operation);
-    } finally {
-      if (this.startOperation === operation) {
-        this.startOperation = undefined;
-      }
-    }
+    return this.lifecycle.start();
   }
 
   async stop(): Promise<void> {
-    if (this.stopOperation !== undefined) {
-      return this.waitForStop(this.stopOperation);
-    }
-
-    const operation = this.stopRuntime();
-    this.stopOperation = operation;
-    try {
-      await this.waitForStop(operation);
-    } finally {
-      if (this.stopOperation === operation) {
-        this.stopOperation = undefined;
-      }
-    }
+    return this.lifecycle.stop();
   }
 
   async startRun(input: StartRunInput): Promise<StartRunResult> {
@@ -97,7 +76,9 @@ export class RunManager {
       throw new RunManagerError(validationError);
     }
     try {
-      await this.runtime.startRun(input.runId, input.executionPlan, input.input);
+      await this.lifecycle.track(() =>
+        this.runtime.startRun(input.runId, input.executionPlan, input.input),
+      );
     } catch (error) {
       if (error instanceof RunManagerError) {
         throw error;
@@ -107,10 +88,20 @@ export class RunManager {
     return { runId: input.runId };
   }
 
+  async cancelRun(input: CancelRunInput): Promise<RunCommandReceipt> {
+    this.assertStarted();
+    return this.lifecycle.track(() => this.commands.cancel(input));
+  }
+
+  async resolveUnknownOutcome(input: ResolveUnknownOutcomeInput): Promise<RunCommandReceipt> {
+    this.assertStarted();
+    return this.lifecycle.track(() => this.commands.resolveUnknownOutcome(input));
+  }
+
   async getRun(runId: string): Promise<RunSnapshot | undefined> {
     this.assertRunId(runId);
     try {
-      return await this.runtime.getRun(runId);
+      return await this.lifecycle.track(() => this.runtime.getRun(runId));
     } catch (error) {
       if (error instanceof RunManagerError) {
         throw error;
@@ -125,7 +116,7 @@ export class RunManager {
       throw new RunManagerError('invalid_list_runs_input');
     }
     try {
-      return await this.runtime.listRuns(input);
+      return await this.lifecycle.track(() => this.runtime.listRuns(input));
     } catch (error) {
       if (error instanceof RunManagerError) {
         throw error;
@@ -137,7 +128,7 @@ export class RunManager {
   async getRunDetails(runId: string): Promise<RunDetails | undefined> {
     this.assertRunId(runId);
     try {
-      return await this.runtime.getRunDetails(runId);
+      return await this.lifecycle.track(() => this.runtime.getRunDetails(runId));
     } catch (error) {
       if (error instanceof RunManagerError) {
         throw error;
@@ -150,7 +141,7 @@ export class RunManager {
     this.assertRunId(runId);
     this.assertEventPageInput(input);
     try {
-      return await this.runtime.getRunEvents(runId, input);
+      return await this.lifecycle.track(() => this.runtime.getRunEvents(runId, input));
     } catch (error) {
       if (error instanceof RunManagerError) {
         throw error;
@@ -171,6 +162,7 @@ export class RunManager {
     return managedRunEventSubscription(
       this.runtime.subscribeRunEvents(runId, input),
       this.lifecycle.signal,
+      () => this.lifecycle.trackSubscription(),
     );
   }
 
@@ -186,7 +178,9 @@ export class RunManager {
       throw new RunManagerError('run_wait_aborted');
     }
     try {
-      return await this.runtime.waitForTerminal(runId, input, this.lifecycle.signal);
+      return await this.lifecycle.track(() =>
+        this.runtime.waitForTerminal(runId, input, this.lifecycle.signal),
+      );
     } catch (error) {
       if (error instanceof RunManagerError) {
         throw error;
@@ -195,33 +189,8 @@ export class RunManager {
     }
   }
 
-  private async startRuntime(): Promise<void> {
-    await this.runtime.start();
-    this.lifecycle = new AbortController();
-    this.started = true;
-  }
-
-  private async stopRuntime(): Promise<void> {
-    if (this.startOperation !== undefined) {
-      try {
-        await this.startOperation;
-      } catch {
-        return;
-      }
-    }
-    if (!this.started) {
-      return;
-    }
-
-    this.lifecycle.abort();
-    await this.runtime.stop();
-    this.started = false;
-  }
-
   private assertStarted(): void {
-    if (!this.started) {
-      throw new RunManagerError('manager_not_started');
-    }
+    this.lifecycle.assertRunning();
   }
 
   private assertRunId(runId: unknown): asserts runId is string {
@@ -258,22 +227,6 @@ export class RunManager {
     }
     if (!isRunEventSubscriptionInput(input)) {
       throw new RunManagerError('invalid_run_event_cursor');
-    }
-  }
-
-  private async waitForStart(operation: Promise<void>): Promise<void> {
-    try {
-      await operation;
-    } catch {
-      throw new RunManagerError('manager_start_failed');
-    }
-  }
-
-  private async waitForStop(operation: Promise<void>): Promise<void> {
-    try {
-      await operation;
-    } catch {
-      throw new RunManagerError('manager_stop_failed');
     }
   }
 }

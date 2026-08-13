@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type {
   ExecutionPlan,
+  CancelRunInput,
   JsonValue,
   ListRunsInput,
   RunEvent,
@@ -9,12 +10,17 @@ import type {
   RunEventPageInput,
   RunEventSubscriptionInput,
   RunPage,
+  ResolveUnknownOutcomeInput,
+  RunCommandReceipt,
   RunSnapshot,
   WaitForTerminalInput,
 } from '../../src/index.js';
 import { RunManager } from '../../src/manager/run-manager.js';
 
 const observationRuntime = () => ({
+  cancelRun: vi.fn<(input: CancelRunInput) => Promise<RunCommandReceipt>>(async () => {
+    throw new Error('not used');
+  }),
   getRun: vi.fn<(runId: string) => Promise<RunSnapshot | undefined>>(async () => undefined),
   getRunDetails: vi.fn<(runId: string) => Promise<undefined>>(async () => undefined),
   getRunEvents: vi.fn<(runId: string, input: RunEventPageInput) => Promise<RunEventPage>>(
@@ -24,6 +30,11 @@ const observationRuntime = () => ({
   start: vi.fn<() => Promise<void>>(async () => undefined),
   startRun: vi.fn<(runId: string, executionPlan: ExecutionPlan, input: JsonValue) => Promise<void>>(
     async () => undefined,
+  ),
+  resolveUnknownOutcome: vi.fn<(input: ResolveUnknownOutcomeInput) => Promise<RunCommandReceipt>>(
+    async () => {
+      throw new Error('not used');
+    },
   ),
   stop: vi.fn<() => Promise<void>>(async () => undefined),
   subscribeRunEvents: vi.fn<

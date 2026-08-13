@@ -47,7 +47,7 @@ export const lifecycleScenarios: readonly RunScenario[] = [
     ),
     steps: [
       startRun(),
-      { kind: 'cancelRun', actorId: 'operator', commandId: 'cancel-delay-1' },
+      { kind: 'cancelRun', actorId: 'operator' },
       advanceTime(60_000),
       expectEvent('delay.cancelled', { path: 'main/cooldown' }),
       expectRunStatus('cancelled'),
@@ -67,7 +67,7 @@ export const lifecycleScenarios: readonly RunScenario[] = [
           join: {
             kind: 'all',
             successfulOutcomes: ['completed'],
-            remaining: 'cancel',
+            remaining: 'drain',
           },
         },
         end('succeeded'),
@@ -83,11 +83,15 @@ export const lifecycleScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       expectNodeExecutions('main/work/a', 'main/work/b', 'main/work/c'),
-      { kind: 'cancelRun', actorId: 'operator', commandId: 'cancel-parallel-1' },
-      expectEvent('nodeExecution.cancelled', { path: 'main/work/a' }),
-      expectEvent('nodeExecution.cancelled', { path: 'main/work/b' }),
-      expectEvent('nodeExecution.cancelled', { path: 'main/work/c' }),
+      { kind: 'cancelRun', actorId: 'operator' },
+      expectEvent('runCommand.accepted'),
       expectRunStatus('cancelled'),
+      {
+        kind: 'expectScopeStatuses',
+        paths: ['main', 'main/work/a', 'main/work/b', 'main/work/c'],
+        status: 'cancelled',
+      },
+      { kind: 'expectNoActiveDurableScopes' },
     ],
   }),
   scenario({

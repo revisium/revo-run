@@ -190,11 +190,13 @@ describe('authoritative terminal waiting', () => {
 
   it('turns a manager stop during a wait into manager_not_started', async () => {
     const adapter = {
+      cancelRun: async () => Promise.reject(new Error('not used')),
       start: async () => undefined,
       stop: async () => undefined,
       startRun: async () => undefined,
       getRun: async () => undefined,
       listRuns: async () => ({ items: [] }),
+      resolveUnknownOutcome: async () => Promise.reject(new Error('not used')),
       getRunDetails: async () => undefined,
       getRunEvents: async () => ({ items: [], hasMore: false }),
       subscribeRunEvents: async function* () {},
@@ -217,11 +219,13 @@ describe('authoritative terminal waiting', () => {
   it('lets a stop-in-progress lifecycle outrank an already-aborted user signal', async () => {
     const stopping = deferred<void>();
     const adapter = {
+      cancelRun: async () => Promise.reject(new Error('not used')),
       start: async () => undefined,
       stop: () => stopping.promise,
       startRun: async () => undefined,
       getRun: async () => undefined,
       listRuns: async () => ({ items: [] }),
+      resolveUnknownOutcome: async () => Promise.reject(new Error('not used')),
       getRunDetails: async () => undefined,
       getRunEvents: async () => ({ items: [], hasMore: false }),
       subscribeRunEvents: async function* () {},

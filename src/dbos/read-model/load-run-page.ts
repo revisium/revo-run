@@ -3,7 +3,7 @@ import type { GetWorkflowsInput, WorkflowStatus, WorkflowStatusString } from '@d
 
 import type { ListRunsInput, RunPage } from '../../contracts/run/list-runs.js';
 import type { RunStatus, RunSummary } from '../../contracts/run/run.js';
-import { runWorkflowName } from '../dbos-names.js';
+import { runWorkflowName, runWorkflowV2Name } from '../dbos-names.js';
 import { mapRunSummary, RunOwnershipError } from './map-run-snapshot.js';
 
 const defaultLimit = 50;
@@ -49,7 +49,6 @@ const matchesStatus = (summary: RunSummary, statuses: readonly RunStatus[] | und
 const queryFrom = (input: ListRunsInput): GetWorkflowsInput => {
   const status = dbosStatuses(input.statuses);
   return {
-    workflowName: runWorkflowName,
     workflow_id_prefix: 'rr:run:v1:',
     ...(status === undefined ? {} : { status }),
     ...(input.createdFrom === undefined ? {} : { startTime: input.createdFrom.toISOString() }),
@@ -88,7 +87,16 @@ const scanUntilOwnedRunLookahead = async (
     nextRawOffset += 1;
     let summary;
     try {
-      summary = mapRunSummary(row, runWorkflowName);
+      const workflowName =
+        row.workflowName === runWorkflowName
+          ? runWorkflowName
+          : row.workflowName === runWorkflowV2Name
+            ? runWorkflowV2Name
+            : undefined;
+      if (workflowName === undefined) {
+        continue;
+      }
+      summary = mapRunSummary(row, workflowName);
     } catch (error) {
       if (error instanceof RunOwnershipError) {
         continue;

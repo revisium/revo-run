@@ -19,10 +19,11 @@ vi.mock('@dbos-inc/dbos-sdk', async (importOriginal) => {
   return { ...actual, DBOS: dbos };
 });
 
-import { runExecutionWorkflowName } from '../../src/dbos/dbos-names.js';
+import { runCommandDecisionStepName, runExecutionWorkflowName } from '../../src/dbos/dbos-names.js';
 import { loadRunDetails } from '../../src/dbos/read-model/load-run-details.js';
 import { runWorkflowId, scopeWorkflowId } from '../../src/dbos/workflow-id.js';
 import { task } from '../dsl/pipeline-builder.js';
+import { runDetailsHumanResolutionFixture } from '../support/run-details-v2.fixture.js';
 import {
   branchScopes,
   rootScope,
@@ -166,6 +167,28 @@ describe('durable run details validation', () => {
       step(1, 'DBOS.getResult', { childWorkflowID: 'foreign-child' }),
     ]);
     await expect(loadRunDetails(snapshot)).rejects.toThrow('unsupported child workflow link');
+  });
+
+  it('rejects a decision whose step identity does not match its payload command', async () => {
+    const fixture = runDetailsHumanResolutionFixture();
+    const wrapperId = runWorkflowId(fixture.snapshot.id);
+    statuses = fixture.statuses;
+    steps = new Map(fixture.acceptedAdoptionSteps);
+    steps.set(
+      wrapperId,
+      (steps.get(wrapperId) ?? []).map((candidate) =>
+        candidate.name === runCommandDecisionStepName(fixture.commandId)
+          ? {
+              ...candidate,
+              name: runCommandDecisionStepName('cmd_11111111-1111-4111-8111-111111111111'),
+            }
+          : candidate,
+      ),
+    );
+
+    await expect(loadRunDetails(fixture.snapshot, 'v2')).rejects.toThrow(
+      'Run command decision identity is invalid.',
+    );
   });
 
   it('loads an introduced root scope after 99,997 preceding valid steps without stack growth', async () => {

@@ -13,6 +13,7 @@ import type {
   PipelineExecutionContext,
   ExecuteNodeEffect,
   WaitForRetry,
+  WaitForUnknownOutcome,
 } from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
 import {
@@ -35,10 +36,11 @@ export class PipelineInterpreter {
     waitForRetry: WaitForRetry,
     executeBranches: ParallelBranchRunner,
     events: PipelineEventSink,
+    waitForUnknownOutcome: WaitForUnknownOutcome,
   ) {
     this.events = events;
     this.parallel = new ParallelNodeExecutor(executeBranches, events);
-    this.tasks = new TaskNodeExecutor(executeEffect, waitForRetry, events);
+    this.tasks = new TaskNodeExecutor(executeEffect, waitForRetry, events, waitForUnknownOutcome);
   }
 
   async execute(

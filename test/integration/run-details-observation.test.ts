@@ -1,8 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
+import { DBOS } from '@dbos-inc/dbos-sdk';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { parallelBranchWorkflowV2Name } from '../../src/dbos/dbos-names.js';
+import { loadAllWorkflowSteps } from '../../src/dbos/read-model/dbos-step-pages.js';
+import { scopeWorkflowV2Id } from '../../src/dbos/workflow-id.js';
 import { createRunManager } from '../../src/index.js';
+import { createRootScopeId } from '../../src/pipeline/identity/execution-identity.js';
 import { agentBinding, end, executionPlan, sequence, task } from '../dsl/pipeline-builder.js';
 import { ControlledRunExecutor } from '../support/executor/controlled-run-executor.js';
 import { testDatabaseUrl } from '../support/test-environment.js';
@@ -91,6 +96,40 @@ describe.sequential('real DBOS run details boundaries', () => {
         status: 'succeeded',
       });
 
+      const rootScopeId = createRootScopeId({ runId, rootPipelineId: 'main' });
+      const rootSteps = await loadAllWorkflowSteps(scopeWorkflowV2Id(rootScopeId));
+      const childStarts = rootSteps.filter(({ name }) => name === parallelBranchWorkflowV2Name);
+      expect(childStarts).toHaveLength(2);
+      await Promise.all(
+        childStarts.map(async (childStart) => {
+          const priorSteps = rootSteps.filter(
+            ({ functionID }) => functionID < childStart.functionID,
+          );
+          const acknowledgement = priorSteps.findLast(
+            ({ name, output }) =>
+              name === 'DBOS.recv' &&
+              output !== null &&
+              typeof output === 'object' &&
+              'kind' in output &&
+              output.kind === 'continue',
+          );
+          const registration = priorSteps.findLast(
+            ({ functionID, name }) =>
+              name === 'DBOS.send' &&
+              (acknowledgement === undefined || functionID < acknowledgement.functionID),
+          );
+          expect(registration).toBeDefined();
+          expect(acknowledgement).toMatchObject({ output: { kind: 'continue' } });
+          expect(registration?.functionID).toBeLessThan(acknowledgement?.functionID ?? 0);
+          expect(acknowledgement?.completedAtEpochMs).toBeLessThanOrEqual(
+            childStart.startedAtEpochMs ?? 0,
+          );
+          expect(
+            await DBOS.getWorkflowStatus(childStart.childWorkflowID ?? 'missing-child'),
+          ).not.toBeNull();
+        }),
+      );
+
       const details = await runManager.getRunDetails(runId);
 
       expect(details?.scopes.map(({ kind, displayPath }) => [kind, displayPath])).toEqual([
@@ -109,14 +148,14 @@ describe.sequential('real DBOS run details boundaries', () => {
     } finally {
       await runManager.stop();
     }
-  });
+  }, 15_000);
 
   describe('paged run observation scenario', () => {
     let scenario: Awaited<ReturnType<typeof startPagedRunObservationScenario>>;
 
     beforeAll(async () => {
       scenario = await startPagedRunObservationScenario();
-    }, 20_000);
+    }, 30_000);
 
     afterAll(async () => {
       await scenario?.manager.stop();

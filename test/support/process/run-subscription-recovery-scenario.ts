@@ -161,10 +161,14 @@ class SubscriptionRecoveryScenarioRunner {
         return;
       case 'answerHumanGate':
       case 'cancelRun':
+      case 'captureAttemptId':
+      case 'captureRunState':
       case 'captureCursorFromAnotherRun':
       case 'completeConsensusParticipant':
       case 'expectAgentExecution':
       case 'expectCommandResult':
+      case 'expectDistinctCommandIds':
+      case 'expectExecutorAborted':
       case 'expectCursorOrder':
       case 'expectExecutionCount':
       case 'expectHumanGateWaiting':
@@ -174,16 +178,21 @@ class SubscriptionRecoveryScenarioRunner {
       case 'expectNodeExecutions':
       case 'expectNodeInput':
       case 'expectNoDuplicateExecution':
+      case 'expectNoActiveDurableScopes':
       case 'expectNoNodeExecution':
       case 'expectOutputValue':
       case 'expectPlanRejected':
       case 'expectRunDetails':
+      case 'expectRunStateUnchanged':
+      case 'expectResolutionDetails':
+      case 'expectScopeStatuses':
       case 'expectSecretAbsent':
       case 'expectSecretResolved':
       case 'expectSubscriptionError':
       case 'expectVersionedScriptExecution':
       case 'failInputResolution':
       case 'failNode':
+      case 'ignoreExecutorAbort':
       case 'reconcileNode':
       case 'resolveUnknownOutcome':
       case 'advanceTime':

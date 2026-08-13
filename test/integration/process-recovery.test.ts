@@ -133,19 +133,12 @@ describe('process recovery', () => {
       recoveredProcess.complete('main/work');
       await recoveredProcess.waitFor({ kind: 'terminal', status: 'succeeded' });
       const operations = await records.operationsForRun(runId);
-      expect(
-        operations.filter(
-          ({ name, startedAtEpochMs, completedAtEpochMs }) =>
-            name === 'DBOS.sleep' &&
-            startedAtEpochMs !== undefined &&
-            completedAtEpochMs !== undefined &&
-            completedAtEpochMs > startedAtEpochMs,
-        ),
-      ).toStrictEqual([
+      const retrySleeps = await records.retryBackoffSleepsForRun(runId);
+      expect(retrySleeps).toStrictEqual([
         expect.objectContaining({
           functionID: sleepBeforeCrash.functionID,
           startedAtEpochMs: sleepBeforeCrash.startedAtEpochMs,
-          completedAtEpochMs: sleepBeforeCrash.deadlineEpochMs,
+          deadlineEpochMs: sleepBeforeCrash.deadlineEpochMs,
         }),
       ]);
       expect(

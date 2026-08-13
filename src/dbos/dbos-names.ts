@@ -1,9 +1,65 @@
 export const runWorkflowName = 'revo-run.run.v1';
 export const runExecutionWorkflowName = 'revo-run.execution.v1';
 export const parallelBranchWorkflowName = 'revo-run.parallel-branch.v1';
+export const runWorkflowV2Name = 'revo-run.run.v2';
+export const runExecutionWorkflowV2Name = 'revo-run.execution.v2';
+export const parallelBranchWorkflowV2Name = 'revo-run.parallel-branch.v2';
+export const commandDispatchWorkflowName = 'revo-run.command-dispatch.v1';
 export const runEventStreamName = 'revo-run.events';
 export const runCoordinatorMessageTopic = 'revo-run.coordinator';
 export const runCoordinatorReplyTopic = 'revo-run.coordinator.reply';
+export const runCoordinatorV2Topic = 'revo-run.coordinator.v2';
+export const commandReplyV2Topic = 'revo-run.command.reply.v2';
+export const scopeDirectiveV2Topic = 'revo-run.scope-command.v2';
+export const scopeReplyV2Topic = 'revo-run.scope-command.reply.v2';
+export const scopeSettlementV2Topic = 'revo-run.scope-settlement.v2';
+export const unknownResolutionV2Topic = (attemptId: string): string =>
+  `revo-run.unknown-resolution.v2:${attemptId}`;
+
+const runCommandDecisionStepPrefix = 'run-command-decision:';
+const unknownOutcomeResolutionStepPrefix = 'unknown-outcome-resolution:';
+const unknownOutcomeReadyStepPrefix = 'unknown-outcome-ready:';
+const retryBackoffStepPrefix = 'retry-backoff:';
+
+export const runCommandDecisionStepName = (commandId: string): string =>
+  `${runCommandDecisionStepPrefix}${commandId}`;
+
+export const isRunCommandDecisionStepName = (name: string): boolean =>
+  /^run-command-decision:cmd_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+    name,
+  );
+
+export const runCommandDecisionCommandId = (name: string): string => {
+  if (!isRunCommandDecisionStepName(name)) {
+    throw new Error('DBOS step is not a run command decision.');
+  }
+  return name.slice(runCommandDecisionStepPrefix.length);
+};
+
+export const unknownOutcomeReadyStepName = (attemptId: string): string =>
+  `${unknownOutcomeReadyStepPrefix}${attemptId}`;
+
+export const isUnknownOutcomeReadyStepName = (name: string): boolean =>
+  name.startsWith(unknownOutcomeReadyStepPrefix);
+
+export const unknownOutcomeReadyAttemptId = (name: string): string => {
+  if (!isUnknownOutcomeReadyStepName(name)) {
+    throw new Error('DBOS step is not an unknown-outcome readiness checkpoint.');
+  }
+  return name.slice(unknownOutcomeReadyStepPrefix.length);
+};
+
+export const unknownOutcomeResolutionStepName = (attemptId: string): string =>
+  `${unknownOutcomeResolutionStepPrefix}${attemptId}`;
+
+export const retryBackoffStepName = (attemptId: string): string =>
+  `${retryBackoffStepPrefix}${attemptId}`;
+
+export const isRetryBackoffStepName = (name: string): boolean =>
+  name.startsWith(retryBackoffStepPrefix);
+
+export const isUnknownOutcomeResolutionStepName = (name: string): boolean =>
+  name.startsWith(unknownOutcomeResolutionStepPrefix);
 
 const nodeEffectIntentStepPrefix = 'node-effect-intent:';
 const nodeEffectDecisionStepPrefix = 'node-effect-decision:';

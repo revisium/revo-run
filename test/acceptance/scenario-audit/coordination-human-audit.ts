@@ -14,7 +14,7 @@ export const coordinationHumanScenarioAudit = [
     requiredCapabilities: ['humanGateCommandIdempotency', 'commandRejection'],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: ['humanGateCommandIdempotency', 'commandRejection'],
+      missingCapabilities: ['humanGateCommandIdempotency'],
     },
   },
   {
@@ -22,7 +22,7 @@ export const coordinationHumanScenarioAudit = [
     requiredCapabilities: ['separationOfDuties', 'commandRejection'],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: ['separationOfDuties', 'commandRejection'],
+      missingCapabilities: ['separationOfDuties'],
     },
   },
   {
@@ -30,7 +30,7 @@ export const coordinationHumanScenarioAudit = [
     requiredCapabilities: ['humanGateAuthorization', 'commandRejection'],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: ['humanGateAuthorization', 'commandRejection'],
+      missingCapabilities: ['humanGateAuthorization'],
     },
   },
   {
@@ -43,7 +43,7 @@ export const coordinationHumanScenarioAudit = [
     requiredCapabilities: ['humanGateAnswerValidation', 'commandRejection'],
     evidence: {
       kind: 'pendingCapabilities',
-      missingCapabilities: ['humanGateAnswerValidation', 'commandRejection'],
+      missingCapabilities: ['humanGateAnswerValidation'],
     },
   },
   {

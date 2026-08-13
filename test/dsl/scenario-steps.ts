@@ -120,17 +120,24 @@ export const answerGate = (
   commandId,
 });
 
-export const expectCommandAccepted = (commandId: string): ScenarioStep => ({
+export const expectCommandAccepted = (captureCommandIdAs?: string): ScenarioStep => ({
   kind: 'expectCommandResult',
-  result: { status: 'accepted', commandId },
+  result: {
+    status: 'accepted',
+    ...(captureCommandIdAs === undefined ? {} : { captureCommandIdAs }),
+  },
 });
 
 export const expectCommandRejected = (
-  commandId: string,
   reason: ScenarioCommandRejectionReason,
+  captureCommandIdAs?: string,
 ): ScenarioStep => ({
   kind: 'expectCommandResult',
-  result: { status: 'rejected', commandId, reason },
+  result: {
+    status: 'rejected',
+    reason,
+    ...(captureCommandIdAs === undefined ? {} : { captureCommandIdAs }),
+  },
 });
 
 export const vote = (

@@ -55,7 +55,6 @@ describe('DBOS-backed run listing', () => {
     });
     expect(dbos.listWorkflows).toHaveBeenCalledWith(
       expect.objectContaining({
-        workflowName: runWorkflowName,
         workflow_id_prefix: 'rr:run:v1:',
         offset: 0,
         sortDesc: true,

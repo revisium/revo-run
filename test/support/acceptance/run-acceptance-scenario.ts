@@ -19,6 +19,7 @@ import { runEffectRecoveryScenario } from '../process/run-effect-recovery-scenar
 import { runRetryRecoveryScenario } from '../process/run-retry-recovery-scenario.js';
 import { runSubscriptionRecoveryScenario } from '../process/run-subscription-recovery-scenario.js';
 import { testDatabaseUrl } from '../test-environment.js';
+import { RunCommandAcceptance } from './run-command-acceptance.js';
 import { RunEventExpectations } from './run-event-expectations.js';
 import { RunObservationAssertions } from './run-observation-assertions.js';
 
@@ -35,9 +36,11 @@ class AcceptanceScenarioRunner {
   private logicalTimeMs = 0;
   private startError: Error | undefined;
   private subscriptionError: Error | undefined;
+  private readonly runCommands: RunCommandAcceptance;
 
   constructor() {
     this.manager = this.createManager();
+    this.runCommands = new RunCommandAcceptance(() => this.manager, this.executor, this.runId);
     this.observation = new RunObservationAssertions(
       this.manager,
       this.runId,
@@ -185,15 +188,52 @@ class AcceptanceScenarioRunner {
       case 'restartManager':
         await this.restartManager();
         return;
-      case 'answerHumanGate':
       case 'cancelRun':
-      case 'completeConsensusParticipant':
+        await this.runCommands.cancel(step.actorId);
+        return;
+      case 'resolveUnknownOutcome':
+        await this.runCommands.resolve(step);
+        return;
       case 'expectCommandResult':
+        this.runCommands.expectResult(step.result);
+        return;
+      case 'captureAttemptId':
+        await this.runCommands.captureAttemptId(step.path, step.captureAs);
+        return;
+      case 'expectExecutorAborted':
+        await this.executor.expectAborted(step.path);
+        return;
+      case 'ignoreExecutorAbort':
+        this.executor.ignoreAbort(step.path);
+        return;
+      case 'reconcileNode':
+        await this.runCommands.reconcile(step);
+        return;
+      case 'expectNoDuplicateExecution':
+        await this.executor.expectExecutionCount(step.path, 1);
+        return;
+      case 'captureRunState':
+        await this.runCommands.captureRunState(step.captureAs);
+        return;
+      case 'expectRunStateUnchanged':
+        await this.runCommands.expectRunStateUnchanged(step.capture);
+        return;
+      case 'expectResolutionDetails':
+        await this.runCommands.expectResolutionDetails(step);
+        return;
+      case 'expectScopeStatuses':
+        await this.runCommands.expectScopeStatuses(step.paths, step.status);
+        return;
+      case 'expectNoActiveDurableScopes':
+        await this.runCommands.expectNoActiveDurableScopes();
+        return;
+      case 'expectDistinctCommandIds':
+        this.runCommands.expectDistinctCommandIds(step.captures);
+        return;
+      case 'answerHumanGate':
+      case 'completeConsensusParticipant':
       case 'expectHumanGateWaiting':
       case 'expectIteration':
-      case 'expectNoDuplicateExecution':
-      case 'reconcileNode':
-      case 'resolveUnknownOutcome':
         throw new Error(`Scenario step ${step.kind} is not implemented.`);
     }
 
@@ -315,7 +355,7 @@ class AcceptanceScenarioRunner {
 }
 
 export const runAcceptanceScenario = async (scenario: RunScenario): Promise<void> => {
-  if (['rr-011', 'rr-013', 'rr-014', 'rr-015', 'rr-016'].includes(scenario.intentId)) {
+  if (['rr-011', 'rr-012', 'rr-013', 'rr-014', 'rr-015', 'rr-016'].includes(scenario.intentId)) {
     await runEffectRecoveryScenario(scenario);
     return;
   }

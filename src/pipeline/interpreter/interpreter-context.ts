@@ -4,6 +4,7 @@ import type { JsonValue } from '../../contracts/json-value.js';
 import type { NodeOutput } from '../../contracts/pipeline/node-output.js';
 import type { PipelineInputScope } from '../../contracts/pipeline/pipeline-input.js';
 import type { RecoveryPolicy } from '../../contracts/pipeline/task-policy.js';
+import type { RetryPolicy } from '../../contracts/pipeline/task-policy.js';
 import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
 
 export interface PipelineExecutionContext {
@@ -23,6 +24,7 @@ export type ExecuteNodeEffect = (
   timeoutMs: number,
   recovery: RecoveryPolicy,
   nextReconciliationRound: number,
+  permitCommandId?: string,
 ) => Promise<
   | {
       readonly kind: 'effectResult';
@@ -37,6 +39,30 @@ export type ExecuteNodeEffect = (
   | { readonly kind: 'outcomeUnknown'; readonly reconciliationRound: number }
   | { readonly kind: 'recoveryExhausted'; readonly reconciliationRound: number }
   | { readonly kind: 'timedOut' }
+  | { readonly kind: 'cancelled' }
 >;
 
-export type WaitForRetry = (delayMs: number) => Promise<void>;
+export type WaitForRetry = (request: RunExecutorRequest, delayMs: number) => Promise<void>;
+
+export type UnknownOutcomeResolution =
+  | {
+      readonly kind: 'adoptSuccess';
+      readonly commandId: string;
+      readonly outcome: string;
+      readonly output?: NodeOutput;
+    }
+  | { readonly kind: 'markFailed'; readonly commandId: string; readonly errorCode: string }
+  | {
+      readonly kind: 'retry';
+      readonly commandId: string;
+      readonly attemptId: string;
+    }
+  | { readonly kind: 'cancel' }
+  | { readonly kind: 'fail' };
+
+export type WaitForUnknownOutcome = (
+  request: RunExecutorRequest,
+  recovery: RecoveryPolicy,
+  retry: RetryPolicy | undefined,
+  reconciliationRound: number,
+) => Promise<UnknownOutcomeResolution>;

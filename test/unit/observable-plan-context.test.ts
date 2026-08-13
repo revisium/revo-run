@@ -116,6 +116,7 @@ describe('observable plan context matrix', () => {
         ...context,
         id: nodeInstanceId,
         authoredNodeId,
+        awaitsHumanResolution: false,
       });
       expect(candidate?.id).toMatch(/^ni1_[A-Za-z0-9_-]{43}$/);
     }
