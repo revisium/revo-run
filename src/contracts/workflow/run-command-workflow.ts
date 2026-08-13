@@ -9,7 +9,7 @@ import {
 import { RunExecutorRequestSchema } from '../executor/run-executor.js';
 import { NodeOutputSchema } from '../pipeline/node-output.js';
 import { RecoveryPolicySchema, RetryPolicySchema } from '../pipeline/task-policy.js';
-import { RunCommandDecisionSchema, type RunCommandDecision } from '../run/run-command-metadata.js';
+export { RunCommandDecisionSchema, type RunCommandDecision } from '../run/run-command-metadata.js';
 import {
   CancelRunInputSchema,
   CommandIdSchema,
@@ -72,9 +72,6 @@ export const CommandDispatchWorkflowResultSchema = Type.Union([
 export type CommandDispatchWorkflowResult = DeepReadonly<
   Type.Static<typeof CommandDispatchWorkflowResultSchema>
 >;
-
-export { RunCommandDecisionSchema };
-export type { RunCommandDecision };
 
 export const ScopeReadySchema = Type.Object(
   {

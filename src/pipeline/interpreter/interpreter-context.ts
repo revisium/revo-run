@@ -3,8 +3,7 @@ import type { RunNodeExecution } from '../../contracts/executor/run-node-executi
 import type { JsonValue } from '../../contracts/json-value.js';
 import type { NodeOutput } from '../../contracts/pipeline/node-output.js';
 import type { PipelineInputScope } from '../../contracts/pipeline/pipeline-input.js';
-import type { RecoveryPolicy } from '../../contracts/pipeline/task-policy.js';
-import type { RetryPolicy } from '../../contracts/pipeline/task-policy.js';
+import type { RecoveryPolicy, RetryPolicy } from '../../contracts/pipeline/task-policy.js';
 import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
 
 export interface PipelineExecutionContext {

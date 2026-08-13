@@ -132,7 +132,7 @@ export class DbosParallelBranchRunnerV2 implements ParallelBranchRunner {
       branchKey: branch.key,
     });
     const parentWorkflowId = DBOS.workflowID;
-    if (parentWorkflowId === undefined || !parentWorkflowId.startsWith('rr:scope:v2:')) {
+    if (!parentWorkflowId?.startsWith('rr:scope:v2:')) {
       throw new Error('Parallel branch parent has no v2 workflow ID.');
     }
     const input: ParallelBranchWorkflowV2Input = {

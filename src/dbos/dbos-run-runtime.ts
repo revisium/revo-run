@@ -45,6 +45,16 @@ import type { WorkflowRegistry } from './workflow-registry.js';
 
 const applicationName = 'revo-run';
 
+const knownRunWorkflowName = (workflowName: string): string | undefined => {
+  if (workflowName === runWorkflowName) {
+    return runWorkflowName;
+  }
+  if (workflowName === runWorkflowV2Name) {
+    return runWorkflowV2Name;
+  }
+  return undefined;
+};
+
 export class DbosRunRuntime {
   private readonly databaseUrl: string;
   private readonly executor: RunExecutor;
@@ -129,12 +139,7 @@ export class DbosRunRuntime {
     }
 
     try {
-      const workflowName =
-        status.workflowName === runWorkflowName
-          ? runWorkflowName
-          : status.workflowName === runWorkflowV2Name
-            ? runWorkflowV2Name
-            : undefined;
+      const workflowName = knownRunWorkflowName(status.workflowName);
       if (workflowName === undefined) {
         return undefined;
       }

@@ -97,7 +97,7 @@ export const createCommandDispatchWorkflow =
 
     const rootWorkflowId = runWorkflowId(runId);
     const root = await DBOS.getWorkflowStatus(rootWorkflowId);
-    if (root === null || root.workflowName !== runWorkflowV2Name) {
+    if (root?.workflowName !== runWorkflowV2Name) {
       if (root?.workflowName === 'revo-run.run.v1') {
         return {
           status: 'receipt',

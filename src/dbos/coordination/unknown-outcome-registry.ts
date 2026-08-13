@@ -63,7 +63,7 @@ export class UnknownOutcomeRegistry {
 
   consumeRetryPermit(commandId: string, attemptId: string): boolean {
     const permit = this.retryPermits.get(commandId);
-    if (permit === undefined || permit.newAttemptId !== attemptId) {
+    if (permit?.newAttemptId !== attemptId) {
       return false;
     }
     if (permit.consumed) {

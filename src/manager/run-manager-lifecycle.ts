@@ -157,7 +157,7 @@ export class RunManagerLifecycle {
         return;
       }
     }
-    await withinDeadline(Promise.allSettled([...this.active]), managerStopGraceMs).catch(
+    await withinDeadline(Promise.allSettled(this.active), managerStopGraceMs).catch(
       () => undefined,
     );
     announceShutdown();

@@ -1,8 +1,7 @@
 import { DBOS } from '@dbos-inc/dbos-sdk';
 
 import type { RunExecutorRequest } from '../../contracts/executor/run-executor.js';
-import type { RecoveryPolicy } from '../../contracts/pipeline/task-policy.js';
-import type { RetryPolicy } from '../../contracts/pipeline/task-policy.js';
+import type { RecoveryPolicy, RetryPolicy } from '../../contracts/pipeline/task-policy.js';
 import type { UnknownResolutionDirective } from '../../contracts/workflow/run-command-workflow.js';
 import type { RunCoordinatorV2Message } from '../../contracts/workflow/run-coordinator-v2-message.js';
 import type { ExecuteNodeEffect } from '../../pipeline/interpreter/interpreter-context.js';
@@ -230,7 +229,7 @@ export class RunCoordinatorV2Client implements PipelineEventSink {
 
   private workflowId(): string {
     const workflowId = DBOS.workflowID;
-    if (workflowId === undefined || !workflowId.startsWith('rr:scope:v2:')) {
+    if (!workflowId?.startsWith('rr:scope:v2:')) {
       throw new Error('Pipeline execution has no v2 DBOS workflow ID.');
     }
     return workflowId;

@@ -138,20 +138,20 @@ export class TaskNodeExecutor {
         node.recovery?.reconciliation === 'required' &&
         node.recovery.unknownOutcome === 'requireHumanResolution'
       ) {
-        return resolveUnknownOutcome(
-          this.waitForUnknownOutcome,
+        return resolveUnknownOutcome({
+          waitForResolution: this.waitForUnknownOutcome,
           node,
           context,
           nodePath,
           request,
-          execution.reconciliationRound,
-          async (errorCode) => {
+          reconciliationRound: execution.reconciliationRound,
+          fail: async (errorCode) => {
             await this.writeAttemptFailure(request, errorCode);
             return continuedExecution('failed', runtimePath(context, nodePath));
           },
-          async (ordinal, round, commandId) =>
+          retry: async (ordinal, round, commandId) =>
             this.executeAttempt(node, context, nodePath, input, ordinal, round, commandId),
-        );
+        });
       }
       await this.writeAttemptFailure(request, 'outcome_unknown');
       return continuedExecution('failed', runtimePath(context, nodePath));

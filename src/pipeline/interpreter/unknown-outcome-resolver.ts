@@ -14,16 +14,27 @@ type RetryUnknownOutcome = (
 
 type FailUnknownOutcome = (errorCode: string) => Promise<NodeExecutionResult>;
 
-export const resolveUnknownOutcome = async (
-  waitForResolution: WaitForUnknownOutcome,
-  node: TaskNode,
-  context: PipelineExecutionContext,
-  nodePath: string,
-  request: RunExecutorRequest,
-  reconciliationRound: number,
-  fail: FailUnknownOutcome,
-  retry: RetryUnknownOutcome,
-): Promise<NodeExecutionResult> => {
+interface UnknownOutcomeResolutionContext {
+  readonly waitForResolution: WaitForUnknownOutcome;
+  readonly node: TaskNode;
+  readonly context: PipelineExecutionContext;
+  readonly nodePath: string;
+  readonly request: RunExecutorRequest;
+  readonly reconciliationRound: number;
+  readonly fail: FailUnknownOutcome;
+  readonly retry: RetryUnknownOutcome;
+}
+
+export const resolveUnknownOutcome = async ({
+  waitForResolution,
+  node,
+  context,
+  nodePath,
+  request,
+  reconciliationRound,
+  fail,
+  retry,
+}: UnknownOutcomeResolutionContext): Promise<NodeExecutionResult> => {
   const recovery = node.recovery;
   if (
     recovery?.reconciliation !== 'required' ||

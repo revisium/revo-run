@@ -46,6 +46,31 @@ const dbosStatuses = (
 const matchesStatus = (summary: RunSummary, statuses: readonly RunStatus[] | undefined): boolean =>
   statuses === undefined || statuses.includes(summary.status);
 
+const knownRunWorkflowName = (workflowName: string): string | undefined => {
+  if (workflowName === runWorkflowName) {
+    return runWorkflowName;
+  }
+  if (workflowName === runWorkflowV2Name) {
+    return runWorkflowV2Name;
+  }
+  return undefined;
+};
+
+const ownedRunSummary = (row: WorkflowStatus): RunSummary | undefined => {
+  const workflowName = knownRunWorkflowName(row.workflowName);
+  if (workflowName === undefined) {
+    return undefined;
+  }
+  try {
+    return mapRunSummary(row, workflowName);
+  } catch (error) {
+    if (error instanceof RunOwnershipError) {
+      return undefined;
+    }
+    throw error;
+  }
+};
+
 const queryFrom = (input: ListRunsInput): GetWorkflowsInput => {
   const status = dbosStatuses(input.statuses);
   return {
@@ -66,6 +91,27 @@ const queryRunRows = (
 ): Promise<WorkflowStatus[]> =>
   DBOS.listWorkflows({ ...queryFrom(input), offset: rawOffset, limit });
 
+const collectOwnedRows = (
+  rows: readonly WorkflowStatus[],
+  input: ListRunsInput,
+  rawOffset: number,
+  limit: number,
+  ownedRows: OwnedRunRow[],
+): number => {
+  let nextRawOffset = rawOffset;
+  for (const row of rows) {
+    nextRawOffset += 1;
+    const summary = ownedRunSummary(row);
+    if (summary !== undefined && matchesStatus(summary, input.statuses)) {
+      ownedRows.push({ summary, nextRawOffset });
+    }
+    if (ownedRows.length > limit) {
+      break;
+    }
+  }
+  return nextRawOffset;
+};
+
 const scanUntilOwnedRunLookahead = async (
   input: ListRunsInput,
   rawOffset: number,
@@ -82,34 +128,7 @@ const scanUntilOwnedRunLookahead = async (
     return ownedRows;
   }
 
-  let nextRawOffset = rawOffset;
-  for (const row of rows) {
-    nextRawOffset += 1;
-    let summary;
-    try {
-      const workflowName =
-        row.workflowName === runWorkflowName
-          ? runWorkflowName
-          : row.workflowName === runWorkflowV2Name
-            ? runWorkflowV2Name
-            : undefined;
-      if (workflowName === undefined) {
-        continue;
-      }
-      summary = mapRunSummary(row, workflowName);
-    } catch (error) {
-      if (error instanceof RunOwnershipError) {
-        continue;
-      }
-      throw error;
-    }
-    if (matchesStatus(summary, input.statuses)) {
-      ownedRows.push({ summary, nextRawOffset });
-    }
-    if (ownedRows.length > limit) {
-      break;
-    }
-  }
+  const nextRawOffset = collectOwnedRows(rows, input, rawOffset, limit, ownedRows);
 
   return rows.length === requested && ownedRows.length <= limit
     ? scanUntilOwnedRunLookahead(input, nextRawOffset, limit, ownedRows)
