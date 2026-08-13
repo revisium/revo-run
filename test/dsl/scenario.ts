@@ -120,14 +120,36 @@ export type ScenarioStep =
       readonly moment: 'afterEffect' | 'beforeEffect' | 'whileWaiting';
     }
   | { readonly kind: 'restartManager' }
-  | { readonly kind: 'cancelRun'; readonly actorId: string; readonly commandId: string }
+  | { readonly kind: 'cancelRun'; readonly actorId: string }
   | {
       readonly kind: 'resolveUnknownOutcome';
-      readonly path: string;
-      readonly resolution: 'adoptSuccess' | 'markFailed' | 'retry';
+      readonly attemptCapture: string;
+      readonly resolution:
+        | { readonly kind: 'adoptSuccess'; readonly outcome: string; readonly output?: NodeOutput }
+        | { readonly kind: 'markFailed' }
+        | { readonly kind: 'retry' };
       readonly actorId: string;
-      readonly commandId: string;
     }
+  | { readonly kind: 'captureAttemptId'; readonly path: string; readonly captureAs: string }
+  | { readonly kind: 'expectExecutorAborted'; readonly path: string }
+  | { readonly kind: 'ignoreExecutorAbort'; readonly path: string }
+  | { readonly kind: 'captureRunState'; readonly captureAs: string }
+  | { readonly kind: 'expectRunStateUnchanged'; readonly capture: string }
+  | {
+      readonly kind: 'expectResolutionDetails';
+      readonly attemptCapture: string;
+      readonly actorId: string;
+      readonly resolutionKind: 'adoptSuccess' | 'markFailed' | 'retry';
+      readonly outcome?: string;
+      readonly nodeStatus: RunNodeExecutionStatus;
+    }
+  | {
+      readonly kind: 'expectScopeStatuses';
+      readonly paths: readonly string[];
+      readonly status: 'cancelled';
+    }
+  | { readonly kind: 'expectNoActiveDurableScopes' }
+  | { readonly kind: 'expectDistinctCommandIds'; readonly captures: readonly string[] }
   | {
       readonly kind: 'expectRunStatus';
       readonly status: 'cancelled' | 'failed' | 'running' | 'succeeded';
@@ -204,11 +226,11 @@ export type ScenarioStep =
 export const scenario = (value: RunScenario): RunScenario => value;
 
 export type ScenarioCommandResult =
-  | { readonly status: 'accepted'; readonly commandId: string }
+  | { readonly status: 'accepted'; readonly captureCommandIdAs?: string }
   | {
       readonly status: 'rejected';
-      readonly commandId: string;
       readonly reason: ScenarioCommandRejectionReason;
+      readonly captureCommandIdAs?: string;
     };
 
 export type ScenarioCommandRejectionReason =
@@ -216,4 +238,10 @@ export type ScenarioCommandRejectionReason =
   | 'actor_not_eligible'
   | 'gate_already_resolved'
   | 'invalid_gate_answer'
-  | 'run_already_terminal';
+  | 'run_already_terminal'
+  | 'run_cancellation_requested'
+  | 'unknown_outcome_not_pending'
+  | 'unknown_outcome_already_resolved'
+  | 'unknown_outcome_retry_not_permitted'
+  | 'unsupported_run_version'
+  | 'command_not_supported';

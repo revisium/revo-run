@@ -5,11 +5,15 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import * as publicApi from '../../src/index.js';
 import type {
   AgentExecutorBinding,
+  CancelRunInput,
+  CommandId,
   CreateRunManagerOptions,
   ExecutionBinding,
   ExecutionPlan,
   ListRunsInput,
   RunAttempt,
+  RunCommandReceipt,
+  RunCommandDetails,
   RunDetails,
   RunError,
   RunEventCursor,
@@ -26,6 +30,7 @@ import type {
   RunPage,
   RunResult,
   RunScope,
+  ResolveUnknownOutcomeInput,
   RunSnapshot,
   RunStatus,
   RunSummary,
@@ -39,8 +44,12 @@ describe('root-only public API', () => {
   it('exports only the approved runtime values', () => {
     expect(Object.keys(publicApi).sort()).toEqual([
       'AgentExecutorBindingSchema',
+      'CancelRunInputSchema',
+      'CommandIdSchema',
       'ExecutionBindingSchema',
       'ExecutionPlanSchema',
+      'ResolveUnknownOutcomeInputSchema',
+      'RunCommandReceiptSchema',
       'RunErrorSchema',
       'RunEventCursorSchema',
       'RunEventPageInputSchema',
@@ -103,6 +112,11 @@ describe('root-only public API', () => {
     expectTypeOf<RunScope>().toBeObject();
     expectTypeOf<RunNodeInstance>().toBeObject();
     expectTypeOf<RunAttempt>().toBeObject();
+    expectTypeOf<CancelRunInput>().toBeObject();
+    expectTypeOf<ResolveUnknownOutcomeInput>().toBeObject();
+    expectTypeOf<RunCommandReceipt>().toMatchTypeOf<{ readonly commandId: string }>();
+    expectTypeOf<RunCommandDetails>().toMatchTypeOf<{ readonly commandId: string }>();
+    expectTypeOf<CommandId>().toBeString();
     expectTypeOf<WaitForTerminalInput>().toBeObject();
   });
 });

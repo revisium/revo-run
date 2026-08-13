@@ -36,9 +36,10 @@ vi.mock('@dbos-inc/dbos-sdk', async (importOriginal) => {
   return { ...actual, DBOS: dbos };
 });
 
-import { runWorkflowName } from '../../src/dbos/dbos-names.js';
+import { runWorkflowV2Name } from '../../src/dbos/dbos-names.js';
 import { DbosRunRuntime } from '../../src/dbos/dbos-run-runtime.js';
 import { WorkflowRegistry } from '../../src/dbos/workflow-registry.js';
+import { executionPlan as buildExecutionPlan, task } from '../dsl/pipeline-builder.js';
 import { terminalExecutionPlan } from '../support/execution-plan.fixture.js';
 import { noopRunExecutor } from '../support/executor/noop-run-executor.js';
 
@@ -57,7 +58,7 @@ const durableInput = (overrides: Readonly<Record<string, unknown>> = {}) => ({
 
 const status = (
   input: readonly unknown[] = [durableInput()],
-  workflowName = runWorkflowName,
+  workflowName = runWorkflowV2Name,
 ): TestStatus => ({
   applicationID: 'test',
   workflowID: rootWorkflowId,
@@ -137,6 +138,25 @@ describe('DBOS create-only run admission', () => {
     expect(dbos.startWorkflow).not.toHaveBeenCalled();
   });
 
+  it('rejects v2 remaining-branch cancellation before DBOS admission', async () => {
+    const unsupported = buildExecutionPlan({
+      kind: 'parallel',
+      key: 'work',
+      branches: { a: task('a'), b: task('b') },
+      join: {
+        kind: 'any',
+        successfulOutcomes: ['completed'],
+        remaining: 'cancel',
+      },
+    });
+
+    await expect(runtime().startRun(runId, unsupported, null)).rejects.toMatchObject({
+      code: 'invalid_execution_plan',
+    });
+    expect(dbos.getWorkflowStatus).not.toHaveBeenCalled();
+    expect(dbos.startWorkflow).not.toHaveBeenCalled();
+  });
+
   it('fails when a successful start cannot be confirmed', async () => {
     dbos.getWorkflowStatus.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
     dbos.startWorkflow.mockReturnValue(async () => ({}));
@@ -160,10 +180,10 @@ describe('DBOS create-only run admission', () => {
 
   it.each([
     ['foreign workflow', [durableInput()], 'foreign.workflow.v1'],
-    ['missing token', [{ runId, executionPlan, input: null }], runWorkflowName],
-    ['extra property', [durableInput({ extra: true })], runWorkflowName],
-    ['contract version selector', [durableInput({ contractVersion: 1 })], runWorkflowName],
-    ['stored run ID mismatch', [durableInput({ runId: 'Other_1' })], runWorkflowName],
+    ['missing token', [{ runId, executionPlan, input: null }], runWorkflowV2Name],
+    ['extra property', [durableInput({ extra: true })], runWorkflowV2Name],
+    ['contract version selector', [durableInput({ contractVersion: 1 })], runWorkflowV2Name],
+    ['stored run ID mismatch', [durableInput({ runId: 'Other_1' })], runWorkflowV2Name],
   ])('maps %s after start to conflict', async (_label, inputs, workflowName) => {
     dbos.getWorkflowStatus
       .mockResolvedValueOnce(null)

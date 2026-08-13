@@ -4,11 +4,18 @@ import { Equal } from 'typebox/value';
 import type { RunScope } from '../../contracts/run/run-details.js';
 import type { RunStatus } from '../../contracts/run/run.js';
 import { parseParallelBranchResult } from '../../validation/parallel-branch-result.validator.js';
+import { parseParallelBranchV2Result } from '../../validation/parallel-branch-v2-result.validator.js';
 import { parseParallelBranchWorkflowInput } from '../../validation/parallel-branch-workflow-input.validator.js';
+import { parseParallelBranchWorkflowV2Input } from '../../validation/parallel-branch-workflow-v2-input.validator.js';
 import { parseRunWorkflowResult } from '../../validation/parse-run-workflow-data.js';
 import { parseRunExecutionWorkflowInput } from '../../validation/run-execution-workflow-input.validator.js';
-import { parallelBranchWorkflowName, runExecutionWorkflowName } from '../dbos-names.js';
-import { scopeWorkflowId } from '../workflow-id.js';
+import {
+  parallelBranchWorkflowName,
+  parallelBranchWorkflowV2Name,
+  runExecutionWorkflowName,
+  runExecutionWorkflowV2Name,
+} from '../dbos-names.js';
+import { scopeWorkflowId, scopeWorkflowV2Id } from '../workflow-id.js';
 import { mapRunStatus } from './map-run-snapshot.js';
 import type { ObservableScopeCandidate } from './observable-plan.js';
 
@@ -43,11 +50,14 @@ const successfulScopeStatus = (
   if (candidate.kind === 'root') {
     return parseRunWorkflowResult(status.output).status;
   }
-  const result = parseParallelBranchResult(status.output);
+  const result =
+    status.workflowName === parallelBranchWorkflowV2Name
+      ? parseParallelBranchV2Result(status.output)
+      : parseParallelBranchResult(status.output);
   if (result.key !== candidate.parallelIdentity.branchKey) {
     throw new Error('Parallel branch workflow output identity is invalid.');
   }
-  return 'succeeded';
+  return 'status' in result && result.status === 'cancelled' ? 'cancelled' : 'succeeded';
 };
 
 const scopeDates = (status: WorkflowStatus, candidate: DurableScopeCandidate) => {
@@ -86,16 +96,25 @@ const oneInput = (status: WorkflowStatus): unknown => {
   return status.input[0];
 };
 
-const providerScopeFromStatus = (status: WorkflowStatus, runId: string): ProviderScope => {
-  if (status.workflowName === runExecutionWorkflowName) {
+const providerScopeFromStatus = (
+  status: WorkflowStatus,
+  runId: string,
+  version: 'v1' | 'v2',
+): ProviderScope => {
+  const rootName = version === 'v1' ? runExecutionWorkflowName : runExecutionWorkflowV2Name;
+  const parallelName = version === 'v1' ? parallelBranchWorkflowName : parallelBranchWorkflowV2Name;
+  if (status.workflowName === rootName) {
     const input = parseRunExecutionWorkflowInput(oneInput(status));
     if (input.runId !== runId) {
       throw new Error('Root scope belongs to a different run.');
     }
     return { kind: 'root', scopeId: input.scopeId };
   }
-  if (status.workflowName === parallelBranchWorkflowName) {
-    const input = parseParallelBranchWorkflowInput(oneInput(status));
+  if (status.workflowName === parallelName) {
+    const input =
+      version === 'v1'
+        ? parseParallelBranchWorkflowInput(oneInput(status))
+        : parseParallelBranchWorkflowV2Input(oneInput(status));
     if (input.runId !== runId) {
       throw new Error('Parallel scope belongs to a different run.');
     }
@@ -108,16 +127,23 @@ export const scopeCandidateFromStatus = (
   status: WorkflowStatus,
   runId: string,
   candidates: ReadonlyMap<string, ObservableScopeCandidate>,
+  version: 'v1' | 'v2' = 'v1',
 ): DurableScopeCandidate => {
-  const providerScope = providerScopeFromStatus(status, runId);
+  const providerScope = providerScopeFromStatus(status, runId, version);
   const candidate = candidates.get(providerScope.scopeId);
   if (candidate === undefined || candidate.kind === 'inlineSubpipeline') {
     throw new Error('DBOS scope is not present in the admitted plan.');
   }
-  if (status.workflowID !== scopeWorkflowId(candidate.id)) {
+  const expectedWorkflowId =
+    version === 'v1' ? scopeWorkflowId(candidate.id) : scopeWorkflowV2Id(candidate.id);
+  if (status.workflowID !== expectedWorkflowId) {
     throw new Error('DBOS scope workflow ID is invalid.');
   }
-  if (status.parentWorkflowID !== candidate.parentWorkflowId) {
+  const expectedParentWorkflowId =
+    version === 'v2' && candidate.parentWorkflowId.startsWith('rr:scope:v1:')
+      ? candidate.parentWorkflowId.replace('rr:scope:v1:', 'rr:scope:v2:')
+      : candidate.parentWorkflowId;
+  if (status.parentWorkflowID !== expectedParentWorkflowId) {
     throw new Error('DBOS scope workflow parent is invalid.');
   }
 

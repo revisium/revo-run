@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
-import { parallelBranchWorkflowName, runExecutionWorkflowName } from '../../src/dbos/dbos-names.js';
+import {
+  parallelBranchWorkflowV2Name,
+  runExecutionWorkflowV2Name,
+} from '../../src/dbos/dbos-names.js';
 import {
   EffectRecoveryProductRecords,
   type EffectRecoveryProductScope,
@@ -66,7 +69,7 @@ describe('product effect recovery across processes', () => {
 
         const durable = await records.recoveryScope(runId, scope);
         expect(durable.workflowName).toBe(
-          scope === 'root-execution' ? runExecutionWorkflowName : parallelBranchWorkflowName,
+          scope === 'root-execution' ? runExecutionWorkflowV2Name : parallelBranchWorkflowV2Name,
         );
         const names = durable.operations.map(({ name }) => name);
         const intentIndex = operationIndex(names, `node-effect-intent:1:${path}`);

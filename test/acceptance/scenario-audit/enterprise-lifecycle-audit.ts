@@ -24,7 +24,7 @@ export const enterpriseLifecycleScenarioAudit = [
   {
     intentId: 'rr-077',
     requiredCapabilities: ['parallelCancellation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['parallelCancellation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-077' },
   },
   {
     intentId: 'rr-078',

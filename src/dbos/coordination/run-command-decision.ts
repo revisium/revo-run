@@ -1,0 +1,171 @@
+import type { RunCommandRequestMetadata } from '../../contracts/run/run-command-metadata.js';
+import type {
+  RunCommandReceipt,
+  RunCommandRejectionReason,
+} from '../../contracts/run/run-command.js';
+import type { RunEventDraft } from '../../contracts/run/run-event.js';
+import type {
+  CommandDispatchWorkflowInput,
+  RunCommandDecision,
+} from '../../contracts/workflow/run-command-workflow.js';
+import type { WaitingUnknownOutcome } from './unknown-outcome-registry.js';
+
+interface RunCommandDecisionState {
+  readonly cancellationRequested: boolean;
+  readonly executions: number;
+  readonly maximumExecutions: number;
+  readonly waiting: WaitingUnknownOutcome | undefined;
+}
+
+export const prospectiveRunCommandReceipt = (
+  input: CommandDispatchWorkflowInput,
+  state: RunCommandDecisionState,
+): RunCommandReceipt => {
+  const rejected = (
+    reason: RunCommandRejectionReason,
+  ): Extract<RunCommandReceipt, { readonly status: 'rejected' }> => ({
+    status: 'rejected',
+    commandId: input.commandId,
+    reason,
+  });
+  if (input.command.kind === 'answerGate') {
+    return rejected('command_not_supported');
+  }
+  if (input.command.kind === 'cancelRun') {
+    return { status: 'accepted', commandId: input.commandId };
+  }
+  if (state.cancellationRequested) {
+    return rejected('run_cancellation_requested');
+  }
+  if (state.waiting === undefined) {
+    return rejected('unknown_outcome_not_pending');
+  }
+  if (state.waiting.resolved) {
+    return rejected('unknown_outcome_already_resolved');
+  }
+  if (input.command.input.resolution.kind !== 'retry') {
+    return { status: 'accepted', commandId: input.commandId };
+  }
+  const retry = state.waiting.retry;
+  return retry !== undefined &&
+    state.waiting.request.attemptOrdinal < retry.maximumAttempts &&
+    state.executions < state.maximumExecutions
+    ? { status: 'accepted', commandId: input.commandId }
+    : rejected('unknown_outcome_retry_not_permitted');
+};
+
+const commandMetadata = (input: CommandDispatchWorkflowInput): RunCommandRequestMetadata => {
+  const command = input.command;
+  if (command.kind === 'answerGate') {
+    return { commandId: input.commandId, commandKind: 'answerGate' };
+  }
+  if (command.kind === 'cancelRun') {
+    return {
+      commandId: input.commandId,
+      commandKind: 'cancelRun',
+      actorId: command.input.actorId,
+    };
+  }
+  switch (command.input.resolution.kind) {
+    case 'adoptSuccess':
+      return {
+        commandId: input.commandId,
+        commandKind: 'resolveUnknownOutcome',
+        actorId: command.input.actorId,
+        attemptId: command.input.attemptId,
+        resolutionKind: 'adoptSuccess',
+        outcome: command.input.resolution.outcome,
+      };
+    case 'markFailed':
+      return {
+        commandId: input.commandId,
+        commandKind: 'resolveUnknownOutcome',
+        actorId: command.input.actorId,
+        attemptId: command.input.attemptId,
+        resolutionKind: 'markFailed',
+      };
+    case 'retry':
+      return {
+        commandId: input.commandId,
+        commandKind: 'resolveUnknownOutcome',
+        actorId: command.input.actorId,
+        attemptId: command.input.attemptId,
+        resolutionKind: 'retry',
+      };
+  }
+  command.input.resolution satisfies never;
+  throw new Error('Unknown-outcome resolution metadata is unsupported.');
+};
+
+type RunCommandEventDraft = Extract<
+  RunEventDraft,
+  { readonly type: 'runCommand.accepted' | 'runCommand.rejected' }
+>;
+
+export const createRunCommandEvent = (
+  input: CommandDispatchWorkflowInput,
+  receipt: RunCommandReceipt,
+): RunCommandEventDraft => {
+  const metadata = commandMetadata(input);
+  switch (metadata.commandKind) {
+    case 'cancelRun':
+      if (receipt.status !== 'accepted') {
+        throw new Error('A live cancel command must be accepted.');
+      }
+      return { type: 'runCommand.accepted', data: metadata };
+    case 'answerGate':
+      if (receipt.status !== 'rejected' || receipt.reason !== 'command_not_supported') {
+        throw new Error('An answer-gate command must be rejected as unsupported.');
+      }
+      return {
+        type: 'runCommand.rejected',
+        data: { ...metadata, reason: receipt.reason },
+      };
+    case 'resolveUnknownOutcome':
+      if (receipt.status === 'accepted') {
+        return { type: 'runCommand.accepted', data: metadata };
+      }
+      switch (metadata.resolutionKind) {
+        case 'adoptSuccess':
+        case 'markFailed':
+          if (
+            receipt.reason === 'run_cancellation_requested' ||
+            receipt.reason === 'unknown_outcome_not_pending' ||
+            receipt.reason === 'unknown_outcome_already_resolved'
+          ) {
+            return {
+              type: 'runCommand.rejected',
+              data: { ...metadata, reason: receipt.reason },
+            };
+          }
+          break;
+        case 'retry':
+          if (
+            receipt.reason === 'run_cancellation_requested' ||
+            receipt.reason === 'unknown_outcome_not_pending' ||
+            receipt.reason === 'unknown_outcome_already_resolved' ||
+            receipt.reason === 'unknown_outcome_retry_not_permitted'
+          ) {
+            return {
+              type: 'runCommand.rejected',
+              data: { ...metadata, reason: receipt.reason },
+            };
+          }
+          break;
+      }
+      throw new Error('Unknown-outcome command rejection is inconsistent with its resolution.');
+  }
+  metadata satisfies never;
+  throw new Error('Run command metadata is unsupported.');
+};
+
+export const createRunCommandDecision = (
+  input: CommandDispatchWorkflowInput,
+  receipt: RunCommandReceipt,
+): RunCommandDecision => {
+  const event = createRunCommandEvent(input, receipt);
+  if (event.type === 'runCommand.accepted') {
+    return { ...event.data, decision: 'accepted' };
+  }
+  return { ...event.data, decision: 'rejected' };
+};

@@ -90,6 +90,10 @@ const mapEffectDecisionAttempt = (
     assertStoredExecutionIdentity(decision.request, candidate, runId, attemptOrdinal);
     return undefined;
   }
+  if (decision.kind === 'runNodeCancelled') {
+    assertStoredExecutionIdentity(decision.request, candidate, runId, attemptOrdinal);
+    return undefined;
+  }
   return mapExecution(decision, candidate, runId, attemptOrdinal, timestamps);
 };
 

@@ -1,5 +1,6 @@
 import type { AttemptId, AuthoredNodeId, NodeInstanceId, ScopeId } from '../execution-identity.js';
 import type { NodeOutput } from '../pipeline/node-output.js';
+import type { CommandId, RunCommandRejectionReason } from './run-command.js';
 import type { RunSnapshot } from './run.js';
 
 export type RunNodeExecutionStatus = 'completed' | 'failed' | 'outcomeUnknown' | 'timedOut';
@@ -70,4 +71,23 @@ export interface RunDetails {
   readonly scopes: readonly RunScope[];
   readonly nodeInstances: readonly RunNodeInstance[];
   readonly attempts: readonly RunAttempt[];
+  readonly commands: readonly RunCommandDetails[];
 }
+
+interface RunCommandDetailsBase {
+  readonly commandId: CommandId;
+  readonly commandKind: 'cancelRun' | 'resolveUnknownOutcome' | 'answerGate';
+  readonly actorId?: string;
+  readonly targetAttemptId?: AttemptId;
+}
+
+export type RunCommandDetails = RunCommandDetailsBase &
+  (
+    | { readonly decision: 'accepted' }
+    | { readonly decision: 'rejected'; readonly reason: RunCommandRejectionReason }
+  ) & {
+    readonly resolution?: {
+      readonly kind: 'adoptSuccess' | 'markFailed' | 'retry';
+      readonly outcome?: string;
+    };
+  };

@@ -172,9 +172,84 @@ const runAmbiguousEffectRecovery = async (
   }
 };
 
+const runHumanUnknownRecovery = async (scenario: RunScenario, runId: string): Promise<void> => {
+  const path = 'main/publish';
+  const firstProcess = new RecoveryProcess('start', runId, scenario.intentId, undefined, {
+    input: null,
+    instructions: [{ kind: 'outcomeUnknown' }],
+  });
+  let recoveredProcess: RecoveryProcess | undefined;
+  try {
+    const dispatch = await firstProcess.waitFor({ kind: 'dispatched', path, attemptOrdinal: 1 });
+    assert(dispatch.attemptId !== undefined);
+    await firstProcess.kill();
+
+    recoveredProcess = new RecoveryProcess('recover', runId, scenario.intentId, undefined, {
+      input: null,
+      instructions: [{ kind: 'outcomeUnknown' }],
+    });
+    const reconciliation = await recoveredProcess.waitFor({
+      kind: 'reconciled',
+      path,
+      attemptOrdinal: 1,
+    });
+    assert.equal(reconciliation.attemptId, dispatch.attemptId);
+    await recoveredProcess.waitFor({ kind: 'checkpointed', path });
+    recoveredProcess.resolveUnknownOutcome(dispatch.attemptId, 'release-manager', {
+      kind: 'adoptSuccess',
+      outcome: 'completed',
+      output: { release: { kind: 'json', value: 'published' } },
+    });
+    const command = await recoveredProcess.waitFor({ kind: 'commandReceipt' });
+    assert.equal(command.commandReceipt?.status, 'accepted');
+    await recoveredProcess.waitFor({ kind: 'terminal', status: 'succeeded' });
+    await waitForObservation(recoveredProcess);
+
+    assert.equal(firstProcess.dispatched(path) + recoveredProcess.dispatched(path), 1);
+    const details = recoveredProcess.reportedDetails();
+    assert.deepStrictEqual(details.attempts, [
+      { ordinal: 1, status: 'outcomeUnknown', recovery: { reconciliationRound: 1 } },
+    ]);
+    assert.deepStrictEqual(details.nodeStatuses, [{ path, status: 'completed' }]);
+    assert.deepStrictEqual(details.runOutput, {
+      release: { kind: 'json', value: 'published' },
+    });
+    assert(
+      details.commands.some(
+        (decision) =>
+          decision.actorId === 'release-manager' &&
+          decision.commandKind === 'resolveUnknownOutcome' &&
+          decision.decision === 'accepted' &&
+          decision.targetAttemptId === dispatch.attemptId &&
+          decision.resolution?.kind === 'adoptSuccess' &&
+          decision.resolution.outcome === 'completed',
+      ),
+    );
+    assert(
+      recoveredProcess
+        .reportedEvents()
+        .some(
+          ({ type, data }) =>
+            type === 'runCommand.accepted' &&
+            typeof data === 'object' &&
+            data !== null &&
+            'attemptId' in data &&
+            data.attemptId === dispatch.attemptId,
+        ),
+    );
+  } finally {
+    await firstProcess.kill();
+    await recoveredProcess?.kill();
+  }
+};
+
 export const runEffectRecoveryScenario = async (scenario: RunScenario): Promise<void> => {
-  const program = compileEffectRecoveryScenario(scenario);
   const runId = `rr06-${scenario.intentId}-${randomUUID()}`;
+  if (scenario.intentId === 'rr-012') {
+    await runHumanUnknownRecovery(scenario, runId);
+    return;
+  }
+  const program = compileEffectRecoveryScenario(scenario);
   if (program.crashMoment === 'beforeEffect') {
     await runBeforeEffectRecovery(scenario, program, runId);
     return;

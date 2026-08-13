@@ -8,6 +8,7 @@ import type {
   ExecuteNodeEffect,
   PipelineExecutionContext,
   WaitForRetry,
+  WaitForUnknownOutcome,
 } from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
 import {
@@ -18,6 +19,7 @@ import {
 } from './pipeline-event-sink.js';
 import type { NodeExecutionResult } from './pipeline-node-result.js';
 import { continuedExecution } from './pipeline-node-result.js';
+import { resolveUnknownOutcome } from './unknown-outcome-resolver.js';
 
 type ResolvedTaskRequest = Omit<
   RunExecutorRequest,
@@ -33,15 +35,18 @@ export class TaskNodeExecutor {
   private readonly executeEffect: ExecuteNodeEffect;
   private readonly waitForRetry: WaitForRetry;
   private readonly events: PipelineEventSink;
+  private readonly waitForUnknownOutcome: WaitForUnknownOutcome;
 
   constructor(
     executeEffect: ExecuteNodeEffect,
     waitForRetry: WaitForRetry,
     events: PipelineEventSink,
+    waitForUnknownOutcome: WaitForUnknownOutcome,
   ) {
     this.executeEffect = executeEffect;
     this.waitForRetry = waitForRetry;
     this.events = events;
+    this.waitForUnknownOutcome = waitForUnknownOutcome;
   }
 
   async execute(
@@ -84,6 +89,7 @@ export class TaskNodeExecutor {
     input: ResolvedTaskRequest,
     attemptOrdinal: number,
     nextReconciliationRound: number,
+    permitCommandId?: string,
   ): Promise<NodeExecutionResult> {
     const attemptId = createAttemptId({
       nodeInstanceId: input.nodeInstanceId,
@@ -103,6 +109,7 @@ export class TaskNodeExecutor {
       node.timeoutMs ?? context.plan.policies.defaultTaskTimeoutMs,
       node.recovery ?? unsupportedRecovery,
       nextReconciliationRound,
+      permitCommandId,
     );
 
     if (execution.kind === 'executionLimitExceeded') {
@@ -116,6 +123,9 @@ export class TaskNodeExecutor {
       );
       return { kind: 'finished', result: { status: 'failed', outcome: 'invalid' } };
     }
+    if (execution.kind === 'cancelled') {
+      return { kind: 'finished', result: { status: 'cancelled', outcome: 'cancelled' } };
+    }
     if (execution.kind === 'timedOut') {
       await this.events.write({
         type: 'nodeExecution.timedOut',
@@ -124,6 +134,25 @@ export class TaskNodeExecutor {
       return continuedExecution('timedOut', runtimePath(context, nodePath));
     }
     if (execution.kind === 'outcomeUnknown') {
+      if (
+        node.recovery?.reconciliation === 'required' &&
+        node.recovery.unknownOutcome === 'requireHumanResolution'
+      ) {
+        return resolveUnknownOutcome({
+          waitForResolution: this.waitForUnknownOutcome,
+          node,
+          context,
+          nodePath,
+          request,
+          reconciliationRound: execution.reconciliationRound,
+          fail: async (errorCode) => {
+            await this.writeAttemptFailure(request, errorCode);
+            return continuedExecution('failed', runtimePath(context, nodePath));
+          },
+          retry: async (ordinal, round, commandId) =>
+            this.executeAttempt(node, context, nodePath, input, ordinal, round, commandId),
+        });
+      }
       await this.writeAttemptFailure(request, 'outcome_unknown');
       return continuedExecution('failed', runtimePath(context, nodePath));
     }
@@ -159,7 +188,7 @@ export class TaskNodeExecutor {
     if (execution.execution.result.kind === 'failed') {
       await this.writeAttemptFailure(request, execution.execution.result.error.code);
       if (this.shouldRetry(node.retry, attemptOrdinal, execution.execution.result.error.code)) {
-        await this.waitForRetry(this.retryDelay(node.retry, attemptOrdinal));
+        await this.waitForRetry(request, this.retryDelay(node.retry, attemptOrdinal));
         return this.executeAttempt(
           node,
           context,

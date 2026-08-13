@@ -98,7 +98,10 @@ describe('acceptance scenario contract', () => {
     expect(executablePipelineScenarios.map(({ intentId }) => intentId)).toEqual(
       provenExecutableIntentIds,
     );
+    expect(executablePipelineScenarios).toHaveLength(72);
     expect(pendingPipelineScenarios).toHaveLength(maximumPendingScenarioCount);
+    expect(pendingPipelineScenarios).toHaveLength(31);
+    expect(pendingPipelineScenarios.map(({ intentId }) => intentId)).toContain('rr-034');
   });
 
   it('proves every implemented atom through an executable manifest scenario', () => {

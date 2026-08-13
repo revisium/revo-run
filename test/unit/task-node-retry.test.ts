@@ -7,6 +7,7 @@ import type {
   ExecuteNodeEffect,
   PipelineExecutionContext,
   WaitForRetry,
+  WaitForUnknownOutcome,
 } from '../../src/pipeline/interpreter/interpreter-context.js';
 import type {
   PipelineEventDraft,
@@ -37,6 +38,7 @@ class RecordingAttemptRuntime {
     }
     switch (response.kind) {
       case 'effectNotFound':
+      case 'cancelled':
       case 'executionLimitExceeded':
       case 'outcomeUnknown':
       case 'recoveryExhausted':
@@ -54,7 +56,7 @@ class RecordingAttemptRuntime {
     throw new Error('Recorded attempt response is unsupported.');
   };
 
-  readonly wait: WaitForRetry = async (delayMs) => {
+  readonly wait: WaitForRetry = async (_request, delayMs) => {
     this.delays.push(delayMs);
   };
 
@@ -84,7 +86,13 @@ const executionContext = (node: TaskNode): PipelineExecutionContext => {
 
 const executeTask = async (node: TaskNode, runtime: RecordingAttemptRuntime) => {
   const context = executionContext(node);
-  const executor = new TaskNodeExecutor(runtime.execute, runtime.wait, { write: runtime.write });
+  const waitForUnknownOutcome: WaitForUnknownOutcome = async () => ({ kind: 'fail' });
+  const executor = new TaskNodeExecutor(
+    runtime.execute,
+    runtime.wait,
+    { write: runtime.write },
+    waitForUnknownOutcome,
+  );
   const result = await executor.execute(node, context, 'work');
   return { context, result };
 };

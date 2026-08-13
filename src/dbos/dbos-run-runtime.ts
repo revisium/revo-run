@@ -1,4 +1,5 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 
 import { DBOS } from '@dbos-inc/dbos-sdk';
 
@@ -6,6 +7,12 @@ import type { RunExecutor } from '../contracts/executor/run-executor.js';
 import type { JsonValue } from '../contracts/json-value.js';
 import type { ExecutionPlan } from '../contracts/run/execution-plan.js';
 import type { ListRunsInput, RunPage } from '../contracts/run/list-runs.js';
+import type {
+  CancelRunInput,
+  CommandId,
+  ResolveUnknownOutcomeInput,
+  RunCommandReceipt,
+} from '../contracts/run/run-command.js';
 import type { RunDetails } from '../contracts/run/run-details.js';
 import type {
   RunEventPage,
@@ -16,19 +23,37 @@ import type { RunEvent } from '../contracts/run/run-event.js';
 import { RunManagerError } from '../contracts/run/run-manager-error.js';
 import type { RunSnapshot } from '../contracts/run/run.js';
 import type { WaitForTerminalInput } from '../contracts/run/wait-for-terminal.js';
+import type {
+  CommandDispatchWorkflowInput,
+  DurableRunCommand,
+} from '../contracts/workflow/run-command-workflow.js';
 import type { RunWorkflowInput } from '../contracts/workflow/run-workflow-input.js';
-import { recoveryAdmissionError } from '../validation/execution-plan-recovery.js';
+import { executionPlanAdmissionError } from '../validation/execution-plan-admission.js';
 import { parseRunWorkflowInput } from '../validation/parse-run-workflow-data.js';
-import { runWorkflowName } from './dbos-names.js';
+import {
+  parseCommandDispatchInput,
+  parseCommandDispatchResult,
+} from '../validation/run-command-workflow.validator.js';
+import { runWorkflowName, runWorkflowV2Name } from './dbos-names.js';
 import { loadRunDetails } from './read-model/load-run-details.js';
 import { loadRunPage } from './read-model/load-run-page.js';
 import { mapRunSnapshot, RunOwnershipError } from './read-model/map-run-snapshot.js';
 import { loadRunEventPage, subscribeToRunEvents } from './read-model/run-event-reader.js';
 import { waitForTerminalRun } from './read-model/wait-for-terminal-run.js';
-import { runWorkflowId } from './workflow-id.js';
+import { commandWorkflowId, runWorkflowId } from './workflow-id.js';
 import type { WorkflowRegistry } from './workflow-registry.js';
 
 const applicationName = 'revo-run';
+
+const knownRunWorkflowName = (workflowName: string): string | undefined => {
+  if (workflowName === runWorkflowName) {
+    return runWorkflowName;
+  }
+  if (workflowName === runWorkflowV2Name) {
+    return runWorkflowV2Name;
+  }
+  return undefined;
+};
 
 export class DbosRunRuntime {
   private readonly databaseUrl: string;
@@ -64,12 +89,12 @@ export class DbosRunRuntime {
   }
 
   async startRun(runId: string, executionPlan: ExecutionPlan, input: JsonValue): Promise<void> {
-    const recoveryError = recoveryAdmissionError(
+    const admissionError = executionPlanAdmissionError(
       executionPlan,
       this.executor.reconcile !== undefined,
     );
-    if (recoveryError !== undefined) {
-      throw new RunManagerError(recoveryError);
+    if (admissionError !== undefined) {
+      throw new RunManagerError(admissionError);
     }
 
     const workflowId = runWorkflowId(runId);
@@ -114,13 +139,35 @@ export class DbosRunRuntime {
     }
 
     try {
-      return mapRunSnapshot(status, runWorkflowName, runId);
+      const workflowName = knownRunWorkflowName(status.workflowName);
+      if (workflowName === undefined) {
+        return undefined;
+      }
+      return mapRunSnapshot(status, workflowName, runId);
     } catch (error) {
       if (error instanceof RunOwnershipError) {
         return undefined;
       }
       throw new RunManagerError('run_read_failed');
     }
+  }
+
+  async cancelRun(input: CancelRunInput): Promise<RunCommandReceipt> {
+    await this.assertRunExistsBeforeCommandId(input.runId);
+    return this.dispatchCommand({ kind: 'cancelRun', input }, `cmd_${randomUUID()}`);
+  }
+
+  async resolveUnknownOutcome(input: ResolveUnknownOutcomeInput): Promise<RunCommandReceipt> {
+    await this.assertRunExistsBeforeCommandId(input.runId);
+    return this.dispatchCommand({ kind: 'resolveUnknownOutcome', input }, `cmd_${randomUUID()}`);
+  }
+
+  /** Internal replay seam; public commands always receive a manager-generated UUID. */
+  async dispatchCommand(
+    command: DurableRunCommand,
+    commandId: CommandId,
+  ): Promise<RunCommandReceipt> {
+    return this.dispatchDurableCommand(command, commandId);
   }
 
   async listRuns(input: ListRunsInput): Promise<RunPage> {
@@ -138,7 +185,12 @@ export class DbosRunRuntime {
     }
 
     try {
-      return await loadRunDetails(run);
+      const status = await DBOS.getWorkflowStatus(runWorkflowId(runId));
+      if (status === null) {
+        throw new Error('Run disappeared while loading details.');
+      }
+      const version = status.workflowName === runWorkflowV2Name ? 'v2' : 'v1';
+      return await loadRunDetails(run, version);
     } catch {
       throw new RunManagerError('run_read_failed');
     }
@@ -192,7 +244,7 @@ export class DbosRunRuntime {
     if (status === null) {
       throw new RunManagerError('run_admission_failed');
     }
-    if (status.workflowName !== runWorkflowName) {
+    if (status.workflowName !== runWorkflowV2Name) {
       throw new RunManagerError('run_id_conflict');
     }
 
@@ -211,6 +263,57 @@ export class DbosRunRuntime {
     }
     if (durableInput.runId !== runId || durableInput.admissionToken !== admissionToken) {
       throw new RunManagerError('run_id_conflict');
+    }
+  }
+
+  private async dispatchDurableCommand(
+    command: DurableRunCommand,
+    commandId: CommandId,
+  ): Promise<RunCommandReceipt> {
+    if (!('input' in command)) {
+      throw new RunManagerError('run_command_failed');
+    }
+    const durableInput: CommandDispatchWorkflowInput = { commandId, command };
+    try {
+      const handle = await DBOS.startWorkflow(this.workflows.commandDispatch, {
+        workflowID: commandWorkflowId(commandId),
+      })(durableInput);
+      const storedArguments = await DBOS.retrieveWorkflow(
+        commandWorkflowId(commandId),
+      ).getWorkflowInputs<unknown[]>();
+      const storedInput = parseCommandDispatchInput(storedArguments[0]);
+      if (!isDeepStrictEqual(storedInput, durableInput)) {
+        throw new RunManagerError('run_command_failed', commandId);
+      }
+      const result = parseCommandDispatchResult(await handle.getResult());
+      switch (result.status) {
+        case 'receipt':
+          return result.receipt;
+        case 'runNotFound':
+          throw new RunManagerError('run_not_found');
+        case 'dispatchFailed':
+          throw new RunManagerError('run_command_failed', commandId);
+      }
+      result satisfies never;
+      throw new RunManagerError('run_command_failed', commandId);
+    } catch (error) {
+      if (error instanceof RunManagerError) {
+        throw error;
+      }
+      throw new RunManagerError('run_command_failed', commandId);
+    }
+  }
+
+  private async assertRunExistsBeforeCommandId(runId: string): Promise<void> {
+    try {
+      if ((await DBOS.getWorkflowStatus(runWorkflowId(runId))) === null) {
+        throw new RunManagerError('run_not_found');
+      }
+    } catch (error) {
+      if (error instanceof RunManagerError) {
+        throw error;
+      }
+      throw new RunManagerError('run_command_failed');
     }
   }
 }

@@ -5,7 +5,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { isNodeEffectDecisionStepName } from '../../src/dbos/dbos-names.js';
-import { runWorkflowId, scopeWorkflowId } from '../../src/dbos/workflow-id.js';
+import { scopeWorkflowV2Id } from '../../src/dbos/workflow-id.js';
 import { createRunManager } from '../../src/index.js';
 import type {
   RunEvent,
@@ -96,7 +96,7 @@ describe('task retry', () => {
 
     const scopeId = requests[0]?.scopeId;
     expect(scopeId).toBeDefined();
-    const steps = await DBOS.listWorkflowSteps(scopeWorkflowId(scopeId ?? ''));
+    const steps = await DBOS.listWorkflowSteps(scopeWorkflowV2Id(scopeId ?? ''));
     expect(
       steps?.filter(({ name }) => isNodeEffectDecisionStepName(name)).map(({ name }) => name),
     ).toStrictEqual(['node-effect-decision:1:main/work', 'node-effect-decision:2:main/work']);
@@ -218,40 +218,28 @@ describe('task retry', () => {
       await vi.waitFor(() => expect(requests).toHaveLength(1));
       const scopeId = requests[0]?.scopeId;
       expect(scopeId).toBeDefined();
-      const owningWorkflowId = scopeWorkflowId(scopeId ?? '');
+      const owningWorkflowId = scopeWorkflowV2Id(scopeId ?? '');
       const sleep = await records.waitForPositiveDurationSleep(runId);
-      const operationsAtCancellation = await records.operationsForRun(runId);
       await expect(DBOS.getWorkflowStatus(owningWorkflowId)).resolves.toMatchObject({
         status: 'PENDING',
       });
 
       const cancellationStartedAt = Date.now();
-      await DBOS.cancelWorkflow(owningWorkflowId);
-      await vi.waitFor(async () => {
-        await expect(DBOS.getWorkflowStatus(owningWorkflowId)).resolves.toMatchObject({
-          status: 'CANCELLED',
-        });
-      });
+      await expect(manager.cancelRun({ runId, actorId: 'task-retry-test' })).resolves.toMatchObject(
+        { status: 'accepted' },
+      );
+      await waitForRunStatus(manager, runId, 'cancelled');
       expect(Date.now() - cancellationStartedAt).toBeLessThan(1_000);
+      const operationsAtSettlement = await records.operationsForRun(runId);
 
       await wait(Math.max(0, sleep.deadlineEpochMs - Date.now() + 100));
       expect(requests.map(({ attemptOrdinal }) => attemptOrdinal)).toStrictEqual([1]);
       const operationsAfterDeadline = await records.operationsForRun(runId);
-      expect(operationsAfterDeadline).toStrictEqual(operationsAtCancellation);
-      expect(
-        operationsAfterDeadline.filter(({ functionID }) => functionID > sleep.functionID),
-      ).toStrictEqual([]);
-      expect(
-        operationsAfterDeadline.filter(
-          ({ functionID, name }) => functionID > sleep.functionID && name === 'DBOS.send',
-        ),
-      ).toStrictEqual([]);
+      expect(operationsAfterDeadline).toStrictEqual(operationsAtSettlement);
       expect(
         operationsAfterDeadline.filter(({ name }) => name === 'node-effect-decision:2:main/work'),
       ).toStrictEqual([]);
 
-      await DBOS.cancelWorkflow(runWorkflowId(runId));
-      await waitForRunStatus(manager, runId, 'cancelled');
       const events = await collectEvents(manager, runId);
       expect(
         events.flatMap((event) =>
@@ -261,6 +249,7 @@ describe('task retry', () => {
       expect(events.map(({ type }) => type)).toStrictEqual([
         'nodeExecution.started',
         'nodeExecution.failed',
+        'runCommand.accepted',
       ]);
     } finally {
       await records.close();

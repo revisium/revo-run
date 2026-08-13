@@ -21,9 +21,16 @@ export class RunObservationAssertions {
 
   async expectOutputValue(path: string, key: string, value: unknown): Promise<void> {
     await vi.waitFor(async () => {
-      const attempt = this.attemptForPath(await this.details(), path);
-      assert(attempt?.status === 'completed');
-      assert.deepStrictEqual(attempt.output?.[key], value);
+      const details = await this.details();
+      const attempt = this.attemptForPath(details, path);
+      if (attempt?.status === 'completed') {
+        assert.deepStrictEqual(attempt.output?.[key], value);
+        return;
+      }
+      const node = details.nodeInstances.find(({ displayPath }) => displayPath === path);
+      assert.equal(node?.status, 'completed');
+      assert('result' in details.run);
+      assert.deepStrictEqual(details.run.result.output?.[key], value);
     });
   }
 

@@ -8,6 +8,8 @@ export const RunManagerErrorCodeSchema = Type.Union([
   Type.Literal('manager_stop_failed'),
   Type.Literal('invalid_run_id'),
   Type.Literal('invalid_start_run_input'),
+  Type.Literal('invalid_cancel_run_input'),
+  Type.Literal('invalid_resolve_unknown_outcome_input'),
   Type.Literal('unsupported_plan_schema_version'),
   Type.Literal('invalid_execution_plan'),
   Type.Literal('invalid_pipeline_id'),
@@ -31,6 +33,7 @@ export const RunManagerErrorCodeSchema = Type.Union([
   Type.Literal('recovery_human_resolution_unsupported'),
   Type.Literal('run_id_conflict'),
   Type.Literal('run_admission_failed'),
+  Type.Literal('run_command_failed'),
   Type.Literal('run_not_found'),
   Type.Literal('invalid_list_runs_input'),
   Type.Literal('invalid_run_event_page_input'),
@@ -50,6 +53,8 @@ const messages: Readonly<Record<RunManagerErrorCode, string>> = {
   manager_stop_failed: 'Run manager failed to stop.',
   invalid_run_id: 'Run ID is invalid.',
   invalid_start_run_input: 'Start run input is invalid.',
+  invalid_cancel_run_input: 'Cancel run input is invalid.',
+  invalid_resolve_unknown_outcome_input: 'Resolve unknown outcome input is invalid.',
   unsupported_plan_schema_version: 'Execution plan schema version is unsupported.',
   invalid_execution_plan: 'Execution plan is invalid.',
   invalid_pipeline_id: 'Execution plan pipeline ID is invalid.',
@@ -73,6 +78,7 @@ const messages: Readonly<Record<RunManagerErrorCode, string>> = {
   recovery_human_resolution_unsupported: 'Human resolution recovery is not supported.',
   run_id_conflict: 'Run ID is already claimed.',
   run_admission_failed: 'Run admission failed.',
+  run_command_failed: 'Run command failed.',
   run_not_found: 'Run was not found.',
   invalid_list_runs_input: 'Run list input is invalid.',
   invalid_run_event_page_input: 'Run event page input is invalid.',
@@ -86,10 +92,14 @@ const messages: Readonly<Record<RunManagerErrorCode, string>> = {
 
 export class RunManagerError extends Error {
   readonly code: RunManagerErrorCode;
+  readonly commandId?: string;
 
-  constructor(code: RunManagerErrorCode) {
+  constructor(code: RunManagerErrorCode, commandId?: string) {
     super(messages[code]);
     this.name = 'RunManagerError';
     this.code = code;
+    if (commandId !== undefined) {
+      this.commandId = commandId;
+    }
   }
 }

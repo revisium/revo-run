@@ -74,25 +74,17 @@ describe('acceptance scenario DSL', () => {
 
     expect(expectCommandAccepted('command-accepted-1')).toEqual({
       kind: 'expectCommandResult',
-      result: { status: 'accepted', commandId: 'command-accepted-1' },
+      result: { status: 'accepted', captureCommandIdAs: 'command-accepted-1' },
     });
     for (const scenario of plannedPipelineScenarios) {
-      const commandIds = scenario.steps.flatMap((step) =>
-        step.kind === 'answerHumanGate' ||
-        step.kind === 'cancelRun' ||
-        step.kind === 'resolveUnknownOutcome'
-          ? [step.commandId]
-          : [],
-      );
       const commandResults = scenario.steps.flatMap((step) =>
         step.kind === 'expectCommandResult' ? [step.result] : [],
       );
       const requiresCommandRejection = scenario.requiredCapabilities.includes('commandRejection');
 
-      expect(commandResults.length > 0).toBe(requiresCommandRejection);
-      for (const result of commandResults) {
-        expect(commandIds).toContain(result.commandId);
-      }
+      expect(commandResults.some(({ status }) => status === 'rejected')).toBe(
+        requiresCommandRejection,
+      );
       expect(
         commandResults.every(
           (result) => result.status === 'accepted' || allowedReasons.has(result.reason),
@@ -101,24 +93,24 @@ describe('acceptance scenario DSL', () => {
     }
   });
 
-  it('makes terminal cancellation rejection primary and its event secondary', () => {
+  it('makes terminal cancellation rejection primary without fabricating a rejection event', () => {
     const terminalCancellation = scenarioByIntentId('rr-020');
     const resultIndex = terminalCancellation.steps.findIndex(
       ({ kind }) => kind === 'expectCommandResult',
     );
-    const eventIndex = terminalCancellation.steps.findIndex(
-      (step) => step.kind === 'expectEvent' && step.event.type === 'run.cancellationRejected',
-    );
-
     expect(terminalCancellation.steps[resultIndex]).toEqual({
       kind: 'expectCommandResult',
       result: {
         status: 'rejected',
-        commandId: 'cancel-completed-1',
         reason: 'run_already_terminal',
+        captureCommandIdAs: 'terminal-cancel',
       },
     });
-    expect(eventIndex).toBeGreaterThan(resultIndex);
+    expect(
+      terminalCancellation.steps.some(
+        (step) => step.kind === 'expectEvent' && step.event.type === 'runCommand.rejected',
+      ),
+    ).toBe(false);
   });
 
   it('records normalized consensus votes without inferring a vote from failure', () => {

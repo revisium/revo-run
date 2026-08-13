@@ -6,19 +6,32 @@ import type {
   RunDetails,
   RunNodeInstance,
   RunScope,
+  RunCommandDetails,
 } from '../../contracts/run/run-details.js';
 import type { RunSnapshot } from '../../contracts/run/run.js';
 import { parseDbosWorkflowStatus } from '../../validation/dbos-workflow-status.validator.js';
 import {
+  parseRunCommandDecision,
+  parseUnknownResolutionDirective,
+} from '../../validation/run-command-workflow.validator.js';
+import {
   isNodeAttemptOutcomeStepName,
+  isRunCommandDecisionStepName,
+  isUnknownOutcomeReadyStepName,
+  isUnknownOutcomeResolutionStepName,
   nodeAttemptStepIdentity,
   parallelBranchWorkflowName,
+  parallelBranchWorkflowV2Name,
+  runCommandDecisionCommandId,
   runExecutionWorkflowName,
+  runExecutionWorkflowV2Name,
+  unknownOutcomeReadyAttemptId,
 } from '../dbos-names.js';
 import { runWorkflowId } from '../workflow-id.js';
 import { loadAllWorkflowSteps, type DbosStepRecord } from './dbos-step-pages.js';
 import { mapObservableScope, scopeCandidateFromStatus } from './map-observable-scope.js';
 import { mapRunAttempt } from './map-run-attempt.js';
+import { mapRunCommandDecision } from './map-run-command-decision.js';
 import {
   buildObservablePlan,
   type ObservableNodeCandidate,
@@ -34,11 +47,16 @@ type DurableScopeCandidate = Exclude<
 const introducedScopeWorkflow = (
   step: DbosStepRecord,
   introduced: ReadonlySet<string>,
+  version: 'v1' | 'v2',
 ): string | undefined => {
   if (step.childWorkflowID === null) {
     return undefined;
   }
-  if (step.name === runExecutionWorkflowName || step.name === parallelBranchWorkflowName) {
+  const names =
+    version === 'v1'
+      ? [runExecutionWorkflowName, parallelBranchWorkflowName]
+      : [runExecutionWorkflowV2Name, parallelBranchWorkflowV2Name];
+  if (names.includes(step.name)) {
     return step.childWorkflowID;
   }
   if (step.name === 'DBOS.getResult' && introduced.has(step.childWorkflowID)) {
@@ -53,25 +71,30 @@ class RunDetailsLoader {
   private readonly scopes: RunScope[] = [];
   private readonly nodeInstances: RunNodeInstance[] = [];
   private readonly attempts: RunAttempt[] = [];
+  private readonly commands: RunCommandDetails[] = [];
+  private readonly version: 'v1' | 'v2';
   private readonly includedScopes = new Set<string>();
   private readonly nodeIndexes = new Map<string, number>();
   private readonly includedAttempts = new Set<string>();
   private readonly visitedWorkflows = new Set<string>();
   private readonly activeWorkflows = new Set<string>();
 
-  constructor(run: RunSnapshot) {
+  constructor(run: RunSnapshot, version: 'v1' | 'v2') {
     this.run = run;
     this.plan = buildObservablePlan(run.executionPlan, run.id);
+    this.version = version;
   }
 
   async load(): Promise<RunDetails> {
     const wrapperSteps = await loadAllWorkflowSteps(runWorkflowId(this.run.id));
+    this.includeCommandDecisions(wrapperSteps);
     await this.visitIntroducedScopes(wrapperSteps);
     return {
       run: this.run,
       scopes: this.scopes,
       nodeInstances: this.nodeInstances,
       attempts: this.attempts,
+      commands: this.commands,
     };
   }
 
@@ -83,7 +106,12 @@ class RunDetailsLoader {
     this.visitedWorkflows.add(workflowId);
     try {
       const status = await this.loadWorkflowStatus(workflowId);
-      const candidate = scopeCandidateFromStatus(status, this.run.id, this.plan.scopes);
+      const candidate = scopeCandidateFromStatus(
+        status,
+        this.run.id,
+        this.plan.scopes,
+        this.version,
+      );
       this.includeScopeAncestors(candidate);
       this.includeDurableScope(mapObservableScope(status, candidate));
 
@@ -98,7 +126,7 @@ class RunDetailsLoader {
     const introduced = new Set<string>();
     await steps.reduce<Promise<void>>(async (previous, step) => {
       await previous;
-      const childWorkflowId = introducedScopeWorkflow(step, introduced);
+      const childWorkflowId = introducedScopeWorkflow(step, introduced, this.version);
       if (childWorkflowId !== undefined) {
         introduced.add(childWorkflowId);
         await this.visitWorkflow(childWorkflowId);
@@ -111,17 +139,71 @@ class RunDetailsLoader {
     candidate: DurableScopeCandidate,
   ): Promise<void> {
     const introduced = new Set<string>();
+    const readyUnknownOutcomes = new Set(
+      steps
+        .filter(({ name }) => isUnknownOutcomeReadyStepName(name))
+        .map(({ name }) => unknownOutcomeReadyAttemptId(name)),
+    );
     await steps.reduce<Promise<void>>(async (previous, step) => {
       await previous;
       if (isNodeAttemptOutcomeStepName(step.name)) {
-        this.includeAttempt(step, candidate);
+        this.includeAttempt(step, candidate, readyUnknownOutcomes);
       }
-      const childWorkflowId = introducedScopeWorkflow(step, introduced);
+      if (isUnknownOutcomeResolutionStepName(step.name)) {
+        this.includeUnknownOutcomeResolution(step);
+      }
+      const childWorkflowId = introducedScopeWorkflow(step, introduced, this.version);
       if (childWorkflowId !== undefined) {
         introduced.add(childWorkflowId);
         await this.visitWorkflow(childWorkflowId);
       }
     }, Promise.resolve());
+  }
+
+  private includeCommandDecisions(steps: readonly DbosStepRecord[]): void {
+    if (this.version === 'v1') {
+      return;
+    }
+    for (const step of steps) {
+      if (!isRunCommandDecisionStepName(step.name)) {
+        continue;
+      }
+      if (step.error !== null) {
+        throw new Error('Run command decision step failed.');
+      }
+      const decision = parseRunCommandDecision(step.output);
+      if (decision.commandId !== runCommandDecisionCommandId(step.name)) {
+        throw new Error('Run command decision identity is invalid.');
+      }
+      this.commands.push(mapRunCommandDecision(decision));
+    }
+  }
+
+  private includeUnknownOutcomeResolution(step: DbosStepRecord): void {
+    if (step.error !== null) {
+      throw new Error('Unknown outcome resolution step failed.');
+    }
+    const resolution = parseUnknownResolutionDirective(step.output);
+    if (resolution.kind === 'cancel' || resolution.kind === 'fail' || resolution.kind === 'retry') {
+      return;
+    }
+    const attemptId = step.name.slice('unknown-outcome-resolution:'.length);
+    const attempt = this.attempts.find(({ id }) => id === attemptId);
+    if (attempt?.status !== 'outcomeUnknown') {
+      throw new Error('Unknown outcome resolution has no immutable unknown attempt.');
+    }
+    const nodeIndex = this.nodeIndexes.get(attempt.nodeInstanceId);
+    const node = nodeIndex === undefined ? undefined : this.nodeInstances[nodeIndex];
+    if (nodeIndex === undefined || node === undefined) {
+      throw new Error('Unknown outcome resolution node was not found.');
+    }
+    this.nodeInstances[nodeIndex] = {
+      ...node,
+      status: resolution.kind === 'adoptSuccess' ? 'completed' : 'failed',
+      ...(step.completedAtEpochMs === undefined
+        ? {}
+        : { completedAt: new Date(step.completedAtEpochMs) }),
+    };
   }
 
   private async loadWorkflowStatus(workflowId: string): Promise<WorkflowStatus> {
@@ -177,7 +259,11 @@ class RunDetailsLoader {
     this.includedScopes.add(scope.id);
   }
 
-  private includeAttempt(step: DbosStepRecord, physicalScope: DurableScopeCandidate): void {
+  private includeAttempt(
+    step: DbosStepRecord,
+    physicalScope: DurableScopeCandidate,
+    readyUnknownOutcomes: ReadonlySet<string>,
+  ): void {
     const stepIdentity = nodeAttemptStepIdentity(step.name);
     const candidate = this.plan.nodesByDisplayPath.get(stepIdentity.displayPath);
     if (candidate?.physicalScopeId !== physicalScope.id) {
@@ -185,6 +271,14 @@ class RunDetailsLoader {
     }
     const attempt = mapRunAttempt(step, candidate, this.run.id, stepIdentity.attemptOrdinal);
     if (attempt === undefined) {
+      return;
+    }
+    if (
+      this.version === 'v2' &&
+      attempt.status === 'outcomeUnknown' &&
+      candidate.awaitsHumanResolution &&
+      !readyUnknownOutcomes.has(attempt.id)
+    ) {
       return;
     }
     this.includeScopeForNode(candidate);
@@ -233,5 +327,7 @@ class RunDetailsLoader {
   }
 }
 
-export const loadRunDetails = (run: RunSnapshot): Promise<RunDetails> =>
-  new RunDetailsLoader(run).load();
+export const loadRunDetails = (
+  run: RunSnapshot,
+  version: 'v1' | 'v2' = 'v1',
+): Promise<RunDetails> => new RunDetailsLoader(run, version).load();

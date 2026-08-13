@@ -23,6 +23,7 @@ vi.mock('@dbos-inc/dbos-sdk', async (importOriginal) => {
 
 import { DbosRunRuntime } from '../../src/dbos/dbos-run-runtime.js';
 import { WorkflowRegistry } from '../../src/dbos/workflow-registry.js';
+import { executionPlanAdmissionError } from '../../src/validation/execution-plan-admission.js';
 import { executionPlan, scriptBinding, task } from '../dsl/pipeline-builder.js';
 
 const runId = 'Recovery_1';
@@ -74,19 +75,9 @@ describe('DBOS recovery admission', () => {
     expect(provider.execute).not.toHaveBeenCalled();
   });
 
-  it('rejects human resolution before DBOS or provider access', async () => {
-    const provider = executor('available');
-    const runtime = new DbosRunRuntime('postgres://unused', provider.value, new WorkflowRegistry());
-
-    await expect(
-      runtime.startRun(runId, planWithRecovery('requireHumanResolution'), null),
-    ).rejects.toMatchObject({
-      code: 'recovery_human_resolution_unsupported',
-      message: 'Human resolution recovery is not supported.',
-    });
-    expect(dbos.getWorkflowStatus).not.toHaveBeenCalled();
-    expect(dbos.startWorkflow).not.toHaveBeenCalled();
-    expect(provider.execute).not.toHaveBeenCalled();
-    expect(provider.reconcile).not.toHaveBeenCalled();
+  it('admits human resolution when executor reconciliation is available', () => {
+    expect(
+      executionPlanAdmissionError(planWithRecovery('requireHumanResolution'), true),
+    ).toBeUndefined();
   });
 });

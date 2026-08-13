@@ -1,0 +1,218 @@
+{
+  "metadata": {
+    "contract": "rr-07-commands-cancellation",
+    "artifactVersion": 1,
+    "sourceRevision": "ff351219cd0bedfcba848aa429b00221190ca188",
+    "cloudRevision": "Xx-qwSEgx953UpLTLlTjo"
+  },
+  "axes": {
+    "commandKind": [
+      "cancelRun",
+      "resolve.adoptSuccess",
+      "resolve.markFailed",
+      "resolve.retry",
+      "answerGate.reserved"
+    ],
+    "managerState": ["notStarted", "started", "stopping", "stopped", "restarted"],
+    "runState": [
+      "missing",
+      "admittedPending",
+      "running",
+      "succeeded",
+      "failed",
+      "cancelled",
+      "v1Live"
+    ],
+    "delivery": ["first", "sameInternalIdReplay", "distinctSemanticRepeat", "conflictingSameId"],
+    "resolutionTarget": [
+      "pendingUnknown",
+      "notPending",
+      "alreadyResolved",
+      "cancellationRequested",
+      "retryNotPermitted"
+    ],
+    "executionLocus": [
+      "beforeReadiness",
+      "beforeDispatch",
+      "providerRunning",
+      "retryBackoff",
+      "parallelChild"
+    ],
+    "processBoundary": ["sameProcess", "restartBeforeDecision", "restartAfterDecision"],
+    "providerSettlement": ["cooperativeAbort", "lateSuccess", "lateFailure"],
+    "stopCase": [
+      "noActiveRuns",
+      "drainsBeforeDeadline",
+      "drainExpires",
+      "shutdownExpires",
+      "shutdownFailureAfterPartialCleanup",
+      "relaunch"
+    ],
+    "historyEffect": [
+      "acceptedLiveEvent",
+      "rejectedLiveEvent",
+      "eventBudgetDispatchFailure",
+      "noTerminalAppend",
+      "noV1Append",
+      "streamClosesWithoutFinalCancelledEvent"
+    ]
+  },
+  "proofCases": [
+    {
+      "id": "admitted-before-ready",
+      "commandKind": "cancelRun",
+      "managerState": "started",
+      "runState": "admittedPending",
+      "delivery": "first",
+      "executionLocus": "beforeReadiness",
+      "processBoundary": "sameProcess",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "acceptedLiveEvent"
+    },
+    {
+      "id": "active-provider",
+      "commandKind": "cancelRun",
+      "managerState": "started",
+      "runState": "running",
+      "delivery": "first",
+      "executionLocus": "providerRunning",
+      "processBoundary": "sameProcess",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "streamClosesWithoutFinalCancelledEvent"
+    },
+    {
+      "id": "late-success",
+      "commandKind": "cancelRun",
+      "managerState": "started",
+      "runState": "running",
+      "delivery": "distinctSemanticRepeat",
+      "executionLocus": "providerRunning",
+      "processBoundary": "sameProcess",
+      "providerSettlement": "lateSuccess",
+      "historyEffect": "acceptedLiveEvent"
+    },
+    {
+      "id": "late-failure",
+      "commandKind": "cancelRun",
+      "managerState": "started",
+      "runState": "running",
+      "delivery": "first",
+      "executionLocus": "providerRunning",
+      "processBoundary": "restartAfterDecision",
+      "providerSettlement": "lateFailure",
+      "historyEffect": "acceptedLiveEvent"
+    },
+    {
+      "id": "v1-rejection",
+      "commandKind": "cancelRun",
+      "managerState": "restarted",
+      "runState": "v1Live",
+      "delivery": "first",
+      "executionLocus": "beforeDispatch",
+      "processBoundary": "restartBeforeDecision",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "noV1Append"
+    },
+    {
+      "id": "unknown-adopt",
+      "commandKind": "resolve.adoptSuccess",
+      "managerState": "started",
+      "runState": "running",
+      "delivery": "first",
+      "resolutionTarget": "pendingUnknown",
+      "executionLocus": "parallelChild",
+      "processBoundary": "restartBeforeDecision",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "acceptedLiveEvent"
+    },
+    {
+      "id": "unknown-mark",
+      "commandKind": "resolve.markFailed",
+      "managerState": "started",
+      "runState": "running",
+      "delivery": "conflictingSameId",
+      "resolutionTarget": "alreadyResolved",
+      "executionLocus": "parallelChild",
+      "processBoundary": "sameProcess",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "rejectedLiveEvent"
+    },
+    {
+      "id": "unknown-retry",
+      "commandKind": "resolve.retry",
+      "managerState": "started",
+      "runState": "running",
+      "delivery": "sameInternalIdReplay",
+      "resolutionTarget": "retryNotPermitted",
+      "executionLocus": "retryBackoff",
+      "processBoundary": "restartAfterDecision",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "rejectedLiveEvent"
+    },
+    {
+      "id": "answer-gate-reserved",
+      "commandKind": "answerGate.reserved",
+      "managerState": "notStarted",
+      "runState": "missing",
+      "delivery": "first",
+      "resolutionTarget": "notPending",
+      "executionLocus": "beforeDispatch",
+      "processBoundary": "sameProcess",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "noTerminalAppend"
+    },
+    {
+      "id": "cancel-resolution-race",
+      "commandKind": "resolve.retry",
+      "managerState": "stopping",
+      "runState": "cancelled",
+      "delivery": "distinctSemanticRepeat",
+      "resolutionTarget": "cancellationRequested",
+      "executionLocus": "parallelChild",
+      "processBoundary": "restartAfterDecision",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "rejectedLiveEvent"
+    },
+    {
+      "id": "terminal-cancel",
+      "commandKind": "cancelRun",
+      "managerState": "stopped",
+      "runState": "succeeded",
+      "delivery": "first",
+      "executionLocus": "beforeDispatch",
+      "processBoundary": "sameProcess",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "noTerminalAppend"
+    },
+    {
+      "id": "failed-terminal",
+      "commandKind": "cancelRun",
+      "managerState": "restarted",
+      "runState": "failed",
+      "delivery": "first",
+      "executionLocus": "beforeDispatch",
+      "processBoundary": "restartBeforeDecision",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "noTerminalAppend"
+    },
+    {
+      "id": "event-budget",
+      "commandKind": "cancelRun",
+      "managerState": "started",
+      "runState": "running",
+      "delivery": "first",
+      "executionLocus": "parallelChild",
+      "processBoundary": "sameProcess",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "eventBudgetDispatchFailure"
+    }
+  ],
+  "stopProofs": [
+    "noActiveRuns",
+    "drainsBeforeDeadline",
+    "drainExpires",
+    "shutdownExpires",
+    "shutdownFailureAfterPartialCleanup",
+    "relaunch"
+  ]
+}

@@ -91,10 +91,7 @@ export const executionScenarioAudit = [
       'managerRestartRecovery',
       'noBlindEffectRepeat',
     ],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['unknownOutcomeResolution'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-012' },
   },
   {
     intentId: 'rr-013',
@@ -119,28 +116,22 @@ export const executionScenarioAudit = [
   {
     intentId: 'rr-017',
     requiredCapabilities: ['cooperativeRunCancellation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['cooperativeRunCancellation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-017' },
   },
   {
     intentId: 'rr-018',
     requiredCapabilities: ['runCancellation', 'durableBackoff', 'dbosSafeTimeAdvancement'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['runCancellation'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-018' },
   },
   {
     intentId: 'rr-019',
     requiredCapabilities: ['idempotentRunCancellation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['idempotentRunCancellation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-019' },
   },
   {
     intentId: 'rr-020',
     requiredCapabilities: ['terminalStateImmutability', 'commandRejection'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['terminalStateImmutability', 'commandRejection'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-020' },
   },
   {
     intentId: 'rr-021',

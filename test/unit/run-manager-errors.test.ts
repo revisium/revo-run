@@ -6,11 +6,13 @@ import { RunManager } from '../../src/manager/run-manager.js';
 import { terminalExecutionPlan } from '../support/execution-plan.fixture.js';
 
 const runtime = (overrides: Partial<ConstructorParameters<typeof RunManager>[0]> = {}) => ({
+  cancelRun: async () => Promise.reject(new Error('not used')),
   start: async () => undefined,
   stop: async () => undefined,
   startRun: async () => undefined,
   getRun: async () => undefined,
   listRuns: async () => ({ items: [] }),
+  resolveUnknownOutcome: async () => Promise.reject(new Error('not used')),
   getRunDetails: async () => undefined,
   getRunEvents: async () => ({ items: [], hasMore: false }),
   subscribeRunEvents: async function* () {},

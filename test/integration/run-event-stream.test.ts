@@ -1,9 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-import { DBOS } from '@dbos-inc/dbos-sdk';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { runWorkflowId } from '../../src/dbos/workflow-id.js';
 import { createRunManager } from '../../src/index.js';
 import type { RunEvent, RunManager } from '../../src/index.js';
 import {
@@ -15,6 +13,7 @@ import {
   task,
 } from '../dsl/pipeline-builder.js';
 import { ControlledRunExecutor } from '../support/executor/controlled-run-executor.js';
+import { AdminCancellationEventStreamProcess } from '../support/process/admin-cancellation-event-stream-process.js';
 import { waitForRunStatus } from '../support/run-manager.fixture.js';
 import { testDatabaseUrl } from '../support/test-environment.js';
 
@@ -139,54 +138,27 @@ describe('real DBOS run event stream', () => {
   });
 
   it('drains the accepted prefix and terminates when cancellation interrupts publication', async () => {
-    const executor = new ControlledRunExecutor();
-    const runManager = await startManager(executor);
     const runId = `cancelled-events-${randomUUID()}`;
-
-    await runManager.startRun({
-      runId,
-      executionPlan: executionPlan(task('work'), {
-        bindings: [agentBinding('work', 'worker')],
-      }),
-      input: null,
-    });
-    const subscription = runManager.subscribeRunEvents(runId)[Symbol.asyncIterator]();
-    const first = await subscription.next();
-    expect(first).toMatchObject({
-      done: false,
-      value: { type: 'nodeExecution.started' },
-    });
-
-    await DBOS.cancelWorkflow(runWorkflowId(runId));
-    await executor.complete('main/work', { kind: 'completed', outcome: 'completed' });
-    await waitForRunStatus(runManager, runId, 'cancelled');
-    await expect(runManager.waitForTerminal(runId, { timeoutMs: 1_000 })).resolves.toMatchObject({
-      id: runId,
-      status: 'cancelled',
-    });
-
-    const acceptedPrefix: RunEvent[] = [];
-    if (!first.done) {
-      acceptedPrefix.push(first.value);
+    const process = new AdminCancellationEventStreamProcess(runId);
+    try {
+      const report = await process.report();
+      expect(report.childStatus).toBe('CANCELLED');
+      expect(report.run).toMatchObject({ id: runId, status: 'cancelled' });
+      expect(report.noExternalEffect).toBe(true);
+      expectStoredOrder(report.acceptedPrefix, runId);
+      expect(report.acceptedPrefix.map(({ type }) => type)).toStrictEqual([
+        'nodeExecution.started',
+      ]);
+      expect(
+        report.acceptedPrefix.some(({ type }) => type === 'run.completed' || type === 'run.failed'),
+      ).toBe(false);
+      expect(report.eventPage).toMatchObject({
+        items: [{ type: 'nodeExecution.started' }],
+        nextCursor: `${runId}:1`,
+        hasMore: false,
+      });
+    } finally {
+      await process.kill();
     }
-    const drainAcceptedPrefix = async (): Promise<void> => {
-      const next = await subscription.next();
-      if (next.done) {
-        return;
-      }
-      acceptedPrefix.push(next.value);
-      await drainAcceptedPrefix();
-    };
-    await drainAcceptedPrefix();
-    expectStoredOrder(acceptedPrefix, runId);
-    expect(acceptedPrefix.map(({ type }) => type)).toStrictEqual(['nodeExecution.started']);
-    expect(
-      acceptedPrefix.some(({ type }) => type === 'run.completed' || type === 'run.failed'),
-    ).toBe(false);
-    await expect(runManager.getRunEvents(runId)).resolves.toMatchObject({
-      items: [{ type: 'nodeExecution.started' }],
-      nextCursor: `${runId}:1`,
-      hasMore: false,
-    });
-  });
+  }, 15_000);
 });
