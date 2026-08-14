@@ -1,4 +1,3 @@
-import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { testDatabaseUrl } from '../test-environment.js';
@@ -8,6 +7,8 @@ import type {
   EffectRecoverySpikeScenario,
   EffectRecoverySpikeScope,
 } from './effect-recovery-spike-protocol.js';
+import { forkTestDbosProcess } from './fork-test-dbos-process.js';
+import { testProcessApplicationVersion } from './test-process-application-version.js';
 
 export interface EffectRecoverySpikeProcessInput {
   readonly attemptId: string;
@@ -26,9 +27,12 @@ export class EffectRecoverySpikeProcess {
 
   constructor(input: EffectRecoverySpikeProcessInput) {
     const worker = fileURLToPath(new URL('./effect-recovery-spike-worker.ts', import.meta.url));
-    this.child = fork(worker, {
+    this.child = forkTestDbosProcess(worker, {
+      applicationVersion: testProcessApplicationVersion(
+        'effect-recovery-spike',
+        input.semanticWorkflowId,
+      ),
       env: {
-        ...process.env,
         REVO_RUN_RR06_SPIKE_ATTEMPT_ID: input.attemptId,
         REVO_RUN_RR06_SPIKE_DATABASE_URL: testDatabaseUrl(),
         REVO_RUN_RR06_SPIKE_PHASE: input.phase,
@@ -37,8 +41,6 @@ export class EffectRecoverySpikeProcess {
         REVO_RUN_RR06_SPIKE_SEMANTIC_WORKFLOW_ID: input.semanticWorkflowId,
         REVO_RUN_RR06_SPIKE_WORKFLOW_ID: input.workflowId,
       },
-      execArgv: ['--import', 'tsx'],
-      silent: true,
     });
     this.child.on('message', (message: EffectRecoverySpikeMessage) => {
       this.messages.push(message);

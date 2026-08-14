@@ -1,9 +1,10 @@
-import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import type { JsonValue, NodeOutput, RunCommandReceipt } from '../../../src/index.js';
 import { testDatabaseUrl } from '../test-environment.js';
 import type { RecoveryInstruction } from './effect-recovery-scenario-program.js';
+import { forkTestDbosProcess } from './fork-test-dbos-process.js';
+import { testProcessApplicationVersion } from './test-process-application-version.js';
 
 interface ReportedAttempt {
   readonly ordinal: number;
@@ -39,8 +40,13 @@ export interface RecoveryProcessOptions {
   readonly pauseBeforeIntent?: boolean;
   readonly pauseBeforeAdmission?: boolean | number;
   readonly pauseAfterDecision?: boolean;
+  readonly pauseAfterTerminalBranchResult?: boolean;
   readonly pauseBeforeReadiness?: boolean | number;
   readonly failCommandEventBudget?: boolean;
+  readonly pauseAfterAcceptedCommand?: boolean;
+  readonly pauseAfterCancelDirective?: boolean;
+  readonly pauseAfterDelayCancelledEvent?: boolean;
+  readonly pauseAfterInlineOwnership?: boolean;
 }
 
 export interface RecoveryWorkerMessage {
@@ -48,7 +54,13 @@ export interface RecoveryWorkerMessage {
     | 'beforeIntent'
     | 'beforeAdmission'
     | 'beforeReadiness'
+    | 'delayWaiting'
+    | 'afterAcceptedCommand'
+    | 'afterCancelDirective'
+    | 'afterDelayCancelledEvent'
+    | 'afterInlineOwnership'
     | 'afterDecision'
+    | 'afterTerminalBranchResult'
     | 'attemptObserved'
     | 'checkpointed'
     | 'details'
@@ -70,6 +82,7 @@ export interface RecoveryWorkerMessage {
   readonly events?: readonly ReportedEvent[];
   readonly attemptOrdinal?: number;
   readonly attemptId?: string;
+  readonly applicationVersion?: string;
   readonly path?: string;
   readonly nodeInstanceId?: string;
   readonly status?: string;
@@ -85,6 +98,7 @@ export interface RecoveryWorkerMessage {
 }
 
 export class RecoveryProcess {
+  readonly applicationVersion: string;
   private readonly child;
   private readonly messages: RecoveryWorkerMessage[] = [];
   private readonly errors: string[] = [];
@@ -97,10 +111,11 @@ export class RecoveryProcess {
     retryDelayMs?: number,
     options: RecoveryProcessOptions = {},
   ) {
+    this.applicationVersion = testProcessApplicationVersion('recovery', runId);
     const worker = fileURLToPath(new URL('./recovery-process-worker.ts', import.meta.url));
-    this.child = fork(worker, {
+    this.child = forkTestDbosProcess(worker, {
+      applicationVersion: this.applicationVersion,
       env: {
-        ...process.env,
         REVO_RUN_TEST_DATABASE_URL: testDatabaseUrl(),
         REVO_RUN_TEST_MODE: mode,
         REVO_RUN_TEST_RUN_ID: runId,
@@ -124,6 +139,9 @@ export class RecoveryProcess {
         ...(options.pauseAfterDecision === true
           ? { REVO_RUN_TEST_PAUSE_AFTER_DECISION: 'true' }
           : {}),
+        ...(options.pauseAfterTerminalBranchResult === true
+          ? { REVO_RUN_TEST_PAUSE_AFTER_TERMINAL_BRANCH_RESULT: 'true' }
+          : {}),
         ...(options.pauseBeforeReadiness === undefined || options.pauseBeforeReadiness === false
           ? {}
           : {
@@ -134,6 +152,18 @@ export class RecoveryProcess {
         ...(options.failCommandEventBudget === true
           ? { REVO_RUN_TEST_FAIL_COMMAND_EVENT_BUDGET: 'true' }
           : {}),
+        ...(options.pauseAfterAcceptedCommand === true
+          ? { REVO_RUN_TEST_PAUSE_AFTER_ACCEPTED_COMMAND: 'true' }
+          : {}),
+        ...(options.pauseAfterCancelDirective === true
+          ? { REVO_RUN_TEST_PAUSE_AFTER_CANCEL_DIRECTIVE: 'true' }
+          : {}),
+        ...(options.pauseAfterDelayCancelledEvent === true
+          ? { REVO_RUN_TEST_PAUSE_AFTER_DELAY_CANCELLED_EVENT: 'true' }
+          : {}),
+        ...(options.pauseAfterInlineOwnership === true
+          ? { REVO_RUN_TEST_PAUSE_AFTER_INLINE_OWNERSHIP: 'true' }
+          : {}),
         ...(options.holdReconciliation === true
           ? { REVO_RUN_TEST_HOLD_RECONCILIATION: 'true' }
           : {}),
@@ -142,8 +172,6 @@ export class RecoveryProcess {
           ? {}
           : { REVO_RUN_TEST_RETRY_DELAY_MS: String(retryDelayMs) }),
       },
-      execArgv: ['--import', 'tsx'],
-      silent: true,
     });
     this.child.on('message', (message: RecoveryWorkerMessage) => this.messages.push(message));
     this.child.on('error', (error) => {
@@ -285,12 +313,14 @@ export class RecoveryProcess {
     return message.events;
   }
 
-  async kill(): Promise<void> {
+  kill(): Promise<void> {
     if (this.child.exitCode !== null || this.child.signalCode !== null) {
-      return;
+      return Promise.resolve();
     }
-    this.child.kill('SIGKILL');
-    await new Promise<void>((resolve) => this.child.once('exit', () => resolve()));
+    return new Promise<void>((resolve) => {
+      this.child.once('exit', () => resolve());
+      this.child.kill('SIGKILL');
+    });
   }
 
   private matches(
@@ -303,6 +333,8 @@ export class RecoveryProcess {
       (expected.attemptOrdinal === undefined ||
         message.attemptOrdinal === expected.attemptOrdinal) &&
       (expected.attemptId === undefined || message.attemptId === expected.attemptId) &&
+      (expected.applicationVersion === undefined ||
+        message.applicationVersion === expected.applicationVersion) &&
       (expected.path === undefined || message.path === expected.path) &&
       (expected.status === undefined || message.status === expected.status)
     );

@@ -213,6 +213,13 @@ describe('execution plan validation', () => {
     const withRepeatIterations = (value: number) => ({
       ...terminal,
       policies: { ...terminal.policies, maximumTotalNodeExecutions: maximum },
+      bindings: [
+        {
+          kind: 'script',
+          target: { pipelineId: 'main', nodePath: 'repeat/work' },
+          script: { id: 'example.run', revision: 1 },
+        },
+      ],
       pipelines: {
         main: {
           root: {
@@ -221,7 +228,7 @@ describe('execution plan validation', () => {
             maximumIterations: value,
             continueOn: ['again'],
             completeOn: ['completed'],
-            body: { kind: 'end', status: 'succeeded', outcome: 'completed' },
+            body: { kind: 'task', key: 'work' },
           },
         },
       },

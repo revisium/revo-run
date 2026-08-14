@@ -54,6 +54,7 @@
       "id": "parallel-branch-result",
       "operation": "parseParallelBranchResult",
       "input": {
+        "kind": "continued",
         "key": "security",
         "outcome": "completed",
         "outputs": [
@@ -68,12 +69,12 @@
               }
             }
           ]
-        ],
-        "status": "completed"
+        ]
       },
       "expected": {
         "kind": "output",
         "value": {
+          "kind": "continued",
           "key": "security",
           "outcome": "completed",
           "outputs": [
@@ -88,8 +89,7 @@
                 }
               }
             ]
-          ],
-          "status": "completed"
+          ]
         }
       }
     },
@@ -97,11 +97,11 @@
       "id": "parallel-branch-result-rejects-extra-fields",
       "operation": "parseParallelBranchResult",
       "input": {
+        "kind": "continued",
         "key": "security",
         "outcome": "completed",
         "outputs": [],
-        "runtimePath": "must-not-leak",
-        "status": "completed"
+        "runtimePath": "must-not-leak"
       },
       "expected": {
         "kind": "error",

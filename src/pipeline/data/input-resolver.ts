@@ -13,6 +13,8 @@ export interface InputResolutionContext {
   readonly runInput: JsonValue;
   readonly pipelineInput: PipelineInputScope;
   readonly outputs: ReadonlyMap<string, NodeOutput>;
+  readonly iterationInput?: ExecutorInput;
+  readonly iterationOutput?: NodeOutput;
 }
 
 export type InputResolutionErrorCode =
@@ -116,12 +118,19 @@ export class InputResolver {
         return selectPipelineInput(this.context.pipelineInput, source.path);
       case 'nodeOutput':
         return this.resolveNodeOutput(source.nodePath, source.outputKey, source.path ?? '');
+      case 'iterationInput':
+        return this.context.iterationInput === undefined
+          ? { resolved: false, errorCode: 'input_source_unavailable' }
+          : selectPipelineInput(
+              { kind: 'mapping', values: this.context.iterationInput },
+              source.path,
+            );
+      case 'iterationOutput':
+        return this.resolveIterationOutput(source.outputKey, source.path ?? '');
       case 'artifact':
       case 'entity':
       case 'secret':
         return { resolved: true, value: source };
-      case 'iterationInput':
-      case 'iterationOutput':
       case 'mapItem':
         return { resolved: false, errorCode: 'input_source_unavailable' };
     }
@@ -153,6 +162,24 @@ export class InputResolver {
     if (output === undefined) {
       return { resolved: false, errorCode: 'node_output_not_found' };
     }
+    return this.resolveOutput(output, outputKey, pointer);
+  }
+
+  private resolveIterationOutput(
+    outputKey: string,
+    pointer: string,
+  ): Resolution<ExecutorInputValue> {
+    const output = this.context.iterationOutput;
+    return output === undefined
+      ? { resolved: false, errorCode: 'input_source_unavailable' }
+      : this.resolveOutput(output, outputKey, pointer);
+  }
+
+  private resolveOutput(
+    output: NodeOutput,
+    outputKey: string,
+    pointer: string,
+  ): Resolution<ExecutorInputValue> {
     if (!Object.hasOwn(output, outputKey)) {
       return { resolved: false, errorCode: 'output_key_not_found' };
     }

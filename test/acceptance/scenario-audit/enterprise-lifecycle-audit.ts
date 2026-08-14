@@ -9,16 +9,16 @@ export const enterpriseLifecycleScenarioAudit = [
       'dbosSafeTimeAdvancement',
     ],
     evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['durableDelayRecovery'],
+      kind: 'executableScenario',
+      proofIntentId: 'rr-075',
     },
   },
   {
     intentId: 'rr-076',
     requiredCapabilities: ['durableDelayCancellation', 'dbosSafeTimeAdvancement'],
     evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['durableDelayCancellation'],
+      kind: 'executableScenario',
+      proofIntentId: 'rr-076',
     },
   },
   {

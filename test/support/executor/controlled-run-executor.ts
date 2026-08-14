@@ -225,11 +225,14 @@ export class ControlledRunExecutor implements RunExecutor {
   }
 
   private async takeAttempt(path: string, attemptOrdinal: number): Promise<PendingExecution> {
-    await vi.waitFor(() => {
-      assert(
-        this.pending.get(path)?.some(({ request }) => request.attemptOrdinal === attemptOrdinal),
-      );
-    });
+    await vi.waitFor(
+      () => {
+        assert(
+          this.pending.get(path)?.some(({ request }) => request.attemptOrdinal === attemptOrdinal),
+        );
+      },
+      { timeout: 5_000 },
+    );
 
     const pending = this.pending.get(path);
     const executionIndex = pending?.findIndex(
@@ -244,9 +247,12 @@ export class ControlledRunExecutor implements RunExecutor {
   }
 
   private async takeLatest(path: string): Promise<PendingExecution> {
-    await vi.waitFor(() => {
-      assert((this.pending.get(path)?.length ?? 0) > 0);
-    });
+    await vi.waitFor(
+      () => {
+        assert((this.pending.get(path)?.length ?? 0) > 0);
+      },
+      { timeout: 5_000 },
+    );
 
     const execution = this.pending.get(path)?.pop();
     if (execution === undefined) {

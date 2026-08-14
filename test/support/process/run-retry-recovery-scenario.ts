@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
 
 import { scenarioRealTimeMs } from '../../dsl/scenario-time.js';
@@ -12,8 +13,9 @@ export const runRetryRecoveryScenario = async (scenario: RunScenario): Promise<v
   const beforeCrashMs = scenarioRealTimeMs(scenario.steps.slice(0, crashIndex));
   const retryDelayMs = scenarioRealTimeMs(scenario.steps);
   assert(beforeCrashMs > 0 && retryDelayMs > beforeCrashMs);
+  const runId = `${scenario.intentId}-${randomUUID()}`;
 
-  const firstProcess = new RecoveryProcess('start', scenario.intentId, 'retry', retryDelayMs);
+  const firstProcess = new RecoveryProcess('start', runId, 'retry', retryDelayMs);
   let recoveredProcess: RecoveryProcess | undefined;
 
   try {
@@ -26,7 +28,7 @@ export const runRetryRecoveryScenario = async (scenario: RunScenario): Promise<v
     await wait(beforeCrashMs);
     await firstProcess.kill();
 
-    recoveredProcess = new RecoveryProcess('recover', scenario.intentId, 'retry', retryDelayMs);
+    recoveredProcess = new RecoveryProcess('recover', runId, 'retry', retryDelayMs);
     await recoveredProcess.waitFor({
       kind: 'dispatched',
       path: 'main/work',
@@ -49,7 +51,7 @@ export const runRetryRecoveryScenario = async (scenario: RunScenario): Promise<v
     ]);
     assert.deepEqual(
       events.cursors,
-      events.cursors.map((_, index) => `${scenario.intentId}:${index + 1}`),
+      events.cursors.map((_, index) => `${runId}:${index + 1}`),
     );
     await recoveredProcess.waitFor({ kind: 'stopped' });
   } finally {

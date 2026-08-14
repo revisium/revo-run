@@ -3,8 +3,10 @@ import Type from 'typebox';
 import type { DeepReadonly } from '../deep-readonly.js';
 import {
   AttemptIdSchema,
+  AuthoredNodeIdSchema,
   NodeInstanceIdSchema,
   RunWorkflowIdSchema,
+  ScopeIdSchema,
   ScopeWorkflowIdSchema,
 } from '../execution-identity.js';
 import { RunExecutorRequestSchema } from '../executor/run-executor.js';
@@ -73,6 +75,18 @@ const ScopeBoundaryMessageSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const InlineScopeOwnershipMessageSchema = Type.Object(
+  {
+    kind: Type.Literal('inlineScopeOwnership'),
+    workflowId: ScopeWorkflowIdSchema,
+    parentScopeId: ScopeIdSchema,
+    scopeId: ScopeIdSchema,
+    authoredNodeId: AuthoredNodeIdSchema,
+    invocationOrdinal: PositiveSafeIntegerSchema,
+  },
+  { additionalProperties: false },
+);
+
 const ScopeFinishMessageSchema = Type.Object(
   { kind: Type.Literal('scopeFinish'), workflowId: ScopeWorkflowIdSchema },
   { additionalProperties: false },
@@ -112,6 +126,7 @@ export const RunCoordinatorMessageSchema = Type.Union([
   ScopeAdmissionMessageSchema,
   ScopeReadyMessageSchema,
   ScopeBoundaryMessageSchema,
+  InlineScopeOwnershipMessageSchema,
   ScopeFinishMessageSchema,
   ScopeSettledMessageSchema,
   ScopeCancellationMessageSchema,

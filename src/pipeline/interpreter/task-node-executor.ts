@@ -18,7 +18,7 @@ import {
   type PipelineEventSink,
 } from './pipeline-event-sink.js';
 import type { NodeExecutionResult } from './pipeline-node-result.js';
-import { continuedExecution } from './pipeline-node-result.js';
+import { continuedExecution, terminalExecution } from './pipeline-node-result.js';
 import { resolveUnknownOutcome } from './unknown-outcome-resolver.js';
 
 type ResolvedTaskRequest = Omit<
@@ -65,7 +65,7 @@ export class TaskNodeExecutor {
       await this.events.write(
         pipelineInvalidStateEvent(node, context, nodePath, 'executor_binding_not_found'),
       );
-      return { kind: 'finished', result: { status: 'failed', outcome: 'invalid' } };
+      return terminalExecution({ status: 'failed', outcome: 'invalid' });
     }
 
     return this.executeAttempt(
@@ -121,10 +121,10 @@ export class TaskNodeExecutor {
           'maximum_total_node_executions_exceeded',
         ),
       );
-      return { kind: 'finished', result: { status: 'failed', outcome: 'invalid' } };
+      return terminalExecution({ status: 'failed', outcome: 'invalid' });
     }
     if (execution.kind === 'cancelled') {
-      return { kind: 'finished', result: { status: 'cancelled', outcome: 'cancelled' } };
+      return terminalExecution({ status: 'cancelled', outcome: 'cancelled' });
     }
     if (execution.kind === 'timedOut') {
       await this.events.write({
@@ -208,8 +208,10 @@ export class TaskNodeExecutor {
         outcome: execution.execution.result.outcome,
       },
     });
-    const output = execution.execution.result.output ?? {};
-    context.outputs.set(nodePath, output);
+    const output = execution.execution.result.output;
+    if (output !== undefined) {
+      context.outputs.set(nodePath, output);
+    }
     return continuedExecution(
       execution.execution.result.outcome,
       runtimePath(context, nodePath),

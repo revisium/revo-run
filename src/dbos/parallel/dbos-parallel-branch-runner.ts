@@ -6,6 +6,7 @@ import type { ParallelNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { ParallelBranchResult as ParallelBranchWorkflowResult } from '../../contracts/workflow/parallel-branch-result.js';
 import type { ParallelBranchWorkflowInput } from '../../contracts/workflow/parallel-branch-workflow-input.js';
 import type { DurableParallelJoinDecision } from '../../contracts/workflow/parallel-join-decision.js';
+import type { TerminalWorkflowResult } from '../../contracts/workflow/terminal-workflow-result.js';
 import {
   createAuthoredNodeId,
   createNodeInstanceId,
@@ -24,24 +25,40 @@ import {
   settleParallelBranch,
   type ParallelJoinState,
 } from '../../pipeline/parallel/parallel-join-reducer.js';
+import { parseParallelBranchResult } from '../../validation/parallel-branch-result.validator.js';
 import { parseDurableParallelJoinDecision } from '../../validation/parallel-join-decision.validator.js';
-import {
-  RunCoordinatorClient,
-  ScopeCancellationError,
-} from '../coordination/run-coordinator-client.js';
+import { RunCoordinatorClient } from '../coordination/run-coordinator-client.js';
 import { parallelJoinDecisionStepName } from '../dbos-names.js';
 import { scopeWorkflowId } from '../workflow-id.js';
 import type { ParallelBranchWorkflowProvider } from '../workflows/parallel-branch-workflow-provider.js';
 
+type ActiveBranchDisposition = ParallelBranchWorkflowInput['disposition'] | 'discarded';
+
 interface ActiveBranch {
   readonly branch: ParallelBranch;
+  readonly disposition: ActiveBranchDisposition;
   readonly handle: WorkflowHandle<ParallelBranchWorkflowResult>;
 }
 
 interface ParallelProgress {
   readonly state: ParallelJoinState;
   readonly durableDecision?: DurableParallelJoinDecision;
+  readonly terminal?: TerminalWorkflowResult;
 }
+
+interface SettledBranch {
+  readonly disposition: ActiveBranchDisposition;
+  readonly result: ParallelBranchWorkflowResult;
+}
+
+const eventBudgetFailureFrom = (
+  result: ParallelBranchWorkflowResult,
+): TerminalWorkflowResult | undefined =>
+  result.kind === 'terminal' &&
+  result.result.status === 'failed' &&
+  result.result.outcome === 'event_budget_exceeded'
+    ? result.result
+    : undefined;
 
 export class DbosParallelBranchRunner implements ParallelBranchRunner {
   constructor(
@@ -61,10 +78,14 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
     const progress = await this.settleActive(node, context, nodePath, branches, pending, active, {
       state: initialParallelJoinState(),
     });
+    if (progress.terminal !== undefined) {
+      return { kind: 'terminal', result: progress.terminal };
+    }
     if (progress.state.decision === undefined || progress.durableDecision === undefined) {
       throw new Error('Parallel branches settled without a join decision.');
     }
     return {
+      kind: 'continued',
       outcome: progress.state.decision.outcome === 'succeeded' ? 'completed' : 'failed',
       eligibleResults: eligibleParallelResults(progress.state),
     };
@@ -83,18 +104,43 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
       return progress;
     }
     const settled = await this.settleFirst(active);
+    const eventBudgetFailure = eventBudgetFailureFrom(settled.result);
     let next = progress;
-    if (settled.status === 'cancelled') {
-      if (progress.state.decision === undefined) {
-        throw new ScopeCancellationError('Parallel branch was cancelled before its join.');
+    if (eventBudgetFailure !== undefined) {
+      pending.splice(0);
+      next = { ...progress, terminal: eventBudgetFailure };
+      if (
+        progress.terminal === undefined &&
+        progress.state.decision === undefined &&
+        node.join.remaining === 'cancel'
+      ) {
+        await this.cancelAndDiscardActive(active, this.nodeInstanceId(context, nodePath));
       }
-    } else if (progress.state.decision === undefined) {
-      const { status: _status, ...settlement } = settled;
+    } else if (settled.disposition === 'discarded') {
+      next = progress;
+    } else if (progress.terminal !== undefined) {
+      next = progress;
+    } else if (progress.state.decision !== undefined) {
+      if (
+        node.join.remaining === 'drain' &&
+        settled.disposition === 'execute' &&
+        settled.result.kind === 'terminal'
+      ) {
+        pending.splice(0);
+        next = { ...progress, terminal: settled.result.result };
+      }
+    } else if (settled.result.kind === 'terminal') {
+      pending.splice(0);
+      next = { ...progress, terminal: settled.result.result };
+      if (node.join.remaining === 'cancel') {
+        await this.cancelAndDiscardActive(active, this.nodeInstanceId(context, nodePath));
+      }
+    } else {
       const state = settleParallelBranch(
         node.join,
         branches.map(({ key }) => key),
         progress.state,
-        settlement,
+        settled.result,
       );
       next = { state };
       if (state.decision !== undefined) {
@@ -106,12 +152,14 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
         };
         if (node.join.remaining === 'cancel') {
           pending.splice(0);
-          await this.coordinator.cancelScopes([...active.keys()], durableDecision.nodeInstanceId);
+          await this.cancelAndDiscardActive(active, durableDecision.nodeInstanceId);
         }
       }
     }
 
-    if (next.state.decision === undefined) {
+    if (next.terminal !== undefined) {
+      pending.splice(0);
+    } else if (next.state.decision === undefined) {
       await this.startNext(pending, active, context, nodePath, 'execute');
     } else if (node.join.remaining === 'drain') {
       await this.startNext(pending, active, context, nodePath, 'settlementOnly');
@@ -143,9 +191,7 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
     await this.startInitial(remaining - 1, pending, active, context, nodePath);
   }
 
-  private async settleFirst(
-    active: Map<string, ActiveBranch>,
-  ): Promise<ParallelBranchWorkflowResult> {
+  private async settleFirst(active: Map<string, ActiveBranch>): Promise<SettledBranch> {
     const handle = await DBOS.waitFirst(
       [...active.values()].map(({ handle: childHandle }) => childHandle),
     );
@@ -153,12 +199,12 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
     if (branch === undefined) {
       throw new Error('DBOS completed an unknown parallel branch workflow.');
     }
-    const result = await branch.handle.getResult();
+    const result = parseParallelBranchResult(await branch.handle.getResult());
     if (result.key !== branch.branch.key) {
       throw new Error('Parallel branch workflow returned another branch identity.');
     }
     active.delete(handle.workflowID);
-    return result;
+    return { disposition: branch.disposition, result };
   }
 
   private async startNext(
@@ -198,6 +244,10 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
       pipelineInput: context.pipelineInput,
       runtimePath: context.runtimePath,
       parentPath: nodePath,
+      ...(context.nodePathPrefix === undefined || context.nodePathPrefix.length === 0
+        ? {}
+        : { nodePathPrefix: context.nodePathPrefix }),
+      ...(context.iterationInput === undefined ? {} : { iterationInput: context.iterationInput }),
       inheritedOutputs: [...context.outputs].map(([path, output]) => ({ path, output })),
       maximumParallelism: context.maximumParallelism,
       parentWorkflowId,
@@ -210,7 +260,7 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
     if (handle.workflowID !== workflowId) {
       throw new Error('Parallel branch started with an unexpected workflow ID.');
     }
-    active.set(workflowId, { branch, handle });
+    active.set(workflowId, { branch, disposition, handle });
   }
 
   private async persistDecision(
@@ -223,16 +273,10 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
     if (state.decision === undefined) {
       throw new Error('Parallel join decision cannot be persisted before it is decisive.');
     }
-    const authoredNodeId = createAuthoredNodeId({
-      schemaVersion: context.plan.schemaVersion,
-      pipelineId: context.pipelineId,
-      nodePath,
-      nodeKind: 'parallel',
-    });
     const expected: DurableParallelJoinDecision = {
       kind: 'parallelJoinDecision',
       scopeId: context.scopeId,
-      nodeInstanceId: createNodeInstanceId({ scopeId: context.scopeId, authoredNodeId }),
+      nodeInstanceId: this.nodeInstanceId(context, nodePath),
       outcome: state.decision.outcome,
       remaining: node.join.remaining,
       settlements: state.decision.observedBranchKeys.map((key) => {
@@ -255,5 +299,26 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
       throw new Error('Stored parallel join decision does not match the decisive prefix.');
     }
     return stored;
+  }
+
+  private nodeInstanceId(context: PipelineExecutionContext, nodePath: string): string {
+    const authoredNodeId = createAuthoredNodeId({
+      schemaVersion: context.plan.schemaVersion,
+      pipelineId: context.pipelineId,
+      nodePath,
+      nodeKind: 'parallel',
+    });
+    return createNodeInstanceId({ scopeId: context.scopeId, authoredNodeId });
+  }
+
+  private async cancelAndDiscardActive(
+    active: Map<string, ActiveBranch>,
+    nodeInstanceId: string,
+  ): Promise<void> {
+    const workflowIds = [...active.keys()];
+    for (const [workflowId, branch] of active) {
+      active.set(workflowId, { ...branch, disposition: 'discarded' });
+    }
+    await this.coordinator.cancelScopes(workflowIds, nodeInstanceId);
   }
 }

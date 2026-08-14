@@ -118,8 +118,10 @@ export interface RepeatNode {
   readonly completeOn: readonly string[];
   readonly initialInput?: InputMapping;
   readonly nextInput?: InputMapping;
-  readonly body: PipelineNode;
+  readonly body: RepeatBodyNode;
 }
+
+export type RepeatBodyNode = ParallelNode | RepeatNode | SubpipelineNode | TaskNode;
 
 export interface SubpipelineNode {
   readonly kind: 'subpipeline';

@@ -8,6 +8,11 @@ import type {
   ScopeStartFenceReply,
 } from '../../contracts/workflow/run-coordinator-message.js';
 import type {
+  InlineScopeOwnershipRegistrar,
+  InlineScopeOwnershipRegistration,
+} from '../../pipeline/interpreter/inline-scope-ownership-registrar.js';
+import type { DelayWaitResult } from '../../pipeline/interpreter/interpreter-context.js';
+import type {
   PipelineEventDraft,
   PipelineEventSink,
 } from '../../pipeline/interpreter/pipeline-event-sink.js';
@@ -41,7 +46,7 @@ export class ScopeCancellationError extends Error {}
 
 export class ScopeFailureFenceError extends Error {}
 
-export class RunCoordinatorClient implements PipelineEventSink {
+export class RunCoordinatorClient implements PipelineEventSink, InlineScopeOwnershipRegistrar {
   private readonly rootWorkflowId: string;
   private boundarySequence = 0;
 
@@ -73,6 +78,17 @@ export class RunCoordinatorClient implements PipelineEventSink {
       kind: 'scopeBoundary',
       workflowId: this.workflowId(),
       boundaryId: `boundary-${this.boundarySequence}`,
+    });
+    await this.receiveReply();
+  }
+
+  async registerInlineScopeOwnership(
+    registration: InlineScopeOwnershipRegistration,
+  ): Promise<void> {
+    await this.send({
+      kind: 'inlineScopeOwnership',
+      workflowId: this.workflowId(),
+      ...registration,
     });
     await this.receiveReply();
   }
@@ -118,6 +134,27 @@ export class RunCoordinatorClient implements PipelineEventSink {
       this.assertContinue(response);
     }
     await this.boundary();
+  }
+
+  async waitForDelay(durationMs: number): Promise<DelayWaitResult> {
+    const response = await DBOS.recv(scopeDirectiveTopic, {
+      timeoutSeconds: durationMs / 1_000,
+    });
+    if (response !== null) {
+      return this.delayWaitResult(response);
+    }
+    try {
+      await this.boundary();
+      return 'elapsed';
+    } catch (error) {
+      if (error instanceof ScopeCancellationError) {
+        return 'cancelled';
+      }
+      if (error instanceof ScopeFailureFenceError) {
+        return 'failed';
+      }
+      throw error;
+    }
   }
 
   async waitForUnknownOutcome(
@@ -201,6 +238,20 @@ export class RunCoordinatorClient implements PipelineEventSink {
     if (directive.kind === 'fail') {
       throw new ScopeFailureFenceError('Run scope was fenced by coordinator failure.');
     }
+  }
+
+  private delayWaitResult(value: unknown): DelayWaitResult {
+    const directive = parseScopeDirective(value);
+    switch (directive.kind) {
+      case 'continue':
+        return 'elapsed';
+      case 'cancel':
+        return 'cancelled';
+      case 'fail':
+        return 'failed';
+    }
+    directive satisfies never;
+    return directive;
   }
 
   private async receiveReply(): Promise<void> {

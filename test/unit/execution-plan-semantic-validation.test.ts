@@ -72,6 +72,33 @@ describe('execution plan semantic validation', () => {
     expect(ExecutionPlanValidator.Check(plan)).toBe(true);
   });
 
+  it.each([1, 3])(
+    'rejects overlapping repeat outcome sets at admission with a maximum of %i iteration(s)',
+    (maximumIterations) => {
+      const plan = executionPlan(
+        {
+          kind: 'repeat',
+          key: 'review',
+          maximumIterations,
+          continueOn: ['retry', 'completed'],
+          completeOn: ['completed'],
+          body: { kind: 'task', key: 'work' },
+        },
+        {
+          bindings: [
+            {
+              kind: 'script',
+              target: { pipelineId: 'main', nodePath: 'review/work' },
+              script: { id: 'example.run', revision: 1 },
+            },
+          ],
+        },
+      );
+
+      expect(validationError(plan)).toBe('overlapping_repeat_outcome_sets');
+    },
+  );
+
   it('rejects structural nesting beyond the plan bound', () => {
     const plan = executionPlan(
       {

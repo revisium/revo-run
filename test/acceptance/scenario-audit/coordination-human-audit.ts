@@ -77,17 +77,17 @@ export const coordinationHumanScenarioAudit = [
   {
     intentId: 'rr-054',
     requiredCapabilities: ['repeatIterationDataFlow'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['repeatIterationDataFlow'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-054' },
   },
   {
     intentId: 'rr-055',
     requiredCapabilities: ['nestedRepeat'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['nestedRepeat'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-055' },
   },
   {
     intentId: 'rr-056',
     requiredCapabilities: ['repeatExhaustionRouting'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['repeatExhaustionRouting'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-056' },
   },
   {
     intentId: 'rr-057',

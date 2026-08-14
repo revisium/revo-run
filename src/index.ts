@@ -73,6 +73,7 @@ export type {
   PipelineNode,
   RemainingBranchPolicy,
   RepeatNode,
+  RepeatBodyNode,
   SequenceNode,
   SubpipelineNode,
   TaskNode,

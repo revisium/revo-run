@@ -93,7 +93,12 @@ export const failNode = (path: string, errorCode: string, attempt = 1): Scenario
 
 export const expectRunStatus = (
   status: Extract<ScenarioStep, { kind: 'expectRunStatus' }>['status'],
-): ScenarioStep => ({ kind: 'expectRunStatus', status });
+  withinMs?: number,
+): ScenarioStep => ({
+  kind: 'expectRunStatus',
+  status,
+  ...(withinMs === undefined ? {} : { withinMs }),
+});
 
 export const expectEvent = (
   type: string,

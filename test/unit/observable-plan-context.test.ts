@@ -6,6 +6,7 @@ import {
   createAuthoredNodeId,
   createNodeInstanceId,
   createParallelBranchScopeId,
+  createRepeatIterationScopeId,
   createRootScopeId,
   createSubpipelineScopeId,
 } from '../../src/pipeline/identity/execution-identity.js';
@@ -120,5 +121,74 @@ describe('observable plan context matrix', () => {
       });
       expect(candidate?.id).toMatch(/^ni1_[A-Za-z0-9_-]{43}$/);
     }
+  });
+
+  it('materializes only observed repeat iterations with stable paths and identities', () => {
+    const repeat = {
+      kind: 'repeat',
+      key: 'review',
+      maximumIterations: 3,
+      continueOn: ['retry'],
+      completeOn: ['completed'],
+      body: task('work'),
+    } as const;
+    const repeatPlan = executionPlan(sequence(repeat, end('succeeded')));
+    const observable = buildObservablePlan(repeatPlan, runId);
+    const rootScopeId = createRootScopeId({ runId, rootPipelineId: 'main' });
+    const repeatAuthoredNodeId = createAuthoredNodeId({
+      schemaVersion: 1,
+      pipelineId: 'main',
+      nodePath: 'review',
+      nodeKind: 'repeat',
+    });
+    const scopeId = createRepeatIterationScopeId({
+      parentScopeId: rootScopeId,
+      authoredNodeId: repeatAuthoredNodeId,
+      iterationOrdinal: 1,
+    });
+    const workflowId = scopeWorkflowId(scopeId);
+
+    expect(observable.scopes.size).toBe(1);
+    expect(observable.nodesByDisplayPath.has('main/review[1]/work')).toBe(false);
+
+    const iteration = observable.addRepeatIteration({
+      runId,
+      scopeId,
+      parentScopeId: rootScopeId,
+      ordinal: 1,
+      node: repeat.body,
+      pipelineId: 'main',
+      pipelineInput: { kind: 'value', value: { kind: 'json', value: null } },
+      iterationInput: {},
+      runtimePath: 'main/review[1]',
+      parentPath: 'review',
+      inheritedOutputs: [],
+      maximumParallelism: 10,
+      parentWorkflowId: scopeWorkflowId(rootScopeId),
+      startFence: {
+        directive: 'start',
+        requestId: `request:${workflowId}`,
+        admissionId: `admission:${workflowId}`,
+        workflowId,
+      },
+    });
+
+    expect(iteration).toEqual({
+      id: scopeId,
+      kind: 'repeatIteration',
+      parentScopeId: rootScopeId,
+      parentWorkflowId: scopeWorkflowId(rootScopeId),
+      pipelineId: 'main',
+      displayPath: 'main/review[1]',
+      physicalScopeId: scopeId,
+      repeatIdentity: { node: repeat, nodePath: 'review', ordinal: 1 },
+    });
+    expect(observable.nodesByDisplayPath.get('main/review[1]/work')).toMatchObject({
+      scopeId,
+      pipelineId: 'main',
+      nodePath: 'review/work',
+      displayPath: 'main/review[1]/work',
+      physicalScopeId: scopeId,
+    });
   });
 });

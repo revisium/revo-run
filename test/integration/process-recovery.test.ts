@@ -4,8 +4,14 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 
 import { isNodeEffectDecisionStepName } from '../../src/dbos/dbos-names.js';
-import { RecoveryProcess } from '../support/process/recovery-process.js';
+import {
+  RecoveryProcess,
+  type RecoveryProcessOptions,
+  type RecoveryWorkerMessage,
+} from '../support/process/recovery-process.js';
 import { RetryBackoffRecords } from '../support/process/retry-backoff-records.js';
+
+const delayDurationMs = 5_000;
 
 const expectNoDispatchBefore = async (
   process: RecoveryProcess,
@@ -155,6 +161,114 @@ describe('process recovery', () => {
     }
   }, 30_000);
 
+  it('retains a durable delay deadline across a process crash', async () => {
+    const runId = `delay-recovery-${randomUUID()}`;
+    const firstProcess = new RecoveryProcess('start', runId, 'delay');
+    const records = await RetryBackoffRecords.connect();
+    let recoveredProcess: RecoveryProcess | undefined;
+
+    try {
+      await firstProcess.waitFor({ kind: 'delayWaiting' });
+      const sleepBeforeCrash = await records.waitForDurationSleep(runId, delayDurationMs);
+      expect(sleepBeforeCrash.deadlineEpochMs).toBeGreaterThan(Date.now());
+      await wait(2_500);
+      expect(sleepBeforeCrash.deadlineEpochMs).toBeGreaterThan(Date.now());
+      expect(firstProcess.count('terminal')).toBe(0);
+      const firstProcessExit = firstProcess.kill();
+      await firstProcessExit;
+
+      recoveredProcess = new RecoveryProcess('recover', runId, 'delay');
+      await recoveredProcess.waitFor({
+        kind: 'ready',
+        applicationVersion: firstProcess.applicationVersion,
+      });
+      const recoveredReadyAt = Date.now();
+      const sleepAfterRecovery = await records.waitForDurationSleep(runId, delayDurationMs);
+      expect(sleepAfterRecovery).toStrictEqual(sleepBeforeCrash);
+      await recoveredProcess.waitFor({ kind: 'terminal', status: 'succeeded' });
+      expect(Date.now() - recoveredReadyAt).toBeLessThan(delayDurationMs);
+      await recoveredProcess.waitFor({ kind: 'stopped' });
+    } finally {
+      try {
+        await firstProcess.kill();
+        await recoveredProcess?.kill();
+      } finally {
+        await records.close();
+      }
+    }
+  }, 30_000);
+
+  it('recovers after delay.cancelled append without duplicating the event', async () => {
+    const runId = `delay-cancel-event-recovery-${randomUUID()}`;
+    const firstProcess = new RecoveryProcess('start', runId, 'delay', undefined, {
+      pauseAfterDelayCancelledEvent: true,
+    });
+    let recoveredProcess: RecoveryProcess | undefined;
+
+    try {
+      await firstProcess.waitFor({ kind: 'delayWaiting' });
+      firstProcess.cancel('operator');
+      await firstProcess.waitFor({ kind: 'afterDelayCancelledEvent' });
+      await firstProcess.kill();
+
+      recoveredProcess = new RecoveryProcess('recover', runId, 'delay');
+      await recoveredProcess.waitFor({ kind: 'terminal', status: 'cancelled' });
+      await recoveredProcess.waitFor({ kind: 'events' });
+      expect(recoveredProcess.eventStream().types).toStrictEqual([
+        'runCommand.accepted',
+        'delay.cancelled',
+      ]);
+      await recoveredProcess.waitFor({ kind: 'stopped' });
+    } finally {
+      await firstProcess.kill();
+      await recoveredProcess?.kill();
+    }
+  }, 30_000);
+
+  it.each([
+    {
+      name: 'accepted cancellation command decision',
+      checkpoint: { kind: 'afterAcceptedCommand' },
+      options: { pauseAfterAcceptedCommand: true },
+    },
+    {
+      name: 'persisted cancellation directive',
+      checkpoint: { kind: 'afterCancelDirective' },
+      options: { pauseAfterCancelDirective: true },
+    },
+  ] satisfies readonly {
+    readonly name: string;
+    readonly checkpoint: Partial<RecoveryWorkerMessage>;
+    readonly options: RecoveryProcessOptions;
+  }[])(
+    'recovers delay cancellation after $name',
+    async ({ checkpoint, options }) => {
+      const runId = `delay-cancel-checkpoint-recovery-${randomUUID()}`;
+      const firstProcess = new RecoveryProcess('start', runId, 'delay', undefined, options);
+      let recoveredProcess: RecoveryProcess | undefined;
+
+      try {
+        await firstProcess.waitFor({ kind: 'delayWaiting' });
+        firstProcess.cancel('operator');
+        await firstProcess.waitFor(checkpoint);
+        await firstProcess.kill();
+
+        recoveredProcess = new RecoveryProcess('recover', runId, 'delay');
+        await recoveredProcess.waitFor({ kind: 'terminal', status: 'cancelled' });
+        await recoveredProcess.waitFor({ kind: 'events' });
+        expect(recoveredProcess.eventStream().types).toStrictEqual([
+          'runCommand.accepted',
+          'delay.cancelled',
+        ]);
+        await recoveredProcess.waitFor({ kind: 'stopped' });
+      } finally {
+        await firstProcess.kill();
+        await recoveredProcess?.kill();
+      }
+    },
+    30_000,
+  );
+
   it('recovers parallel branches without repeating a checkpointed effect', async () => {
     const runId = `parallel-recovery-${randomUUID()}`;
     const firstProcess = new RecoveryProcess('start', runId, 'parallel');
@@ -177,6 +291,50 @@ describe('process recovery', () => {
 
       recoveredProcess.complete('main/work/b');
       await recoveredProcess.waitFor({ kind: 'terminal', status: 'succeeded' });
+      await recoveredProcess.waitFor({ kind: 'stopped' });
+    } finally {
+      await firstProcess.kill();
+      await recoveredProcess?.kill();
+    }
+  }, 30_000);
+
+  it('recovers between repeat iterations without replaying the completed iteration', async () => {
+    const runId = `repeat-recovery-${randomUUID()}`;
+    const firstProcess = new RecoveryProcess('start', runId, 'repeat', undefined, {
+      pauseBeforeAdmission: 2,
+    });
+    let recoveredProcess: RecoveryProcess | undefined;
+
+    try {
+      await firstProcess.waitFor({
+        kind: 'dispatched',
+        path: 'main/loop[1]/work',
+        attemptOrdinal: 1,
+      });
+      firstProcess.complete('main/loop[1]/work', { outcome: 'retry' });
+      await firstProcess.waitFor({
+        kind: 'attemptObserved',
+        path: 'main/loop[1]/work',
+        status: 'completed',
+      });
+      await firstProcess.waitFor({ kind: 'beforeAdmission' });
+      await firstProcess.kill();
+
+      recoveredProcess = new RecoveryProcess('recover', runId, 'repeat');
+      await recoveredProcess.waitFor({
+        kind: 'dispatched',
+        path: 'main/loop[2]/work',
+        attemptOrdinal: 1,
+      });
+      expect(recoveredProcess.dispatched('main/loop[1]/work')).toBe(0);
+
+      recoveredProcess.complete('main/loop[2]/work');
+      await recoveredProcess.waitFor({ kind: 'terminal', status: 'succeeded' });
+      await recoveredProcess.waitFor({ kind: 'details' });
+      expect(recoveredProcess.reportedDetails().nodeStatuses).toEqual([
+        { path: 'main/loop[1]/work', status: 'completed' },
+        { path: 'main/loop[2]/work', status: 'completed' },
+      ]);
       await recoveredProcess.waitFor({ kind: 'stopped' });
     } finally {
       await firstProcess.kill();

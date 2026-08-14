@@ -11,12 +11,14 @@ import type { RunExecutorProvider } from '../executor/run-executor-provider.js';
 import { createPipelineExecution } from './create-pipeline-execution.js';
 import { loadRunWorkflowInput } from './load-run-workflow-input.js';
 import type { ParallelBranchWorkflowProvider } from './parallel-branch-workflow-provider.js';
+import type { RepeatIterationWorkflowProvider } from './repeat-iteration-workflow-provider.js';
 
 export type RunExecutionWorkflow = (input: RunExecutionWorkflowInput) => Promise<RunWorkflowResult>;
 
 export const createRunExecutionWorkflow = (
   executor: RunExecutorProvider,
   parallelBranchWorkflows: ParallelBranchWorkflowProvider,
+  repeatIterationWorkflows: RepeatIterationWorkflowProvider,
   cancellation: ScopeCancellationRegistry,
   providerCalls: ProviderCallRegistry,
 ): RunExecutionWorkflow =>
@@ -28,14 +30,17 @@ export const createRunExecutionWorkflow = (
       executionPlan.policies.maximumActiveNodeExecutions,
       executor,
       parallelBranchWorkflows,
+      repeatIterationWorkflows,
       cancellation,
       providerCalls,
     );
     try {
       await coordinator.ready(`rr:run:${runId}`);
-      const result = await interpreter.execute(executionPlan, runId, input, scopeId);
-      await coordinator.finish();
-      return result;
+      const execution = await interpreter.execute(executionPlan, runId, input, scopeId);
+      if (execution.provenance !== 'terminal' || execution.result.status !== 'cancelled') {
+        await coordinator.finish();
+      }
+      return execution.result;
     } catch (error) {
       if (error instanceof ScopeCancellationError) {
         return { status: 'cancelled', outcome: 'cancelled' };

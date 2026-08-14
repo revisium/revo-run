@@ -7,6 +7,7 @@ type PipelineGraphErrorCode =
   | 'duplicate_node_key'
   | 'missing_branch_default'
   | 'node_depth_exceeded'
+  | 'overlapping_repeat_outcome_sets'
   | 'pipeline_not_found'
   | 'unreachable_consensus_threshold'
   | 'unreachable_parallel_threshold';
@@ -54,6 +55,12 @@ const nodeValidationError = (
     ) {
       return 'unreachable_consensus_threshold';
     }
+  }
+  if (
+    node.kind === 'repeat' &&
+    node.continueOn.some((outcome) => node.completeOn.includes(outcome))
+  ) {
+    return 'overlapping_repeat_outcome_sets';
   }
   return undefined;
 };

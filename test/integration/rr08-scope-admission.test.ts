@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { DBOSClient } from '@dbos-inc/dbos-sdk';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { runWorkflowId } from '../../src/dbos/workflow-id.js';
 import { isActiveWorkflowStatus } from '../../src/dbos/workflow-status.js';
@@ -10,6 +10,39 @@ import { agentBinding, end, executionPlan, sequence, task } from '../dsl/pipelin
 import { ControlledRunExecutor } from '../support/executor/controlled-run-executor.js';
 import { RecoveryProcess } from '../support/process/recovery-process.js';
 import { testDatabaseUrl } from '../support/test-environment.js';
+
+const expectParallelScopesSettled = async (
+  client: DBOSClient,
+  runId: string,
+  expectedCount?: number,
+): Promise<void> => {
+  await vi.waitFor(
+    async () => {
+      const scopes = (
+        await client.listWorkflows({
+          workflowName: 'revo-run.parallel-branch',
+          loadInput: true,
+          limit: 100,
+        })
+      ).filter(({ input }) => {
+        const durableInput = input?.[0];
+        return (
+          typeof durableInput === 'object' &&
+          durableInput !== null &&
+          'runId' in durableInput &&
+          durableInput.runId === runId
+        );
+      });
+      if (expectedCount === undefined) {
+        expect(scopes).not.toHaveLength(0);
+      } else {
+        expect(scopes).toHaveLength(expectedCount);
+      }
+      expect(scopes.every(({ status }) => !isActiveWorkflowStatus(status))).toBe(true);
+    },
+    { timeout: 5_000 },
+  );
+};
 
 describe('RR-08 scope admission fences', () => {
   it('keeps the root nonterminal until an abort-ignoring timed-out provider settles', async () => {
@@ -57,23 +90,7 @@ describe('RR-08 scope admission fences', () => {
       await process.waitFor({ kind: 'terminal', status: 'cancelled' });
       expect(process.dispatched('main/work/a')).toBe(0);
       expect(process.dispatched('main/work/b')).toBe(0);
-      const scopes = (
-        await client.listWorkflows({
-          workflowName: 'revo-run.parallel-branch',
-          loadInput: true,
-          limit: 100,
-        })
-      ).filter(({ input }) => {
-        const durableInput = input?.[0];
-        return (
-          typeof durableInput === 'object' &&
-          durableInput !== null &&
-          'runId' in durableInput &&
-          durableInput.runId === runId
-        );
-      });
-      expect(scopes).not.toHaveLength(0);
-      expect(scopes.every(({ status }) => !isActiveWorkflowStatus(status))).toBe(true);
+      await expectParallelScopesSettled(client, runId);
       await process.waitFor({ kind: 'stopped' });
     } finally {
       process.releaseAdmission();
@@ -98,23 +115,7 @@ describe('RR-08 scope admission fences', () => {
 
       await process.waitFor({ kind: 'terminal', status: 'succeeded' });
       expect(process.dispatched('main/review/inner/descendant')).toBe(0);
-      const scopes = (
-        await client.listWorkflows({
-          workflowName: 'revo-run.parallel-branch',
-          loadInput: true,
-          limit: 100,
-        })
-      ).filter(({ input }) => {
-        const durableInput = input?.[0];
-        return (
-          typeof durableInput === 'object' &&
-          durableInput !== null &&
-          'runId' in durableInput &&
-          durableInput.runId === runId
-        );
-      });
-      expect(scopes).toHaveLength(3);
-      expect(scopes.every(({ status }) => !isActiveWorkflowStatus(status))).toBe(true);
+      await expectParallelScopesSettled(client, runId, 3);
       await process.waitFor({ kind: 'stopped' });
     } finally {
       process.releaseAdmission();

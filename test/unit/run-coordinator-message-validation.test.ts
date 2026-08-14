@@ -48,6 +48,16 @@ describe('run coordinator message validation', () => {
     expect(
       parseRunCoordinatorMessage({ kind: 'scopeSettled', workflowId: scopeWorkflowId }),
     ).toStrictEqual({ kind: 'scopeSettled', workflowId: scopeWorkflowId });
+    expect(
+      parseRunCoordinatorMessage({
+        kind: 'inlineScopeOwnership',
+        workflowId: scopeWorkflowId,
+        parentScopeId: `sc1_${digest}`,
+        scopeId: `sc1_${'b'.repeat(43)}`,
+        authoredNodeId: `an1_${digest}`,
+        invocationOrdinal: 1,
+      }),
+    ).toMatchObject({ kind: 'inlineScopeOwnership', invocationOrdinal: 1 });
     expect(parseExecutionReservation({ attemptId, granted: true })).toStrictEqual({
       attemptId,
       granted: true,
@@ -107,6 +117,30 @@ describe('run coordinator message validation', () => {
         kind: 'scopeSettled',
         workflowId: scopeWorkflowId,
         unexpected: true,
+      }),
+    ).toThrow('Run coordinator message is invalid.');
+    expect(() =>
+      parseRunCoordinatorMessage({
+        kind: 'inlineScopeOwnership',
+        workflowId: scopeWorkflowId,
+        parentScopeId: `sc1_${digest}`,
+        scopeId: `sc1_${'b'.repeat(43)}`,
+        authoredNodeId: `an1_${digest}`,
+        invocationOrdinal: 1,
+        unexpected: true,
+      }),
+    ).toThrow('Run coordinator message is invalid.');
+  });
+
+  it('rejects malformed inline ownership identity', () => {
+    expect(() =>
+      parseRunCoordinatorMessage({
+        kind: 'inlineScopeOwnership',
+        workflowId: scopeWorkflowId,
+        parentScopeId: `sc1_${digest}`,
+        scopeId: `sc1_${'b'.repeat(43)}`,
+        authoredNodeId: `an1_${digest}`,
+        invocationOrdinal: 0,
       }),
     ).toThrow('Run coordinator message is invalid.');
   });

@@ -2,6 +2,7 @@ import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
 import { ScopeIdSchema, ScopeWorkflowIdSchema } from '../execution-identity.js';
+import { ExecutorInputSchema } from '../executor/executor-input.js';
 import { NodeOutputSchema } from '../pipeline/node-output.js';
 import { PipelineInputScopeSchema } from '../pipeline/pipeline-input.js';
 import { PipelineNodeSchema } from '../pipeline/pipeline-node.schema.js';
@@ -29,6 +30,8 @@ export const ParallelBranchWorkflowInputSchema = Type.Object(
     pipelineInput: PipelineInputScopeSchema,
     runtimePath: NonEmptyStringSchema,
     parentPath: PipelineNodePathSchema,
+    nodePathPrefix: Type.Optional(PipelineNodePathSchema),
+    iterationInput: Type.Optional(ExecutorInputSchema),
     inheritedOutputs: Type.Array(
       Type.Object(
         { path: PipelineNodePathSchema, output: NodeOutputSchema },

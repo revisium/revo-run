@@ -1,6 +1,7 @@
 import { childNodePath, pipelineNodePath } from '../../contracts/pipeline/node-path.js';
 import type { PipelineNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
+import type { RepeatIterationWorkflowInput } from '../../contracts/workflow/repeat-iteration-workflow-input.js';
 import {
   createAuthoredNodeId,
   createNodeInstanceId,
@@ -9,82 +10,35 @@ import {
   createSubpipelineScopeId,
 } from '../../pipeline/identity/execution-identity.js';
 import { runWorkflowId, scopeWorkflowId } from '../workflow-id.js';
+import {
+  type ObservableNodeCandidate,
+  type ObservableParallelCandidate,
+  type ObservablePlan,
+  type ObservableScopeCandidate,
+  type ObservableTraversalContext,
+  observableDisplayPath,
+} from './observable-plan-model.js';
+import { ObservableRepeatIterations } from './observable-repeat-iterations.js';
 
-export interface ParallelScopeIdentity {
-  readonly branchKey: string;
-  readonly node: PipelineNode;
-  readonly pipelineId: string;
-  readonly runtimePath: string;
-  readonly parentPath: string;
-}
-
-interface ObservableScopeCandidateBase {
-  readonly id: string;
-  readonly pipelineId: string;
-  readonly displayPath: string;
-  readonly physicalScopeId: string;
-}
-
-export type ObservableScopeCandidate =
-  | (ObservableScopeCandidateBase & {
-      readonly kind: 'root';
-      readonly parentWorkflowId: string;
-    })
-  | (ObservableScopeCandidateBase & {
-      readonly kind: 'inlineSubpipeline';
-      readonly parentScopeId: string;
-    })
-  | (ObservableScopeCandidateBase & {
-      readonly kind: 'parallelBranch';
-      readonly parentScopeId: string;
-      readonly parentWorkflowId: string;
-      readonly parallelIdentity: ParallelScopeIdentity;
-    });
-
-export interface ObservableNodeCandidate {
-  readonly id: string;
-  readonly scopeId: string;
-  readonly authoredNodeId: string;
-  readonly pipelineId: string;
-  readonly nodePath: string;
-  readonly displayPath: string;
-  readonly physicalScopeId: string;
-  readonly awaitsHumanResolution: boolean;
-}
-
-export interface ObservableParallelCandidate {
-  readonly node: Extract<PipelineNode, { readonly kind: 'parallel' }>;
-  readonly nodeInstanceId: string;
-  readonly scopeId: string;
-  readonly physicalScopeId: string;
-  readonly branchScopeIds: ReadonlyMap<string, string>;
-}
-
-export interface ObservablePlan {
-  readonly rootScopeId: string;
-  readonly scopes: ReadonlyMap<string, ObservableScopeCandidate>;
-  readonly nodesByDisplayPath: ReadonlyMap<string, ObservableNodeCandidate>;
-  readonly parallelNodesByDisplayPath: ReadonlyMap<string, ObservableParallelCandidate>;
-}
-
-interface TraversalContext {
-  readonly logicalScopeId: string;
-  readonly physicalScopeId: string;
-  readonly pipelineId: string;
-  readonly runtimePath: string;
-}
-
-const displayPath = (context: TraversalContext, nodePath: string): string =>
-  nodePath.length === 0 ? context.runtimePath : `${context.runtimePath}/${nodePath}`;
+export type {
+  ObservableNodeCandidate,
+  ObservableParallelCandidate,
+  ObservablePlan,
+  ObservableScopeCandidate,
+  ParallelScopeIdentity,
+  RepeatScopeIdentity,
+} from './observable-plan-model.js';
 
 class ObservablePlanBuilder {
   private readonly plan: ExecutionPlan;
   private readonly scopeCandidates = new Map<string, ObservableScopeCandidate>();
   private readonly nodeCandidates = new Map<string, ObservableNodeCandidate>();
   private readonly parallelCandidates = new Map<string, ObservableParallelCandidate>();
+  private readonly repeatIterations: ObservableRepeatIterations;
 
   constructor(plan: ExecutionPlan, runId: string) {
     this.plan = plan;
+    this.repeatIterations = new ObservableRepeatIterations(plan);
     const rootScopeId = createRootScopeId({ runId, rootPipelineId: plan.rootPipelineId });
     this.addScope({
       id: rootScopeId,
@@ -112,10 +66,11 @@ class ObservablePlanBuilder {
       scopes: this.scopeCandidates,
       nodesByDisplayPath: this.nodeCandidates,
       parallelNodesByDisplayPath: this.parallelCandidates,
+      addRepeatIteration: (input) => this.addRepeatIteration(input),
     };
   }
 
-  private walkPipeline(context: TraversalContext): void {
+  private walkPipeline(context: ObservableTraversalContext): void {
     const pipeline = this.plan.pipelines[context.pipelineId];
     if (pipeline === undefined) {
       throw new Error('Observable plan pipeline was not found.');
@@ -123,7 +78,11 @@ class ObservablePlanBuilder {
     this.walkNode(pipeline.root, '', context);
   }
 
-  private walkNode(node: PipelineNode, parentPath: string, context: TraversalContext): void {
+  private walkNode(
+    node: PipelineNode,
+    parentPath: string,
+    context: ObservableTraversalContext,
+  ): void {
     const nodePath = pipelineNodePath(node, parentPath);
     switch (node.kind) {
       case 'task':
@@ -157,12 +116,14 @@ class ObservablePlanBuilder {
       case 'parallel':
         this.addParallelBranches(node, nodePath, context);
         return;
+      case 'repeat':
+        this.addRepeatTemplate(node, nodePath, context);
+        return;
       case 'consensus':
       case 'delay':
       case 'end':
       case 'humanGate':
       case 'map':
-      case 'repeat':
         return;
     }
     node satisfies never;
@@ -171,7 +132,7 @@ class ObservablePlanBuilder {
   private addTask(
     node: Extract<PipelineNode, { readonly kind: 'task' }>,
     nodePath: string,
-    context: TraversalContext,
+    context: ObservableTraversalContext,
   ): void {
     const authoredNodeId = createAuthoredNodeId({
       schemaVersion: this.plan.schemaVersion,
@@ -186,7 +147,7 @@ class ObservablePlanBuilder {
       authoredNodeId,
       pipelineId: context.pipelineId,
       nodePath,
-      displayPath: displayPath(context, nodePath),
+      displayPath: observableDisplayPath(context, nodePath),
       physicalScopeId: context.physicalScopeId,
       awaitsHumanResolution:
         node.recovery?.reconciliation === 'required' &&
@@ -202,7 +163,7 @@ class ObservablePlanBuilder {
   private addSubpipeline(
     node: Extract<PipelineNode, { readonly kind: 'subpipeline' }>,
     nodePath: string,
-    context: TraversalContext,
+    context: ObservableTraversalContext,
   ): void {
     const authoredNodeId = createAuthoredNodeId({
       schemaVersion: this.plan.schemaVersion,
@@ -215,7 +176,7 @@ class ObservablePlanBuilder {
       authoredNodeId,
       invocationOrdinal: 1,
     });
-    const path = displayPath(context, nodePath);
+    const path = observableDisplayPath(context, nodePath);
     this.addScope({
       id,
       kind: 'inlineSubpipeline',
@@ -229,13 +190,14 @@ class ObservablePlanBuilder {
       physicalScopeId: context.physicalScopeId,
       pipelineId: node.pipelineId,
       runtimePath: path,
+      nodePathPrefix: '',
     });
   }
 
   private addParallelBranches(
     node: Extract<PipelineNode, { readonly kind: 'parallel' }>,
     nodePath: string,
-    context: TraversalContext,
+    context: ObservableTraversalContext,
   ): void {
     const authoredNodeId = createAuthoredNodeId({
       schemaVersion: this.plan.schemaVersion,
@@ -243,7 +205,7 @@ class ObservablePlanBuilder {
       nodePath,
       nodeKind: node.kind,
     });
-    const parallelDisplayPath = displayPath(context, nodePath);
+    const parallelDisplayPath = observableDisplayPath(context, nodePath);
     const branchScopeIds = new Map<string, string>();
     for (const [branchKey, branch] of Object.entries(node.branches)) {
       const id = createParallelBranchScopeId({
@@ -257,7 +219,7 @@ class ObservablePlanBuilder {
         kind: 'parallelBranch',
         parentScopeId: context.logicalScopeId,
         pipelineId: context.pipelineId,
-        displayPath: displayPath(context, childNodePath(nodePath, branchKey)),
+        displayPath: observableDisplayPath(context, childNodePath(nodePath, branchKey)),
         physicalScopeId: id,
         parentWorkflowId: scopeWorkflowId(context.physicalScopeId),
         parallelIdentity: {
@@ -266,6 +228,9 @@ class ObservablePlanBuilder {
           pipelineId: context.pipelineId,
           runtimePath: context.runtimePath,
           parentPath: nodePath,
+          ...(context.nodePathPrefix === undefined || context.nodePathPrefix.length === 0
+            ? {}
+            : { nodePathPrefix: context.nodePathPrefix }),
         },
       });
       this.walkNode(branch, nodePath, {
@@ -273,6 +238,7 @@ class ObservablePlanBuilder {
         physicalScopeId: id,
         pipelineId: context.pipelineId,
         runtimePath: context.runtimePath,
+        ...(context.nodePathPrefix === undefined ? {} : { nodePathPrefix: context.nodePathPrefix }),
       });
     }
     this.parallelCandidates.set(parallelDisplayPath, {
@@ -284,6 +250,29 @@ class ObservablePlanBuilder {
       scopeId: context.logicalScopeId,
       physicalScopeId: context.physicalScopeId,
       branchScopeIds,
+    });
+  }
+
+  private addRepeatTemplate(
+    node: Extract<PipelineNode, { readonly kind: 'repeat' }>,
+    nodePath: string,
+    context: ObservableTraversalContext,
+  ): void {
+    this.repeatIterations.register(node, nodePath, {
+      parentScopeId: context.logicalScopeId,
+      physicalScopeId: context.physicalScopeId,
+      pipelineId: context.pipelineId,
+      displayPath: observableDisplayPath(context, nodePath),
+    });
+  }
+
+  private addRepeatIteration(
+    input: RepeatIterationWorkflowInput,
+  ): Extract<ObservableScopeCandidate, { readonly kind: 'repeatIteration' }> {
+    return this.repeatIterations.add(input, {
+      getScope: (scopeId) => this.scopeCandidates.get(scopeId),
+      addScope: (candidate) => this.addScope(candidate),
+      walkBody: (node, parentPath, context) => this.walkNode(node, parentPath, context),
     });
   }
 

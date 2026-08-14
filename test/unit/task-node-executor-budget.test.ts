@@ -39,6 +39,7 @@ describe('task node executor budget backstop', () => {
 
     await expect(executor.execute(node, context, 'work')).resolves.toEqual({
       kind: 'finished',
+      provenance: 'terminal',
       result: { status: 'failed', outcome: 'invalid' },
     });
     expect(write).toHaveBeenCalledOnce();

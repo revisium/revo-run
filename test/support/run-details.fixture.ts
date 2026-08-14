@@ -179,7 +179,7 @@ export const runDetailsStatuses = (): Map<string, WorkflowStatus> => {
           },
           scopeWorkflowId(rootScope.id),
           {
-            status: 'completed',
+            kind: 'continued',
             key: index === 0 ? 'a' : 'b',
             outcome: 'completed',
             outputs: [],

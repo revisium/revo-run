@@ -127,6 +127,8 @@ const pipelineInvalidState = eventVariant(
 const pipelineBranchDefaulted = eventVariant('pipeline.branchDefaulted', NodeIdentitySchema);
 const parallelJoinFailed = eventVariant('parallel.joinFailed', NodeIdentitySchema);
 const subpipelineFailed = eventVariant('subpipeline.failed', NodeIdentitySchema);
+const delayCancelled = eventVariant('delay.cancelled', NodeIdentitySchema);
+const repeatExhausted = eventVariant('repeat.exhausted', NodeIdentitySchema);
 const runCompleted = eventVariant(
   'run.completed',
   Type.Object({ outcome: IdentifierSchema }, { additionalProperties: false }),
@@ -150,6 +152,8 @@ export const PipelineEventDraftSchema = Type.Union([
   pipelineBranchDefaulted.draft,
   parallelJoinFailed.draft,
   subpipelineFailed.draft,
+  delayCancelled.draft,
+  repeatExhausted.draft,
 ]);
 
 export const RunEventDraftSchema = Type.Union([
@@ -164,6 +168,8 @@ export const RunEventDraftSchema = Type.Union([
   pipelineBranchDefaulted.draft,
   parallelJoinFailed.draft,
   subpipelineFailed.draft,
+  delayCancelled.draft,
+  repeatExhausted.draft,
   runCompleted.draft,
   runFailed.draft,
   runCommandAccepted.draft,
@@ -182,6 +188,8 @@ export const RunEventSchema = Type.Union([
   pipelineBranchDefaulted.stored,
   parallelJoinFailed.stored,
   subpipelineFailed.stored,
+  delayCancelled.stored,
+  repeatExhausted.stored,
   runCompleted.stored,
   runFailed.stored,
   runCommandAccepted.stored,

@@ -13,6 +13,7 @@ import {
   RunEventBudgetExceededError,
 } from '../streams/run-event-stream.js';
 import { runWorkflowId } from '../workflow-id.js';
+import { DelayCancellationEventAdmission } from './delay-cancellation-event-admission.js';
 import { durableOperationLoop } from './durable-operation-loop.js';
 import { orphanHealthCheckSeconds } from './orphan-health-check.js';
 import { RunCommandCoordinator, type RunCommandContext } from './run-command-coordinator.js';
@@ -35,6 +36,7 @@ export class RunWorkflowCoordinator {
   private readonly commands = new RunCommandCoordinator();
   private readonly admissions: RunScopeAdmission;
   private readonly reservations = new Map<string, RetainedReservation>();
+  private readonly delayCancellationEvents = new DelayCancellationEventAdmission();
   private eventBudgetFailure: RunEventBudgetFailure | undefined;
   private rootScopeWorkflowId: string | undefined;
   private rootCompletionFenced = false;
@@ -85,6 +87,14 @@ export class RunWorkflowCoordinator {
         this.scopes.assertRegistered(message.workflowId);
         if (!this.fenced) {
           await this.appendEvent(message.event);
+        } else {
+          await this.delayCancellationEvents.appendIfAllowed(message, {
+            cancellationRequested: this.cancellationRequested,
+            eventBudgetExceeded: this.eventBudgetFailure !== undefined,
+            senderCancelled: this.scopes.cancellationFence(message.workflowId) !== undefined,
+            senderOwnsScope: this.scopes.ownsScope(message.workflowId, message.event.data.scopeId),
+            appendEvent: (event) => this.appendEvent(event),
+          });
         }
         await this.replyScope(message.workflowId);
         return;
@@ -112,6 +122,10 @@ export class RunWorkflowCoordinator {
         return;
       case 'scopeBoundary':
         this.scopes.assertRegistered(message.workflowId);
+        await this.replyScope(message.workflowId);
+        return;
+      case 'inlineScopeOwnership':
+        this.scopes.registerInlineOwnership(message);
         await this.replyScope(message.workflowId);
         return;
       case 'scopeCancellation':
