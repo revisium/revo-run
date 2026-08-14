@@ -51,6 +51,15 @@ interface SettledBranch {
   readonly result: ParallelBranchWorkflowResult;
 }
 
+interface ParallelSettlement {
+  readonly node: ParallelNode;
+  readonly context: PipelineExecutionContext;
+  readonly nodePath: string;
+  readonly branches: readonly ParallelBranch[];
+  readonly pending: ParallelBranch[];
+  readonly active: Map<string, ActiveBranch>;
+}
+
 const eventBudgetFailureFrom = (
   result: ParallelBranchWorkflowResult,
 ): TerminalWorkflowResult | undefined =>
@@ -75,9 +84,10 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
     const pending = [...branches];
     const active = new Map<string, ActiveBranch>();
     await this.fillInitial(pending, active, context, nodePath);
-    const progress = await this.settleActive(node, context, nodePath, branches, pending, active, {
-      state: initialParallelJoinState(),
-    });
+    const progress = await this.settleActive(
+      { node, context, nodePath, branches, pending, active },
+      { state: initialParallelJoinState() },
+    );
     if (progress.terminal !== undefined) {
       return { kind: 'terminal', result: progress.terminal };
     }
@@ -92,23 +102,28 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
   }
 
   private async settleActive(
-    node: ParallelNode,
-    context: PipelineExecutionContext,
-    nodePath: string,
-    branches: readonly ParallelBranch[],
-    pending: ParallelBranch[],
-    active: Map<string, ActiveBranch>,
+    settlement: ParallelSettlement,
     progress: ParallelProgress,
   ): Promise<ParallelProgress> {
+    const { active } = settlement;
     if (active.size === 0) {
       return progress;
     }
     const settled = await this.settleFirst(active);
+    const next = await this.advanceProgress(settlement, progress, settled);
+    await this.replenishActive(settlement, next);
+    return this.settleActive(settlement, next);
+  }
+
+  private async advanceProgress(
+    settlement: ParallelSettlement,
+    progress: ParallelProgress,
+    settled: SettledBranch,
+  ): Promise<ParallelProgress> {
+    const { active, context, node, nodePath, pending } = settlement;
     const eventBudgetFailure = eventBudgetFailureFrom(settled.result);
-    let next = progress;
     if (eventBudgetFailure !== undefined) {
       pending.splice(0);
-      next = { ...progress, terminal: eventBudgetFailure };
       if (
         progress.terminal === undefined &&
         progress.state.decision === undefined &&
@@ -116,55 +131,81 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
       ) {
         await this.cancelAndDiscardActive(active, this.nodeInstanceId(context, nodePath));
       }
-    } else if (settled.disposition === 'discarded') {
-      next = progress;
-    } else if (progress.terminal !== undefined) {
-      next = progress;
-    } else if (progress.state.decision !== undefined) {
-      if (
-        node.join.remaining === 'drain' &&
-        settled.disposition === 'execute' &&
-        settled.result.kind === 'terminal'
-      ) {
-        pending.splice(0);
-        next = { ...progress, terminal: settled.result.result };
-      }
-    } else if (settled.result.kind === 'terminal') {
+      return { ...progress, terminal: eventBudgetFailure };
+    }
+    if (settled.disposition === 'discarded' || progress.terminal !== undefined) {
+      return progress;
+    }
+    if (progress.state.decision !== undefined) {
+      return this.progressAfterDecision(settlement, progress, settled);
+    }
+    if (settled.result.kind === 'terminal') {
       pending.splice(0);
-      next = { ...progress, terminal: settled.result.result };
       if (node.join.remaining === 'cancel') {
         await this.cancelAndDiscardActive(active, this.nodeInstanceId(context, nodePath));
       }
-    } else {
-      const state = settleParallelBranch(
-        node.join,
-        branches.map(({ key }) => key),
-        progress.state,
-        settled.result,
-      );
-      next = { state };
-      if (state.decision !== undefined) {
-        const skipped = node.join.remaining === 'cancel' ? pending.map(({ key }) => key) : [];
-        const durableDecision = await this.persistDecision(node, context, nodePath, state, skipped);
-        next = {
-          state,
-          durableDecision,
-        };
-        if (node.join.remaining === 'cancel') {
-          pending.splice(0);
-          await this.cancelAndDiscardActive(active, durableDecision.nodeInstanceId);
-        }
-      }
+      return { ...progress, terminal: settled.result.result };
+    }
+    return this.progressAfterContinued(settlement, progress, settled.result);
+  }
+
+  private progressAfterDecision(
+    settlement: ParallelSettlement,
+    progress: ParallelProgress,
+    settled: SettledBranch,
+  ): ParallelProgress {
+    if (
+      settlement.node.join.remaining !== 'drain' ||
+      settled.disposition !== 'execute' ||
+      settled.result.kind !== 'terminal'
+    ) {
+      return progress;
+    }
+    settlement.pending.splice(0);
+    return { ...progress, terminal: settled.result.result };
+  }
+
+  private async progressAfterContinued(
+    settlement: ParallelSettlement,
+    progress: ParallelProgress,
+    result: Extract<ParallelBranchWorkflowResult, { readonly kind: 'continued' }>,
+  ): Promise<ParallelProgress> {
+    const { active, branches, context, node, nodePath, pending } = settlement;
+    const state = settleParallelBranch(
+      node.join,
+      branches.map(({ key }) => key),
+      progress.state,
+      result,
+    );
+    if (state.decision === undefined) {
+      return { state };
     }
 
-    if (next.terminal !== undefined) {
+    const skipped = node.join.remaining === 'cancel' ? pending.map(({ key }) => key) : [];
+    const durableDecision = await this.persistDecision(node, context, nodePath, state, skipped);
+    if (node.join.remaining === 'cancel') {
       pending.splice(0);
-    } else if (next.state.decision === undefined) {
+      await this.cancelAndDiscardActive(active, durableDecision.nodeInstanceId);
+    }
+    return { state, durableDecision };
+  }
+
+  private async replenishActive(
+    settlement: ParallelSettlement,
+    progress: ParallelProgress,
+  ): Promise<void> {
+    const { active, context, node, nodePath, pending } = settlement;
+    if (progress.terminal !== undefined) {
+      pending.splice(0);
+      return;
+    }
+    if (progress.state.decision === undefined) {
       await this.startNext(pending, active, context, nodePath, 'execute');
-    } else if (node.join.remaining === 'drain') {
+      return;
+    }
+    if (node.join.remaining === 'drain') {
       await this.startNext(pending, active, context, nodePath, 'settlementOnly');
     }
-    return this.settleActive(node, context, nodePath, branches, pending, active, next);
   }
 
   private async fillInitial(
