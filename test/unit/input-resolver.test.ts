@@ -24,4 +24,49 @@ describe('pipeline input resolution', () => {
       errorCode: 'input_source_unavailable',
     });
   });
+
+  it('resolves current iteration input and the previous optional output', () => {
+    const resolver = new InputResolver({
+      runInput: null,
+      pipelineInput: { kind: 'value', value: { kind: 'json', value: null } },
+      outputs: new Map(),
+      iterationInput: { change: { kind: 'json', value: { revision: 1 } } },
+      iterationOutput: {
+        result: { kind: 'json', value: { change: { revision: 2 } } },
+      },
+    });
+
+    expect(resolver.resolve({ kind: 'iterationInput', path: '/change/revision' })).toEqual({
+      resolved: true,
+      value: { kind: 'json', value: 1 },
+    });
+    expect(
+      resolver.resolve({ kind: 'iterationOutput', outputKey: 'result', path: '/change/revision' }),
+    ).toEqual({ resolved: true, value: { kind: 'json', value: 2 } });
+  });
+
+  it('classifies absent output, missing keys, and invalid JSON traversal distinctly', () => {
+    const context = {
+      runInput: null,
+      pipelineInput: { kind: 'value' as const, value: { kind: 'json' as const, value: null } },
+      outputs: new Map(),
+      iterationInput: {},
+    };
+
+    expect(
+      new InputResolver(context).resolve({ kind: 'iterationOutput', outputKey: 'result' }),
+    ).toEqual({ resolved: false, errorCode: 'input_source_unavailable' });
+    expect(
+      new InputResolver({ ...context, iterationOutput: {} }).resolve({
+        kind: 'iterationOutput',
+        outputKey: 'result',
+      }),
+    ).toEqual({ resolved: false, errorCode: 'output_key_not_found' });
+    expect(
+      new InputResolver({
+        ...context,
+        iterationOutput: { result: { kind: 'json', value: { change: 1 } } },
+      }).resolve({ kind: 'iterationOutput', outputKey: 'result', path: '/missing' }),
+    ).toEqual({ resolved: false, errorCode: 'json_pointer_not_found' });
+  });
 });

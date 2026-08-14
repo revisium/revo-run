@@ -24,6 +24,7 @@ vi.mock('@dbos-inc/dbos-sdk', async (importOriginal) => {
 import {
   commandDispatchWorkflowName,
   parallelBranchWorkflowName,
+  repeatIterationWorkflowName,
   runExecutionWorkflowName,
   runWorkflowName,
 } from '../../src/dbos/dbos-names.js';
@@ -62,11 +63,13 @@ describe('single durable protocol', () => {
       runWorkflowName,
       runExecutionWorkflowName,
       parallelBranchWorkflowName,
+      repeatIterationWorkflowName,
       commandDispatchWorkflowName,
     ]).toEqual([
       'revo-run.run',
       'revo-run.execution',
       'revo-run.parallel-branch',
+      'revo-run.repeat-iteration',
       'revo-run.command-dispatch',
     ]);
     expect(runWorkflowId(runId)).toBe('rr:run:Run_1');
@@ -76,9 +79,10 @@ describe('single durable protocol', () => {
 
   it('registers exactly one workflow of each current contract kind', () => {
     const registry = new WorkflowRegistry();
-    expect(registerWorkflow).toHaveBeenCalledTimes(4);
+    expect(registerWorkflow).toHaveBeenCalledTimes(5);
     expect(registerWorkflow.mock.calls.map(([, options]) => options)).toEqual([
       expect.objectContaining({ name: parallelBranchWorkflowName }),
+      expect.objectContaining({ name: repeatIterationWorkflowName }),
       expect.objectContaining({ name: runExecutionWorkflowName }),
       expect.objectContaining({ name: runWorkflowName }),
       expect.objectContaining({ name: commandDispatchWorkflowName }),

@@ -5,13 +5,23 @@ import type {
   ScopeCancellationFence,
   ScopeStartFenceReply,
 } from '../../contracts/workflow/run-coordinator-message.js';
+import { createSubpipelineScopeId } from '../../pipeline/identity/execution-identity.js';
 import {
   scopeAdmissionReplyTopic,
   scopeDirectiveTopic,
   scopeReplyTopic,
   scopeSettlementTopic,
 } from '../dbos-names.js';
+import { scopeWorkflowId } from '../workflow-id.js';
 import { isActiveWorkflowStatus } from '../workflow-status.js';
+
+interface InlineScopeOwnershipClaim {
+  readonly workflowId: string;
+  readonly parentScopeId: string;
+  readonly scopeId: string;
+  readonly authoredNodeId: string;
+  readonly invocationOrdinal: number;
+}
 
 /** Root-owned lineage, cancellation fence, and settlement-obligation registry. */
 export class RunScopeRegistry {
@@ -24,6 +34,7 @@ export class RunScopeRegistry {
   private readonly finished = new Set<string>();
   private readonly settled = new Set<string>();
   private readonly cancellationFences = new Map<string, ScopeCancellationFence>();
+  private readonly inlineOwnership = new Map<string, InlineScopeOwnershipClaim>();
 
   registerRoot(workflowId: string, rootWorkflowId: string): void {
     this.register(workflowId, rootWorkflowId, false);
@@ -79,6 +90,39 @@ export class RunScopeRegistry {
     if (!this.parents.has(workflowId)) {
       throw new Error('Run scope is not registered.');
     }
+  }
+
+  registerInlineOwnership(claim: InlineScopeOwnershipClaim): void {
+    this.assertLive(claim.workflowId);
+    if (!this.ownsScope(claim.workflowId, claim.parentScopeId)) {
+      throw new Error('Inline scope parent is not owned by its physical workflow.');
+    }
+    const existing = this.inlineOwnership.get(claim.scopeId);
+    if (existing !== undefined) {
+      if (!this.sameInlineClaim(existing, claim)) {
+        throw new Error('Inline scope ownership was replayed with conflicting identity.');
+      }
+      return;
+    }
+    const expectedScopeId = createSubpipelineScopeId({
+      parentScopeId: claim.parentScopeId,
+      authoredNodeId: claim.authoredNodeId,
+      invocationOrdinal: claim.invocationOrdinal,
+    });
+    if (claim.scopeId !== expectedScopeId) {
+      throw new Error('Inline scope ownership has forged deterministic identity.');
+    }
+    this.inlineOwnership.set(claim.scopeId, claim);
+  }
+
+  ownsScope(workflowId: string, scopeId: string): boolean {
+    if (!this.parents.has(workflowId)) {
+      return false;
+    }
+    return (
+      workflowId === scopeWorkflowId(scopeId) ||
+      this.inlineOwnership.get(scopeId)?.workflowId === workflowId
+    );
   }
 
   markReady(workflowId: string): void {
@@ -174,6 +218,30 @@ export class RunScopeRegistry {
       throw new Error('Run scope cannot own itself.');
     }
     this.parents.set(workflowId, parentWorkflowId);
+  }
+
+  private assertLive(workflowId: string): void {
+    this.assertRegistered(workflowId);
+    if (
+      !this.ready.has(workflowId) ||
+      this.finished.has(workflowId) ||
+      this.settled.has(workflowId)
+    ) {
+      throw new Error('Inline scope physical workflow is not live.');
+    }
+  }
+
+  private sameInlineClaim(
+    left: InlineScopeOwnershipClaim,
+    right: InlineScopeOwnershipClaim,
+  ): boolean {
+    return (
+      left.workflowId === right.workflowId &&
+      left.parentScopeId === right.parentScopeId &&
+      left.scopeId === right.scopeId &&
+      left.authoredNodeId === right.authoredNodeId &&
+      left.invocationOrdinal === right.invocationOrdinal
+    );
   }
 
   private retainCancellation(workflowId: string, cause: ScopeCancellationFence): void {

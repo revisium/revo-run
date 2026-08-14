@@ -6,8 +6,14 @@ import type { RunStatus } from '../../contracts/run/run.js';
 import { parseParallelBranchResult } from '../../validation/parallel-branch-result.validator.js';
 import { parseParallelBranchWorkflowInput } from '../../validation/parallel-branch-workflow-input.validator.js';
 import { parseRunWorkflowResult } from '../../validation/parse-run-workflow-data.js';
+import { parseRepeatIterationResult } from '../../validation/repeat-iteration-result.validator.js';
+import { parseRepeatIterationWorkflowInput } from '../../validation/repeat-iteration-workflow-input.validator.js';
 import { parseRunExecutionWorkflowInput } from '../../validation/run-execution-workflow-input.validator.js';
-import { parallelBranchWorkflowName, runExecutionWorkflowName } from '../dbos-names.js';
+import {
+  parallelBranchWorkflowName,
+  repeatIterationWorkflowName,
+  runExecutionWorkflowName,
+} from '../dbos-names.js';
 import { scopeWorkflowId } from '../workflow-id.js';
 import { mapRunStatus } from './map-run-snapshot.js';
 import type { ObservableScopeCandidate } from './observable-plan.js';
@@ -26,6 +32,11 @@ type ProviderScope =
       readonly kind: 'parallelBranch';
       readonly scopeId: string;
       readonly input: ReturnType<typeof parseParallelBranchWorkflowInput>;
+    }
+  | {
+      readonly kind: 'repeatIteration';
+      readonly scopeId: string;
+      readonly input: ReturnType<typeof parseRepeatIterationWorkflowInput>;
     };
 
 const epoch = (value: number | undefined, fallback?: number): number => {
@@ -43,11 +54,18 @@ const successfulScopeStatus = (
   if (candidate.kind === 'root') {
     return parseRunWorkflowResult(status.output).status;
   }
+  if (candidate.kind === 'repeatIteration') {
+    const result = parseRepeatIterationResult(status.output);
+    if (result.ordinal !== candidate.repeatIdentity.ordinal) {
+      throw new Error('Repeat iteration workflow output identity is invalid.');
+    }
+    return result.kind === 'terminal' ? result.result.status : 'succeeded';
+  }
   const result = parseParallelBranchResult(status.output);
   if (result.key !== candidate.parallelIdentity.branchKey) {
     throw new Error('Parallel branch workflow output identity is invalid.');
   }
-  return 'status' in result && result.status === 'cancelled' ? 'cancelled' : 'succeeded';
+  return result.kind === 'terminal' ? result.result.status : 'succeeded';
 };
 
 const scopeDates = (status: WorkflowStatus, candidate: DurableScopeCandidate) => {
@@ -101,16 +119,26 @@ const providerScopeFromStatus = (status: WorkflowStatus, runId: string): Provide
     }
     return { kind: 'parallelBranch', scopeId: input.scopeId, input };
   }
+  if (status.workflowName === repeatIterationWorkflowName) {
+    const input = parseRepeatIterationWorkflowInput(oneInput(status));
+    if (input.runId !== runId) {
+      throw new Error('Repeat iteration scope belongs to a different run.');
+    }
+    return { kind: 'repeatIteration', scopeId: input.scopeId, input };
+  }
   throw new Error('Run contains an unsupported child workflow.');
 };
 
 export const scopeCandidateFromStatus = (
   status: WorkflowStatus,
   runId: string,
-  candidates: ReadonlyMap<string, ObservableScopeCandidate>,
+  plan: import('./observable-plan.js').ObservablePlan,
 ): DurableScopeCandidate => {
   const providerScope = providerScopeFromStatus(status, runId);
-  const candidate = candidates.get(providerScope.scopeId);
+  if (providerScope.kind === 'repeatIteration') {
+    plan.addRepeatIteration(providerScope.input);
+  }
+  const candidate = plan.scopes.get(providerScope.scopeId);
   if (candidate === undefined || candidate.kind === 'inlineSubpipeline') {
     throw new Error('DBOS scope is not present in the admitted plan.');
   }
@@ -129,6 +157,24 @@ export const scopeCandidateFromStatus = (
     return candidate;
   }
 
+  if (providerScope.kind === 'repeatIteration') {
+    if (candidate.kind !== 'repeatIteration') {
+      throw new Error('DBOS scope workflow kind is invalid.');
+    }
+    const input = providerScope.input;
+    if (
+      input.parentScopeId !== candidate.parentScopeId ||
+      input.ordinal !== candidate.repeatIdentity.ordinal ||
+      input.pipelineId !== candidate.pipelineId ||
+      input.runtimePath !== candidate.displayPath ||
+      input.parentPath !== candidate.repeatIdentity.nodePath ||
+      !Equal(input.node, candidate.repeatIdentity.node.body)
+    ) {
+      throw new Error('Repeat iteration scope durable identity is invalid.');
+    }
+    return candidate;
+  }
+
   if (candidate.kind !== 'parallelBranch') {
     throw new Error('DBOS scope workflow kind is invalid.');
   }
@@ -139,7 +185,8 @@ export const scopeCandidateFromStatus = (
     !Equal(input.node, expected.node) ||
     input.pipelineId !== expected.pipelineId ||
     input.runtimePath !== expected.runtimePath ||
-    input.parentPath !== expected.parentPath
+    input.parentPath !== expected.parentPath ||
+    input.nodePathPrefix !== expected.nodePathPrefix
   ) {
     throw new Error('Parallel scope durable identity is invalid.');
   }
@@ -157,6 +204,17 @@ export const mapObservableScope = (
       id: candidate.id,
       pipelineId: candidate.pipelineId,
       displayPath: candidate.displayPath,
+      ...dates,
+    };
+  }
+  if (candidate.kind === 'repeatIteration') {
+    return {
+      kind: 'repeatIteration',
+      id: candidate.id,
+      parentScopeId: candidate.parentScopeId,
+      pipelineId: candidate.pipelineId,
+      displayPath: candidate.displayPath,
+      ordinal: candidate.repeatIdentity.ordinal,
       ...dates,
     };
   }

@@ -26,7 +26,7 @@ const selection = {
 } as const;
 
 const branchResult = {
-  status: 'completed',
+  kind: 'continued',
   key: 'review',
   outcome: 'completed',
   outputs: [['main/review', { result: { kind: 'json', value: true } }]],
@@ -167,8 +167,23 @@ describe('RR-08 durable schema assurance', () => {
   });
 
   it.each([
-    { name: 'completed result', value: branchResult },
-    { name: 'cancelled result', value: { status: 'cancelled', key: 'review' } },
+    { name: 'continued result', value: branchResult },
+    {
+      name: 'failed terminal result',
+      value: {
+        kind: 'terminal',
+        key: 'review',
+        result: { status: 'failed', outcome: 'invalid' },
+      },
+    },
+    {
+      name: 'cancelled terminal result',
+      value: {
+        kind: 'terminal',
+        key: 'review',
+        result: { status: 'cancelled', outcome: 'cancelled' },
+      },
+    },
   ])('accepts ParallelBranchResultSchema vector: $name', ({ value }) => {
     expect(parseParallelBranchResult(value)).toEqual(value);
   });
@@ -271,6 +286,47 @@ describe('RR-08 durable schema assurance', () => {
     },
     { name: 'additional property', value: { ...branchResult, unexpected: true } },
     { name: 'identifier grammar', value: { ...branchResult, key: 'not valid' } },
+    {
+      name: 'terminal success',
+      value: {
+        kind: 'terminal',
+        key: 'review',
+        result: { status: 'succeeded', outcome: 'completed' },
+      },
+    },
+    {
+      name: 'cancelled terminal output',
+      value: {
+        kind: 'terminal',
+        key: 'review',
+        result: { status: 'cancelled', outcome: 'cancelled', output: {} },
+      },
+    },
+    {
+      name: 'terminal extra property',
+      value: {
+        kind: 'terminal',
+        key: 'review',
+        result: { status: 'failed', outcome: 'invalid', unexpected: true },
+      },
+    },
+    {
+      name: 'malformed terminal output',
+      value: {
+        kind: 'terminal',
+        key: 'review',
+        result: {
+          status: 'failed',
+          outcome: 'invalid',
+          output: { result: { kind: 'json' } },
+        },
+      },
+    },
+    {
+      name: 'obsolete completed shape',
+      value: { ...branchResult, kind: undefined, status: 'completed' },
+    },
+    { name: 'obsolete cancelled shape', value: { status: 'cancelled', key: 'review' } },
   ])('rejects ParallelBranchResultSchema vector: $name', ({ value }) => {
     expect(() => parseParallelBranchResult(value)).toThrow(
       'Parallel branch workflow result is invalid.',

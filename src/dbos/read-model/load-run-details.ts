@@ -19,6 +19,7 @@ import {
   isUnknownOutcomeResolutionStepName,
   nodeAttemptStepIdentity,
   parallelBranchWorkflowName,
+  repeatIterationWorkflowName,
   runCommandDecisionCommandId,
   runExecutionWorkflowName,
 } from '../dbos-names.js';
@@ -47,7 +48,11 @@ const introducedScopeWorkflow = (
   if (step.childWorkflowID === null) {
     return undefined;
   }
-  if ([runExecutionWorkflowName, parallelBranchWorkflowName].includes(step.name)) {
+  if (
+    [runExecutionWorkflowName, parallelBranchWorkflowName, repeatIterationWorkflowName].includes(
+      step.name,
+    )
+  ) {
     return step.childWorkflowID;
   }
   if (step.name === 'DBOS.getResult' && introduced.has(step.childWorkflowID)) {
@@ -103,7 +108,7 @@ class RunDetailsLoader {
     this.visitedWorkflows.add(workflowId);
     try {
       const status = await this.loadWorkflowStatus(workflowId);
-      const candidate = scopeCandidateFromStatus(status, this.run.id, this.plan.scopes);
+      const candidate = scopeCandidateFromStatus(status, this.run.id, this.plan);
       this.scopeProjection.includeDurable(status, candidate);
 
       const steps = await loadAllWorkflowSteps(workflowId);

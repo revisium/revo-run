@@ -54,6 +54,19 @@ export class RunObservationAssertions {
     this.events.expectCursorOrder(await this.eventsAfterTerminal(), captures);
   }
 
+  async expectIteration(path: string, ordinal: number): Promise<void> {
+    await vi.waitFor(
+      async () => {
+        const scope = (await this.details()).scopes.find(
+          (candidate) => candidate.displayPath === `${path}[${ordinal}]`,
+        );
+        assert(scope?.kind === 'repeatIteration');
+        assert.equal(scope.ordinal, ordinal);
+      },
+      { timeout: 5_000 },
+    );
+  }
+
   async expectRunDetails(
     expected: Extract<ScenarioStep, { readonly kind: 'expectRunDetails' }>,
   ): Promise<void> {

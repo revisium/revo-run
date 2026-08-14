@@ -1,6 +1,11 @@
 import { DBOS, type WorkflowStatus } from '@dbos-inc/dbos-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  parallelBranchWorkflowName,
+  repeatIterationWorkflowName,
+  runExecutionWorkflowName,
+} from '../../src/dbos/dbos-names.js';
 import { currentRecoveryGeneration } from '../../src/dbos/steps/workflow-recovery-generation.js';
 
 const workflowId = `rr:scope:sc1_${'c'.repeat(43)}`;
@@ -23,6 +28,16 @@ afterEach(() => {
 });
 
 describe('workflow recovery generation', () => {
+  it.each([runExecutionWorkflowName, parallelBranchWorkflowName, repeatIterationWorkflowName])(
+    'accepts node effects in %s',
+    async (workflowName) => {
+      vi.spyOn(DBOS, 'workflowID', 'get').mockReturnValue(workflowId);
+      vi.spyOn(DBOS, 'getWorkflowStatus').mockResolvedValue(status({ workflowName }));
+
+      await expect(currentRecoveryGeneration()).resolves.toBe(1);
+    },
+  );
+
   it('rejects a missing workflow identity without reading status', async () => {
     vi.spyOn(DBOS, 'workflowID', 'get').mockReturnValue(undefined);
     const getStatus = vi.spyOn(DBOS, 'getWorkflowStatus');

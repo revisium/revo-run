@@ -8,6 +8,7 @@ import {
   createNodeInstanceId,
   createParallelBranchScopeId,
   createRootScopeId,
+  createRepeatIterationScopeId,
   createSubpipelineScopeId,
 } from '../../src/pipeline/identity/execution-identity.js';
 
@@ -31,6 +32,10 @@ const vectors = {
     preimage:
       '["revo-run.identity",1,"scope","parallel","parent-scope","authored-node","branch-a"]',
     id: 'sc1_ovAf-0GdDCQFGQm2f4XR8C-t0vT5mJ4swiaiv5fKdMA',
+  },
+  repeatScope: {
+    preimage: '["revo-run.identity",1,"scope","repeat","parent-scope","authored-node",2]',
+    id: 'sc1_7lf1DyAFdOMaidkSlzdGYKML1NPk0ynXVyvGKcTPz4I',
   },
   nodeInstance: {
     preimage: '["revo-run.identity",1,"node-instance","scope-id","authored-node"]',
@@ -83,6 +88,13 @@ describe('execution identity', () => {
         branchKey: 'branch-a',
       }),
     ).toBe(vectors.parallelScope.id);
+    expect(
+      createRepeatIterationScopeId({
+        parentScopeId: 'parent-scope',
+        authoredNodeId: 'authored-node',
+        iterationOrdinal: 2,
+      }),
+    ).toBe(vectors.repeatScope.id);
     expect(createNodeInstanceId({ scopeId: 'scope-id', authoredNodeId: 'authored-node' })).toBe(
       vectors.nodeInstance.id,
     );
@@ -93,11 +105,17 @@ describe('execution identity', () => {
 
   it('separates the shared scope protocol by explicit scope kind', () => {
     expect(
-      new Set([vectors.rootScope.id, vectors.subpipelineScope.id, vectors.parallelScope.id]).size,
-    ).toBe(3);
+      new Set([
+        vectors.rootScope.id,
+        vectors.subpipelineScope.id,
+        vectors.parallelScope.id,
+        vectors.repeatScope.id,
+      ]).size,
+    ).toBe(4);
     expect(vectors.rootScope.preimage).toContain('"scope","root"');
     expect(vectors.subpipelineScope.preimage).toContain('"scope","subpipeline"');
     expect(vectors.parallelScope.preimage).toContain('"scope","parallel"');
+    expect(vectors.repeatScope.preimage).toContain('"scope","repeat"');
   });
 
   it('frames tuple components instead of joining them with delimiters', () => {
@@ -133,6 +151,21 @@ describe('execution identity', () => {
       authoredNodeId: authored('main', 'checks'),
       branchKey: 'b',
     });
+    const repeatOne = createRepeatIterationScopeId({
+      parentScopeId: root,
+      authoredNodeId: authored('main', 'review'),
+      iterationOrdinal: 1,
+    });
+    const repeatTwo = createRepeatIterationScopeId({
+      parentScopeId: root,
+      authoredNodeId: authored('main', 'review'),
+      iterationOrdinal: 2,
+    });
+    const nestedRepeat = createRepeatIterationScopeId({
+      parentScopeId: repeatOne,
+      authoredNodeId: authored('main', 'review/nested'),
+      iterationOrdinal: 1,
+    });
     const node = createNodeInstanceId({
       scopeId: nestedOne,
       authoredNodeId: authored('child', 'work'),
@@ -140,6 +173,8 @@ describe('execution identity', () => {
 
     expect(nestedOne).not.toBe(nestedTwo);
     expect(branchA).not.toBe(branchB);
+    expect(repeatOne).not.toBe(repeatTwo);
+    expect(nestedRepeat).not.toBe(repeatOne);
     expect(createAttemptId({ nodeInstanceId: node, attemptOrdinal: 1 })).not.toBe(
       createAttemptId({ nodeInstanceId: node, attemptOrdinal: 2 }),
     );
@@ -156,5 +191,12 @@ describe('execution identity', () => {
         invocationOrdinal: Number.MAX_SAFE_INTEGER + 1,
       }),
     ).toThrow('Identity ordinals must be non-negative safe integers.');
+    expect(() =>
+      createRepeatIterationScopeId({
+        parentScopeId: root,
+        authoredNodeId: call,
+        iterationOrdinal: 0,
+      }),
+    ).toThrow('Repeat iteration ordinal must be positive.');
   });
 });

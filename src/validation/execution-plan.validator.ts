@@ -22,6 +22,7 @@ export type ExecutionPlanValidationErrorCode =
   | 'missing_branch_default'
   | 'missing_executor_binding'
   | 'node_depth_exceeded'
+  | 'overlapping_repeat_outcome_sets'
   | 'pipeline_not_found'
   | 'root_pipeline_not_found'
   | 'subpipeline_cycle'

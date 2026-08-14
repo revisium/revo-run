@@ -69,6 +69,11 @@ export type RunScope =
       readonly kind: 'parallelBranch';
       readonly parentScopeId: ScopeId;
     })
+  | (RunWorkflowScopeBase & {
+      readonly kind: 'repeatIteration';
+      readonly parentScopeId: ScopeId;
+      readonly ordinal: number;
+    })
   | {
       readonly kind: 'inlineSubpipeline';
       readonly id: ScopeId;

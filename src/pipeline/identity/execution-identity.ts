@@ -67,6 +67,22 @@ export const createParallelBranchScopeId = (input: {
     input.branchKey,
   ]);
 
+export const createRepeatIterationScopeId = (input: {
+  readonly parentScopeId: string;
+  readonly authoredNodeId: string;
+  readonly iterationOrdinal: number;
+}): string => {
+  if (input.iterationOrdinal < 1) {
+    throw new RangeError('Repeat iteration ordinal must be positive.');
+  }
+  return identity('sc1', 'scope', [
+    'repeat',
+    input.parentScopeId,
+    input.authoredNodeId,
+    input.iterationOrdinal,
+  ]);
+};
+
 export const createNodeInstanceId = (input: {
   readonly scopeId: string;
   readonly authoredNodeId: string;

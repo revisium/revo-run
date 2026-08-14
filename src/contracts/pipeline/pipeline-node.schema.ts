@@ -6,7 +6,7 @@ import {
   PositiveSafeIntegerSchema,
 } from '../schema-primitives.js';
 import { InputSourceSchema, TerminalOutputSourceSchema } from './data-reference.js';
-import type { PipelineNode } from './pipeline-node.js';
+import type { PipelineNode, RepeatBodyNode } from './pipeline-node.js';
 import { RecoveryPolicySchema, RetryPolicySchema } from './task-policy.js';
 
 const InputMappingSchema = Type.Record(IdentifierSchema, InputSourceSchema, {
@@ -165,7 +165,12 @@ const PipelineNodeType = Type.Cyclic(
         completeOn: Type.Array(IdentifierSchema, { minItems: 1, uniqueItems: true }),
         initialInput: Type.Optional(InputMappingSchema),
         nextInput: Type.Optional(InputMappingSchema),
-        body: Type.Ref('PipelineNode'),
+        body: Type.Union([
+          Type.Ref('ParallelNode'),
+          Type.Ref('RepeatNode'),
+          Type.Ref('SubpipelineNode'),
+          Type.Ref('TaskNode'),
+        ]),
       },
       { additionalProperties: false },
     ),
@@ -236,3 +241,20 @@ const PipelineNodeType = Type.Cyclic(
 );
 
 export const PipelineNodeSchema = Type.Unsafe<PipelineNode>(PipelineNodeType);
+
+export const RepeatBodyNodeSchema = Type.Unsafe<RepeatBodyNode>(
+  Type.Intersect([
+    PipelineNodeSchema,
+    Type.Object(
+      {
+        kind: Type.Union([
+          Type.Literal('parallel'),
+          Type.Literal('repeat'),
+          Type.Literal('subpipeline'),
+          Type.Literal('task'),
+        ]),
+      },
+      { additionalProperties: true },
+    ),
+  ]),
+);

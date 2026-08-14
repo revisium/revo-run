@@ -12,6 +12,7 @@ import type { RunExecutorProvider } from '../executor/run-executor-provider.js';
 import { createPipelineExecution } from './create-pipeline-execution.js';
 import { loadRunWorkflowInput } from './load-run-workflow-input.js';
 import type { ParallelBranchWorkflowProvider } from './parallel-branch-workflow-provider.js';
+import type { RepeatIterationWorkflowProvider } from './repeat-iteration-workflow-provider.js';
 
 export type ParallelBranchWorkflow = (
   input: ParallelBranchWorkflowInput,
@@ -20,6 +21,7 @@ export type ParallelBranchWorkflow = (
 export const createParallelBranchWorkflow = (
   executor: RunExecutorProvider,
   workflows: ParallelBranchWorkflowProvider,
+  repeatWorkflows: RepeatIterationWorkflowProvider,
   cancellation: ScopeCancellationRegistry,
   providerCalls: ProviderCallRegistry,
 ): ParallelBranchWorkflow =>
@@ -30,6 +32,7 @@ export const createParallelBranchWorkflow = (
       input.maximumParallelism,
       executor,
       workflows,
+      repeatWorkflows,
       cancellation,
       providerCalls,
     );
@@ -37,7 +40,11 @@ export const createParallelBranchWorkflow = (
       await coordinator.ready(input.parentWorkflowId, input.startFence);
       if (input.disposition === 'settlementOnly') {
         await coordinator.finish();
-        return { status: 'cancelled', key: input.branchKey };
+        return {
+          kind: 'terminal',
+          key: input.branchKey,
+          result: { status: 'cancelled', outcome: 'cancelled' },
+        };
       }
       const root = await loadRunWorkflowInput(input.runId);
       const context: PipelineExecutionContext = {
@@ -50,6 +57,8 @@ export const createParallelBranchWorkflow = (
         runtimePath: input.runtimePath,
         outputs: new Map(input.inheritedOutputs.map(({ path, output }) => [path, output])),
         maximumParallelism: input.maximumParallelism,
+        ...(input.nodePathPrefix === undefined ? {} : { nodePathPrefix: input.nodePathPrefix }),
+        ...(input.iterationInput === undefined ? {} : { iterationInput: input.iterationInput }),
       };
       const result = await interpreter.executeBranchScope(
         input.node,
@@ -59,10 +68,21 @@ export const createParallelBranchWorkflow = (
         new Set(input.inheritedOutputs.map(({ path }) => path)),
       );
       await coordinator.finish();
-      return { status: 'completed', ...result };
+      return result;
     } catch (error) {
-      if (error instanceof ScopeCancellationError || error instanceof ScopeFailureFenceError) {
-        return { status: 'cancelled', key: input.branchKey };
+      if (error instanceof ScopeCancellationError) {
+        return {
+          kind: 'terminal',
+          key: input.branchKey,
+          result: { status: 'cancelled', outcome: 'cancelled' },
+        };
+      }
+      if (error instanceof ScopeFailureFenceError) {
+        return {
+          kind: 'terminal',
+          key: input.branchKey,
+          result: { status: 'failed', outcome: 'event_budget_exceeded' },
+        };
       }
       throw error;
     } finally {

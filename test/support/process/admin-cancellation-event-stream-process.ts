@@ -1,8 +1,9 @@
-import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import type { RunEvent, RunEventPage, RunSnapshot } from '../../../src/index.js';
 import { testDatabaseUrl } from '../test-environment.js';
+import { forkTestDbosProcess } from './fork-test-dbos-process.js';
+import { testProcessApplicationVersion } from './test-process-application-version.js';
 
 export interface AdminCancellationEventStreamReport {
   readonly acceptedPrefix: readonly RunEvent[];
@@ -26,14 +27,12 @@ export class AdminCancellationEventStreamProcess {
     const worker = fileURLToPath(
       new URL('./admin-cancellation-event-stream-worker.ts', import.meta.url),
     );
-    this.child = fork(worker, {
+    this.child = forkTestDbosProcess(worker, {
+      applicationVersion: testProcessApplicationVersion('admin-cancellation', runId),
       env: {
-        ...process.env,
         REVO_RUN_TEST_DATABASE_URL: testDatabaseUrl(),
         REVO_RUN_TEST_RUN_ID: runId,
       },
-      execArgv: ['--import', 'tsx'],
-      silent: true,
     });
     this.child.on('message', (message: WorkerMessage) => this.messages.push(message));
     this.child.on('error', (error) => {

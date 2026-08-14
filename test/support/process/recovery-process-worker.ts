@@ -1,11 +1,6 @@
-import { DBOS, type StepConfig } from '@dbos-inc/dbos-sdk';
+import { DBOS } from '@dbos-inc/dbos-sdk';
 
-import { scopeReplyTopic } from '../../../src/dbos/dbos-names.js';
 import { DbosRunRuntime } from '../../../src/dbos/dbos-run-runtime.js';
-import {
-  DbosRunEventStream,
-  RunEventBudgetExceededError,
-} from '../../../src/dbos/streams/run-event-stream.js';
 import { runWorkflowId } from '../../../src/dbos/workflow-id.js';
 import { WorkflowRegistry } from '../../../src/dbos/workflow-registry.js';
 import type { NodeOutput } from '../../../src/index.js';
@@ -13,8 +8,10 @@ import { RunManager } from '../../../src/manager/run-manager.js';
 import { JsonValueValidator } from '../../../src/validation/json-value.validator.js';
 import { recoveryScenarios } from '../../acceptance/scenarios/recovery.scenarios.js';
 import { parseRecoveryInstructions } from './effect-recovery-scenario-program.js';
+import { RecoveryDbosFaultInjectors } from './recovery-dbos-fault-injectors.js';
 import { recoveryExecutionPlan } from './recovery-execution-plan.fixture.js';
 import { RecoveryProcessExecutor } from './recovery-process-executor.js';
+import { RecoveryRuntimeFaultInjectors } from './recovery-runtime-fault-injectors.js';
 
 type WorkerCommand =
   | {
@@ -69,173 +66,46 @@ const send = (message: object): void => {
   process.send?.(message);
 };
 
-const pauseBeforeFirstIntent = (): void => {
-  const runStep = DBOS.runStep.bind(DBOS);
-  let paused = false;
-  Object.defineProperty(DBOS, 'runStep', {
-    configurable: true,
-    value: async <Result>(
-      callback: () => Promise<Result>,
-      config?: StepConfig & { readonly name?: string },
-    ): Promise<Result> => {
-      if (!paused && config?.name?.startsWith('node-effect-intent:') === true) {
-        paused = true;
-        send({ kind: 'beforeIntent' });
-        return new Promise(() => undefined);
-      }
-      return runStep(callback, config);
-    },
-  });
-};
-
-let releaseDecision: (() => void) | undefined;
-
-const pauseAfterFirstParallelDecision = (): void => {
-  const runStep = DBOS.runStep.bind(DBOS);
-  let paused = false;
-  Object.defineProperty(DBOS, 'runStep', {
-    configurable: true,
-    value: async <Result>(
-      callback: () => Promise<Result>,
-      config?: StepConfig & { readonly name?: string },
-    ): Promise<Result> => {
-      const result = await runStep(callback, config);
-      if (!paused && config?.name?.startsWith('parallel-join-decision:') === true) {
-        paused = true;
-        send({ kind: 'afterDecision' });
-        await new Promise<void>((resolve) => {
-          releaseDecision = resolve;
-        });
-      }
-      return result;
-    },
-  });
-};
-
-let releaseReadiness: (() => void) | undefined;
-let releaseAdmission: (() => void) | undefined;
-
-const pauseBeforeScopeAdmission = (targetOrdinal: number): void => {
-  const sendMessage = DBOS.send.bind(DBOS);
-  let admissionOrdinal = 0;
-  Object.defineProperty(DBOS, 'send', {
-    configurable: true,
-    value: async (workflowId: string, message: unknown, topic?: string): Promise<void> => {
-      if (
-        typeof message === 'object' &&
-        message !== null &&
-        'kind' in message &&
-        message.kind === 'scopeAdmission'
-      ) {
-        admissionOrdinal += 1;
-        if (admissionOrdinal === targetOrdinal) {
-          send({ kind: 'beforeAdmission' });
-          await new Promise<void>((resolve) => {
-            releaseAdmission = resolve;
-          });
-        }
-      }
-      return sendMessage(workflowId, message, topic);
-    },
-  });
-};
-
-const reportScopeCancellationAcknowledgement = (): void => {
-  const sendMessage = DBOS.send.bind(DBOS);
-  const receive = DBOS.recv.bind(DBOS);
-  let awaitingAcknowledgement = false;
-  Object.defineProperty(DBOS, 'send', {
-    configurable: true,
-    value: async (workflowId: string, message: unknown, topic?: string): Promise<void> => {
-      await sendMessage(workflowId, message, topic);
-      if (
-        typeof message === 'object' &&
-        message !== null &&
-        'kind' in message &&
-        message.kind === 'scopeCancellation'
-      ) {
-        awaitingAcknowledgement = true;
-      }
-    },
-  });
-  Object.defineProperty(DBOS, 'recv', {
-    configurable: true,
-    value: async (topic: string, options?: { readonly timeoutSeconds?: number }) => {
-      const result = await receive(topic, options);
-      if (awaitingAcknowledgement && topic === scopeReplyTopic && result !== null) {
-        awaitingAcknowledgement = false;
-        send({ kind: 'scopeCancellationAcknowledged' });
-      }
-      return result;
-    },
-  });
-};
-
-const pauseBeforeScopeReadiness = (targetOrdinal: number): void => {
-  const sendMessage = DBOS.send.bind(DBOS);
-  let readinessOrdinal = 0;
-  Object.defineProperty(DBOS, 'send', {
-    configurable: true,
-    value: async (workflowId: string, message: unknown, topic?: string): Promise<void> => {
-      if (
-        typeof message === 'object' &&
-        message !== null &&
-        'kind' in message &&
-        message.kind === 'scopeReady'
-      ) {
-        readinessOrdinal += 1;
-        if (readinessOrdinal === targetOrdinal) {
-          send({ kind: 'beforeReadiness' });
-          await new Promise<void>((resolve) => {
-            releaseReadiness = resolve;
-          });
-        }
-      }
-      return sendMessage(workflowId, message, topic);
-    },
-  });
-};
-
-const failCommandEventBudget = (): void => {
-  const candidate: unknown = Object.getOwnPropertyDescriptor(
-    DbosRunEventStream.prototype,
-    'append',
-  )?.value;
-  if (typeof candidate !== 'function') {
-    throw new Error('Run event append method is unavailable.');
-  }
-  DbosRunEventStream.prototype.append = function (event) {
-    if (event.type === 'runCommand.accepted' || event.type === 'runCommand.rejected') {
-      throw new RunEventBudgetExceededError('maximum_run_event_bytes_exceeded');
-    }
-    const result: unknown = Reflect.apply(candidate, this, [event]);
-    if (!(result instanceof Promise)) {
-      throw new Error('Run event append did not return a promise.');
-    }
-    return result;
-  };
-};
-
+const dbosFaults = new RecoveryDbosFaultInjectors(send);
+const runtimeFaults = new RecoveryRuntimeFaultInjectors(send);
 const scenario = environment('REVO_RUN_TEST_SCENARIO');
 const mode = environment('REVO_RUN_TEST_MODE');
 if (process.env.REVO_RUN_TEST_PAUSE_BEFORE_INTENT === 'true' && mode === 'start') {
-  pauseBeforeFirstIntent();
+  dbosFaults.pauseBeforeFirstIntent();
 }
 const admissionPauseOrdinal = optionalPositiveInteger('REVO_RUN_TEST_PAUSE_BEFORE_ADMISSION');
 if (admissionPauseOrdinal !== undefined && mode === 'start') {
-  pauseBeforeScopeAdmission(admissionPauseOrdinal);
+  dbosFaults.pauseBeforeScopeAdmission(admissionPauseOrdinal);
 }
 if (process.env.REVO_RUN_TEST_PAUSE_AFTER_DECISION === 'true' && mode === 'start') {
-  pauseAfterFirstParallelDecision();
+  dbosFaults.pauseAfterFirstParallelDecision();
+}
+if (process.env.REVO_RUN_TEST_PAUSE_AFTER_TERMINAL_BRANCH_RESULT === 'true' && mode === 'start') {
+  dbosFaults.pauseAfterTerminalBranchResult();
 }
 const readinessPauseOrdinal = optionalPositiveInteger('REVO_RUN_TEST_PAUSE_BEFORE_READINESS');
 if (readinessPauseOrdinal !== undefined && mode === 'start') {
-  pauseBeforeScopeReadiness(readinessPauseOrdinal);
+  dbosFaults.pauseBeforeScopeReadiness(readinessPauseOrdinal);
 }
 if (process.env.REVO_RUN_TEST_FAIL_COMMAND_EVENT_BUDGET === 'true') {
-  failCommandEventBudget();
+  runtimeFaults.failCommandEventBudget();
 }
-reportScopeCancellationAcknowledgement();
+if (scenario === 'delay' || scenario === 'inline-delay') {
+  dbosFaults.reportDelayWait();
+}
+if (process.env.REVO_RUN_TEST_PAUSE_AFTER_ACCEPTED_COMMAND === 'true' && mode === 'start') {
+  dbosFaults.pauseAfterAcceptedCommand();
+}
+if (process.env.REVO_RUN_TEST_PAUSE_AFTER_CANCEL_DIRECTIVE === 'true' && mode === 'start') {
+  dbosFaults.pauseAfterCancelDirective();
+}
+if (process.env.REVO_RUN_TEST_PAUSE_AFTER_DELAY_CANCELLED_EVENT === 'true' && mode === 'start') {
+  runtimeFaults.pauseAfterDelayCancelledEvent();
+}
+if (process.env.REVO_RUN_TEST_PAUSE_AFTER_INLINE_OWNERSHIP === 'true' && mode === 'start') {
+  runtimeFaults.pauseAfterInlineOwnership();
+}
+dbosFaults.reportScopeCancellationAcknowledgement();
 const unvalidatedInstructions = optionalJson('REVO_RUN_TEST_RECONCILIATIONS');
 const instructions =
   unvalidatedInstructions === undefined ? [] : parseRecoveryInstructions(unvalidatedInstructions);
@@ -262,18 +132,15 @@ const observedParallelJoins = new Set<string>();
 
 const handleCommand = async (message: WorkerCommand): Promise<void> => {
   if (message.kind === 'releaseAdmission') {
-    releaseAdmission?.();
-    releaseAdmission = undefined;
+    dbosFaults.releaseAdmission();
     return;
   }
   if (message.kind === 'releaseDecision') {
-    releaseDecision?.();
-    releaseDecision = undefined;
+    dbosFaults.releaseDecision();
     return;
   }
   if (message.kind === 'releaseReadiness') {
-    releaseReadiness?.();
-    releaseReadiness = undefined;
+    dbosFaults.releaseReadiness();
     return;
   }
   if (message.kind === 'complete') {
@@ -313,7 +180,7 @@ if (mode === 'start') {
   }
   await manager.startRun({ runId, executionPlan: plan, input: input ?? null });
 }
-send({ kind: 'ready' });
+send({ kind: 'ready', applicationVersion: DBOS.applicationVersion });
 
 const watchTerminalRun = async (): Promise<void> => {
   const details = await manager.getRunDetails(runId);

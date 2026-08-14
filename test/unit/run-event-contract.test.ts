@@ -74,6 +74,18 @@ const goldenEvents = [
   {
     cursor,
     timestamp,
+    type: 'delay.cancelled',
+    data: nodeIdentity,
+  },
+  {
+    cursor,
+    timestamp,
+    type: 'repeat.exhausted',
+    data: nodeIdentity,
+  },
+  {
+    cursor,
+    timestamp,
     type: 'run.completed',
     data: { outcome: 'completed' },
   },
@@ -101,7 +113,7 @@ describe('run event contract', () => {
     expect(parseRunEvent(event)).toStrictEqual(event);
   });
 
-  it.each(goldenEvents.slice(0, 9))('accepts the $type child event draft', (event) => {
+  it.each(goldenEvents.slice(0, 11))('accepts the $type child event draft', (event) => {
     expect(
       parseRunCoordinatorMessage({
         kind: 'event',
@@ -149,11 +161,15 @@ describe('run event contract', () => {
   });
 
   it('rejects terminal drafts sent by child workflows', () => {
+    const terminalEvent = goldenEvents.find(({ type }) => type === 'run.failed');
+    if (terminalEvent === undefined) {
+      throw new Error('Run event golden vectors have no terminal event.');
+    }
     expect(() =>
       parseRunCoordinatorMessage({
         kind: 'event',
         workflowId: scopeWorkflowId,
-        event: draftFrom(goldenEvents[10]),
+        event: draftFrom(terminalEvent),
       }),
     ).toThrow('Run coordinator message is invalid.');
   });

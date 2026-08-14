@@ -6,8 +6,8 @@ import {
   pipelineInvalidStateEvent,
   type PipelineEventSink,
 } from './pipeline-event-sink.js';
-import type { NodeExecutionResult } from './pipeline-node-result.js';
-import { continuedExecution } from './pipeline-node-result.js';
+import type { FinishedNodeExecutionResult, NodeExecutionResult } from './pipeline-node-result.js';
+import { continuedExecution, terminalExecution } from './pipeline-node-result.js';
 
 /** Projects interpreter failures through the durable event boundary. */
 export class PipelineFailureReporter {
@@ -28,8 +28,8 @@ export class PipelineFailureReporter {
     context: PipelineExecutionContext,
     nodePath: string,
     errorCode: string,
-  ): Promise<Extract<NodeExecutionResult, { readonly kind: 'finished' }>> {
+  ): Promise<FinishedNodeExecutionResult> {
     await this.events.write(pipelineInvalidStateEvent(node, context, nodePath, errorCode));
-    return { kind: 'finished', result: { status: 'failed', outcome: 'invalid' } };
+    return terminalExecution({ status: 'failed', outcome: 'invalid' });
   }
 }

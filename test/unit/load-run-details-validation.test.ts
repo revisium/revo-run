@@ -130,7 +130,7 @@ describe('durable run details validation', () => {
     const workflowId = branchWorkflowId();
     statuses.set(workflowId, {
       ...statusFor(workflowId),
-      output: { status: 'completed', key: 'b', outcome: 'completed', outputs: [] },
+      output: { kind: 'continued', key: 'b', outcome: 'completed', outputs: [] },
     });
     await expect(loadRunDetails(snapshot)).rejects.toThrow(
       'Parallel branch workflow output identity is invalid.',

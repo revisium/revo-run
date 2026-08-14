@@ -26,15 +26,15 @@ export const lifecycleScenarios: readonly RunScenario[] = [
       'dbosSafeTimeAdvancement',
     ],
     plan: executionPlan(
-      sequence({ kind: 'delay', key: 'cooldown', durationMs: 60_000 }, end('succeeded')),
+      sequence({ kind: 'delay', key: 'cooldown', durationMs: 4_000 }, end('succeeded')),
     ),
     steps: [
       startRun(),
-      advanceTime(30_000),
+      advanceTime(3_000),
       { kind: 'crashManager', moment: 'whileWaiting' },
       { kind: 'restartManager' },
-      advanceTime(30_000),
-      expectRunStatus('succeeded'),
+      advanceTime(1_000),
+      expectRunStatus('succeeded', 1_500),
     ],
   }),
   scenario({
@@ -43,14 +43,20 @@ export const lifecycleScenarios: readonly RunScenario[] = [
     name: 'cancels a durable delay without waiting for its deadline',
     requiredCapabilities: ['durableDelayCancellation', 'dbosSafeTimeAdvancement'],
     plan: executionPlan(
-      sequence({ kind: 'delay', key: 'cooldown', durationMs: 60_000 }, end('succeeded')),
+      sequence(
+        { kind: 'delay', key: 'cooldown', durationMs: 60_000 },
+        task('after-delay'),
+        end('succeeded'),
+      ),
+      { bindings: [agentBinding('after-delay', 'worker')] },
     ),
     steps: [
       startRun(),
+      advanceTime(200),
       { kind: 'cancelRun', actorId: 'operator' },
-      advanceTime(60_000),
       expectEvent('delay.cancelled', { path: 'main/cooldown' }),
       expectRunStatus('cancelled'),
+      { kind: 'expectNoNodeExecution', path: 'main/after-delay' },
     ],
   }),
   scenario({

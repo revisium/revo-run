@@ -380,8 +380,12 @@
         "testName": "registers exactly one workflow of each current contract kind",
         "assertionFile": "test/unit/rr07-single-protocol.test.ts",
         "assertions": [
+          "expect(registerWorkflow).toHaveBeenCalledTimes(5)",
           "registerWorkflow.mock.calls",
           "parallelBranchWorkflowName",
+          "repeatIterationWorkflowName",
+          "runExecutionWorkflowName",
+          "runWorkflowName",
           "commandDispatchWorkflowName"
         ]
       }
@@ -395,7 +399,7 @@
         "testName": "registers exactly one workflow of each current contract kind",
         "assertionFile": "test/unit/rr07-single-protocol.test.ts",
         "assertions": [
-          "expect(registerWorkflow).toHaveBeenCalledTimes(4)",
+          "expect(registerWorkflow).toHaveBeenCalledTimes(5)",
           "expect(registry).toHaveProperty('run')",
           "expect(registry).toHaveProperty('commandDispatch')"
         ]

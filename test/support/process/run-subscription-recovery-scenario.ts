@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { fork } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
@@ -9,6 +8,8 @@ import type { RunScenario, ScenarioStep } from '../../dsl/scenario.js';
 import { RunEventExpectations } from '../acceptance/run-event-expectations.js';
 import { ControlledRunExecutor } from '../executor/controlled-run-executor.js';
 import { testDatabaseUrl } from '../test-environment.js';
+import { forkTestDbosProcess } from './fork-test-dbos-process.js';
+import { testProcessApplicationVersion } from './test-process-application-version.js';
 
 interface ObserverMessage {
   readonly kind: 'error' | 'event' | 'ready' | 'stopped';
@@ -26,15 +27,13 @@ class ObserverProcess {
 
   constructor(runId: string, after?: RunEventCursor) {
     const worker = fileURLToPath(new URL('./run-observer-process-worker.ts', import.meta.url));
-    this.child = fork(worker, {
+    this.child = forkTestDbosProcess(worker, {
+      applicationVersion: testProcessApplicationVersion('run-observer', runId),
       env: {
-        ...process.env,
         REVO_RUN_TEST_DATABASE_URL: testDatabaseUrl(),
         REVO_RUN_TEST_RUN_ID: runId,
         ...(after === undefined ? {} : { REVO_RUN_TEST_AFTER_CURSOR: after }),
       },
-      execArgv: ['--import', 'tsx'],
-      silent: true,
     });
     this.child.on('message', (message: ObserverMessage) => this.messages.push(message));
     this.child.stderr?.on('data', (chunk: Buffer) => this.errors.push(chunk.toString()));

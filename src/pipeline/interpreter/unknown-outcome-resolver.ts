@@ -4,7 +4,7 @@ import { createAttemptId } from '../identity/execution-identity.js';
 import type { PipelineExecutionContext, WaitForUnknownOutcome } from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
 import type { NodeExecutionResult } from './pipeline-node-result.js';
-import { continuedExecution } from './pipeline-node-result.js';
+import { continuedExecution, terminalExecution } from './pipeline-node-result.js';
 
 type RetryUnknownOutcome = (
   nextAttemptOrdinal: number,
@@ -45,8 +45,10 @@ export const resolveUnknownOutcome = async ({
   const resolution = await waitForResolution(request, recovery, node.retry, reconciliationRound);
   switch (resolution.kind) {
     case 'adoptSuccess': {
-      const output = resolution.output ?? {};
-      context.outputs.set(nodePath, output);
+      const output = resolution.output;
+      if (output !== undefined) {
+        context.outputs.set(nodePath, output);
+      }
       return continuedExecution(resolution.outcome, runtimePath(context, nodePath), output);
     }
     case 'markFailed':
@@ -63,9 +65,9 @@ export const resolveUnknownOutcome = async ({
       return retry(nextAttemptOrdinal, reconciliationRound + 1, resolution.commandId);
     }
     case 'cancel':
-      return { kind: 'finished', result: { status: 'cancelled', outcome: 'cancelled' } };
+      return terminalExecution({ status: 'cancelled', outcome: 'cancelled' });
     case 'fail':
-      return { kind: 'finished', result: { status: 'failed', outcome: 'failed' } };
+      return terminalExecution({ status: 'failed', outcome: 'failed' });
   }
   resolution satisfies never;
   throw new Error('Unknown outcome resolution is unsupported.');

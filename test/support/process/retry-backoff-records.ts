@@ -61,6 +61,10 @@ export class RetryBackoffRecords {
     return this.pollForPositiveDurationSleep(runId, Date.now() + 5_000);
   }
 
+  async waitForDurationSleep(runId: string, durationMs: number): Promise<RetrySleepRecord> {
+    return this.pollForDurationSleep(runId, durationMs, Date.now() + 5_000);
+  }
+
   async positiveDurationSleepForRun(runId: string): Promise<RetrySleepRecord | undefined> {
     const workflowId = await this.owningWorkflowId(runId);
     if (workflowId === undefined) {
@@ -126,6 +130,33 @@ export class RetryBackoffRecords {
 
     await wait(20);
     return this.pollForPositiveDurationSleep(runId, timeoutAt);
+  }
+
+  private async pollForDurationSleep(
+    runId: string,
+    durationMs: number,
+    timeoutAt: number,
+  ): Promise<RetrySleepRecord> {
+    const workflowId = await this.owningWorkflowId(runId);
+    if (workflowId !== undefined) {
+      const matches = (await this.workflowSteps(workflowId)).filter(
+        (step) =>
+          isPositiveDurationSleep(step) &&
+          step.startedAtEpochMs !== undefined &&
+          step.output === step.startedAtEpochMs + durationMs,
+      );
+      assert(matches.length <= 1, `Run ${runId} recorded multiple ${durationMs} ms sleeps.`);
+      const sleep = matches[0];
+      if (sleep !== undefined) {
+        return this.retrySleepRecord(workflowId, sleep);
+      }
+    }
+    if (Date.now() >= timeoutAt) {
+      throw new Error(`Run ${runId} did not record its ${durationMs} ms durable sleep.`);
+    }
+
+    await wait(20);
+    return this.pollForDurationSleep(runId, durationMs, timeoutAt);
   }
 
   private retrySleepRecord(workflowId: string, sleep: WorkflowStep): RetrySleepRecord {

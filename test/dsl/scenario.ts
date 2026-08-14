@@ -153,6 +153,7 @@ export type ScenarioStep =
   | {
       readonly kind: 'expectRunStatus';
       readonly status: 'cancelled' | 'failed' | 'running' | 'succeeded';
+      readonly withinMs?: number;
     }
   | {
       readonly kind: 'expectOutputValue';

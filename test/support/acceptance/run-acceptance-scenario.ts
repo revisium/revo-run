@@ -138,7 +138,7 @@ class AcceptanceScenarioRunner {
         }
         return;
       case 'expectRunStatus':
-        await this.expectRunStatus(step.status);
+        await this.expectRunStatus(step.status, step.withinMs);
         return;
       case 'expectOutputValue':
         await this.observation.expectOutputValue(step.path, step.outputKey, step.value);
@@ -243,13 +243,15 @@ class AcceptanceScenarioRunner {
       case 'expectNoActiveDurableScopes':
         await this.runCommands.expectNoActiveDurableScopes();
         return;
+      case 'expectIteration':
+        await this.observation.expectIteration(step.path, step.iteration);
+        return;
       case 'expectDistinctCommandIds':
         this.runCommands.expectDistinctCommandIds(step.captures);
         return;
       case 'answerHumanGate':
       case 'completeConsensusParticipant':
       case 'expectHumanGateWaiting':
-      case 'expectIteration':
         throw new Error(`Scenario step ${step.kind} is not implemented.`);
     }
 
@@ -326,12 +328,12 @@ class AcceptanceScenarioRunner {
     this.eventExpectations.expectInputResolutionFailure(events, plan, path, errorCode);
   }
 
-  private async expectRunStatus(status: RunStatus): Promise<void> {
+  private async expectRunStatus(status: RunStatus, withinMs?: number): Promise<void> {
     await vi.waitFor(
       async () => {
         assert.equal((await this.manager.getRun(this.runId))?.status, status);
       },
-      { timeout: 10_000 },
+      { timeout: withinMs ?? 10_000 },
     );
   }
 

@@ -9,6 +9,7 @@ import {
   nodeReconciliationStepIdentity,
   nodeReconciliationStepName,
   parallelBranchWorkflowName,
+  repeatIterationWorkflowName,
   runExecutionWorkflowName,
   runWorkflowName,
 } from '../../src/dbos/dbos-names.js';
@@ -18,6 +19,7 @@ describe('DBOS workflow names', () => {
     expect(runWorkflowName).toBe('revo-run.run');
     expect(runExecutionWorkflowName).toBe('revo-run.execution');
     expect(parallelBranchWorkflowName).toBe('revo-run.parallel-branch');
+    expect(repeatIterationWorkflowName).toBe('revo-run.repeat-iteration');
   });
 });
 

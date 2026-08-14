@@ -126,7 +126,7 @@ describe('RR-04 repository-owned assurance artifacts', () => {
     const { bytes, value } = load('observation-golden-vectors.json', goldenValidator);
 
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '72feca02ea36b375d04b0b25dbacdfed9740d98e2d186c37fe05674ab0ff967d',
+      '0d7a601890534910709b271d51bf04215effb8a86de6dd0505498c74b69b807d',
     );
     expect(value.sourceRevision).toBe(sourceRevision);
     expect(new Set(value.vectors.map(({ id }) => id)).size).toBe(value.vectors.length);

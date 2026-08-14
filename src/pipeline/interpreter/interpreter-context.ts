@@ -1,3 +1,4 @@
+import type { ExecutorInput } from '../../contracts/executor/executor-input.js';
 import type { RunExecutorRequest } from '../../contracts/executor/run-executor.js';
 import type { RunNodeExecution } from '../../contracts/executor/run-node-execution.js';
 import type { JsonValue } from '../../contracts/json-value.js';
@@ -16,7 +17,14 @@ export interface PipelineExecutionContext {
   readonly runtimePath: string;
   readonly outputs: Map<string, NodeOutput>;
   readonly maximumParallelism: number;
+  readonly nodePathPrefix?: string;
+  readonly iterationInput?: ExecutorInput;
+  readonly iterationOutput?: NodeOutput;
 }
+
+export type DelayWaitResult = 'cancelled' | 'elapsed' | 'failed';
+
+export type WaitForDelay = (durationMs: number) => Promise<DelayWaitResult>;
 
 export type ExecuteNodeEffect = (
   request: RunExecutorRequest,
