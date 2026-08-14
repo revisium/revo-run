@@ -1,5 +1,7 @@
-import type { ScopeStartFenceReply } from '../../contracts/workflow/run-coordinator-message.js';
-import type { RunCoordinatorMessage } from '../../contracts/workflow/run-coordinator-message.js';
+import type {
+  RunCoordinatorMessage,
+  ScopeStartFenceReply,
+} from '../../contracts/workflow/run-coordinator-message.js';
 import type { RunEventBudgetFailure } from '../streams/run-event-stream.js';
 import type { RunScopeRegistry } from './run-scope-registry.js';
 import type { ScopeCancellationRegistry } from './scope-cancellation-registry.js';

@@ -32,14 +32,28 @@ describe('RR-08 provider call registry', () => {
     const queued = new AbortController();
     const first = await registry.acquire('run', 1, activeSignal);
     const cancelled = registry.acquire('run', 1, queued.signal);
-    const next = registry.acquire('run', 1, activeSignal);
+    const admitted = vi.fn<() => void>();
+    const next = registry.acquire('run', 1, activeSignal).then((permit) => {
+      admitted();
+      return permit;
+    });
+    const idle = vi.fn<() => void>();
+    void registry.waitForIdle('run').then(idle);
 
     queued.abort('cancelled');
     await expect(cancelled).rejects.toBe('cancelled');
+    await Promise.resolve();
+    expect(admitted).not.toHaveBeenCalled();
+    expect(idle).not.toHaveBeenCalled();
+
     first.release();
     const permit = await next;
+    expect(admitted).toHaveBeenCalledOnce();
+    expect(idle).not.toHaveBeenCalled();
+
     permit.release();
-    await vi.waitFor(() => expect(true).toBe(true));
+    await vi.waitFor(() => expect(idle).toHaveBeenCalledOnce());
+    await expect(registry.waitForIdle('run')).resolves.toBeUndefined();
   });
 
   it('keeps the run idle barrier pending until every actual permit is released', async () => {

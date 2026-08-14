@@ -1,7 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 
-import { DBOS } from '@dbos-inc/dbos-sdk';
-import type { WorkflowHandle } from '@dbos-inc/dbos-sdk';
+import { DBOS, type WorkflowHandle } from '@dbos-inc/dbos-sdk';
 
 import type { ParallelNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { ParallelBranchResult as ParallelBranchWorkflowResult } from '../../contracts/workflow/parallel-branch-result.js';
@@ -15,10 +14,10 @@ import {
 import type { PipelineExecutionContext } from '../../pipeline/interpreter/interpreter-context.js';
 import { runtimePath } from '../../pipeline/interpreter/node-path.js';
 import type {
+  ParallelBranch,
   ParallelBranchRunner,
   ParallelExecutionResult,
 } from '../../pipeline/parallel/parallel-branch-runner.js';
-import type { ParallelBranch } from '../../pipeline/parallel/parallel-branch-runner.js';
 import {
   eligibleParallelResults,
   initialParallelJoinState,

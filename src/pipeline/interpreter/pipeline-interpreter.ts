@@ -4,8 +4,10 @@ import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
 import type { RunWorkflowResult } from '../../contracts/workflow/run-workflow-result.js';
 import { InputResolver } from '../data/input-resolver.js';
 import { createAuthoredNodeId, createSubpipelineScopeId } from '../identity/execution-identity.js';
-import type { ParallelBranchRunner } from '../parallel/parallel-branch-runner.js';
-import type { ParallelBranchResult } from '../parallel/parallel-branch-runner.js';
+import type {
+  ParallelBranchResult,
+  ParallelBranchRunner,
+} from '../parallel/parallel-branch-runner.js';
 import { withCancellationEvent } from './cancellation-event-policy.js';
 import type {
   ExecuteNodeEffect,

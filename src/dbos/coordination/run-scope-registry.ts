@@ -1,8 +1,10 @@
 import { DBOS } from '@dbos-inc/dbos-sdk';
 
 import type { ScopeDirective } from '../../contracts/workflow/run-command-workflow.js';
-import type { ScopeStartFenceReply } from '../../contracts/workflow/run-coordinator-message.js';
-import type { ScopeCancellationFence } from '../../contracts/workflow/run-coordinator-message.js';
+import type {
+  ScopeCancellationFence,
+  ScopeStartFenceReply,
+} from '../../contracts/workflow/run-coordinator-message.js';
 import {
   scopeAdmissionReplyTopic,
   scopeDirectiveTopic,

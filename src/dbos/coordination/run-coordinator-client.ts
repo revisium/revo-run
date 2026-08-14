@@ -3,8 +3,10 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { RunExecutorRequest } from '../../contracts/executor/run-executor.js';
 import type { RecoveryPolicy, RetryPolicy } from '../../contracts/pipeline/task-policy.js';
 import type { UnknownResolutionDirective } from '../../contracts/workflow/run-command-workflow.js';
-import type { RunCoordinatorMessage } from '../../contracts/workflow/run-coordinator-message.js';
-import type { ScopeStartFenceReply } from '../../contracts/workflow/run-coordinator-message.js';
+import type {
+  RunCoordinatorMessage,
+  ScopeStartFenceReply,
+} from '../../contracts/workflow/run-coordinator-message.js';
 import type {
   PipelineEventDraft,
   PipelineEventSink,
