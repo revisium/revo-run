@@ -4,7 +4,7 @@ const digest = (character: string): string => character.repeat(43);
 const attemptId = `at1_${digest('b')}`;
 
 const dbos = vi.hoisted(() => ({
-  workflowID: `rr:scope:v2:sc1_${'a'.repeat(43)}`,
+  workflowID: `rr:scope:sc1_${'a'.repeat(43)}`,
   getWorkflowStatus: vi.fn<(workflowId: string) => Promise<unknown>>(),
   recv: vi.fn<(topic: string, options?: unknown) => Promise<unknown>>(),
   runStep: vi.fn<(callback: () => unknown, options?: unknown) => Promise<unknown>>(),
@@ -19,17 +19,17 @@ vi.mock('@dbos-inc/dbos-sdk', async (importOriginal) => {
 import type { RunExecutorRequest } from '../../src/contracts/executor/run-executor.js';
 import { orphanHealthCheckSeconds } from '../../src/dbos/coordination/orphan-health-check.js';
 import {
-  RunCoordinatorV2Client,
+  RunCoordinatorClient,
   ScopeCancellationError,
-} from '../../src/dbos/coordination/run-coordinator-v2-client.js';
+} from '../../src/dbos/coordination/run-coordinator-client.js';
 import {
-  runCoordinatorV2Topic,
-  scopeDirectiveV2Topic,
-  scopeReplyV2Topic,
-  scopeSettlementV2Topic,
+  runCoordinatorTopic,
+  scopeDirectiveTopic,
+  scopeReplyTopic,
+  scopeSettlementTopic,
   unknownOutcomeReadyStepName,
   unknownOutcomeResolutionStepName,
-  unknownResolutionV2Topic,
+  unknownResolutionTopic,
 } from '../../src/dbos/dbos-names.js';
 import { runWorkflowId } from '../../src/dbos/workflow-id.js';
 
@@ -61,17 +61,17 @@ describe('RR-07 unknown-outcome readiness barrier', () => {
 
   it('wakes immediately on a controlled cancellation without an orphan-health timeout cycle', async () => {
     dbos.recv.mockImplementation(async (topic) =>
-      topic === scopeReplyV2Topic ? { kind: 'continue' } : { kind: 'cancel' },
+      topic === scopeReplyTopic ? { kind: 'continue' } : { kind: 'cancel' },
     );
-    const client = new RunCoordinatorV2Client(request.runId);
+    const client = new RunCoordinatorClient(request.runId);
 
     await expect(client.ready(runWorkflowId(request.runId))).rejects.toBeInstanceOf(
       ScopeCancellationError,
     );
 
     expect(dbos.recv.mock.calls).toStrictEqual([
-      [scopeReplyV2Topic, { timeoutSeconds: orphanHealthCheckSeconds }],
-      [scopeDirectiveV2Topic, { timeoutSeconds: 0 }],
+      [scopeReplyTopic, { timeoutSeconds: orphanHealthCheckSeconds }],
+      [scopeDirectiveTopic, { timeoutSeconds: 0 }],
     ]);
     expect(dbos.getWorkflowStatus).not.toHaveBeenCalled();
   });
@@ -81,49 +81,49 @@ describe('RR-07 unknown-outcome readiness barrier', () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ kind: 'continue' })
       .mockResolvedValueOnce(null);
-    const client = new RunCoordinatorV2Client(request.runId);
+    const client = new RunCoordinatorClient(request.runId);
 
     await expect(client.waitForRetry(request, 5_000)).resolves.toBeUndefined();
 
     expect(dbos.recv.mock.calls).toStrictEqual([
-      [scopeDirectiveV2Topic, { timeoutSeconds: 5 }],
-      [scopeReplyV2Topic, { timeoutSeconds: orphanHealthCheckSeconds }],
-      [scopeDirectiveV2Topic, { timeoutSeconds: 0 }],
+      [scopeDirectiveTopic, { timeoutSeconds: 5 }],
+      [scopeReplyTopic, { timeoutSeconds: orphanHealthCheckSeconds }],
+      [scopeDirectiveTopic, { timeoutSeconds: 0 }],
     ]);
     expect(dbos.send).toHaveBeenCalledWith(
       runWorkflowId(request.runId),
       expect.objectContaining({ kind: 'scopeBoundary' }),
-      runCoordinatorV2Topic,
+      runCoordinatorTopic,
     );
   });
 
   it('drains an unsolicited directive after consuming the finish acknowledgement', async () => {
     dbos.recv.mockResolvedValueOnce({ kind: 'continue' }).mockResolvedValueOnce({ kind: 'cancel' });
-    const client = new RunCoordinatorV2Client(request.runId);
+    const client = new RunCoordinatorClient(request.runId);
 
     await expect(client.finish()).rejects.toBeInstanceOf(ScopeCancellationError);
 
     expect(dbos.recv.mock.calls).toStrictEqual([
-      [scopeReplyV2Topic, { timeoutSeconds: orphanHealthCheckSeconds }],
-      [scopeDirectiveV2Topic, { timeoutSeconds: 0 }],
+      [scopeReplyTopic, { timeoutSeconds: orphanHealthCheckSeconds }],
+      [scopeDirectiveTopic, { timeoutSeconds: 0 }],
     ]);
     expect(dbos.send).toHaveBeenCalledWith(
       runWorkflowId(request.runId),
       expect.objectContaining({ kind: 'scopeFinish' }),
-      runCoordinatorV2Topic,
+      runCoordinatorTopic,
     );
   });
 
   it('receives asynchronous cancellation during backoff without waiting for a reply', async () => {
     dbos.recv.mockResolvedValueOnce({ kind: 'cancel' });
-    const client = new RunCoordinatorV2Client(request.runId);
+    const client = new RunCoordinatorClient(request.runId);
 
     await expect(client.waitForRetry(request, 5_000)).rejects.toBeInstanceOf(
       ScopeCancellationError,
     );
 
     expect(dbos.recv).toHaveBeenCalledOnce();
-    expect(dbos.recv).toHaveBeenCalledWith(scopeDirectiveV2Topic, {
+    expect(dbos.recv).toHaveBeenCalledWith(scopeDirectiveTopic, {
       timeoutSeconds: 5,
     });
     expect(dbos.send).not.toHaveBeenCalled();
@@ -131,28 +131,28 @@ describe('RR-07 unknown-outcome readiness barrier', () => {
 
   it('does not leave a normal readiness directive queued after its correlated reply', async () => {
     dbos.recv.mockResolvedValueOnce({ kind: 'continue' }).mockResolvedValueOnce(null);
-    const client = new RunCoordinatorV2Client(request.runId);
+    const client = new RunCoordinatorClient(request.runId);
 
     await expect(client.ready(runWorkflowId(request.runId))).resolves.toBeUndefined();
 
     expect(dbos.recv.mock.calls).toStrictEqual([
-      [scopeReplyV2Topic, { timeoutSeconds: orphanHealthCheckSeconds }],
-      [scopeDirectiveV2Topic, { timeoutSeconds: 0 }],
+      [scopeReplyTopic, { timeoutSeconds: orphanHealthCheckSeconds }],
+      [scopeDirectiveTopic, { timeoutSeconds: 0 }],
     ]);
     expect(dbos.getWorkflowStatus).not.toHaveBeenCalled();
   });
 
   it('wakes immediately on a reply-channel cancellation without an orphan-health timeout cycle', async () => {
     dbos.recv.mockResolvedValueOnce({ kind: 'cancel' }).mockResolvedValueOnce(null);
-    const client = new RunCoordinatorV2Client(request.runId);
+    const client = new RunCoordinatorClient(request.runId);
 
     await expect(client.ready(runWorkflowId(request.runId))).rejects.toBeInstanceOf(
       ScopeCancellationError,
     );
 
     expect(dbos.recv.mock.calls).toStrictEqual([
-      [scopeReplyV2Topic, { timeoutSeconds: orphanHealthCheckSeconds }],
-      [scopeDirectiveV2Topic, { timeoutSeconds: 0 }],
+      [scopeReplyTopic, { timeoutSeconds: orphanHealthCheckSeconds }],
+      [scopeDirectiveTopic, { timeoutSeconds: 0 }],
     ]);
     expect(dbos.getWorkflowStatus).not.toHaveBeenCalled();
   });
@@ -161,18 +161,18 @@ describe('RR-07 unknown-outcome readiness barrier', () => {
     'consumes a terminal %s directive without preventing scope settlement',
     async (kind) => {
       dbos.recv.mockResolvedValueOnce({ kind: 'settled' }).mockResolvedValueOnce({ kind });
-      const client = new RunCoordinatorV2Client(request.runId);
+      const client = new RunCoordinatorClient(request.runId);
 
       await expect(client.scopeSettled()).resolves.toBeUndefined();
 
       expect(dbos.recv.mock.calls).toStrictEqual([
-        [scopeSettlementV2Topic, { timeoutSeconds: orphanHealthCheckSeconds }],
-        [scopeDirectiveV2Topic, { timeoutSeconds: 0 }],
+        [scopeSettlementTopic, { timeoutSeconds: orphanHealthCheckSeconds }],
+        [scopeDirectiveTopic, { timeoutSeconds: 0 }],
       ]);
       expect(dbos.send).toHaveBeenCalledWith(
         runWorkflowId(request.runId),
         { kind: 'scopeSettled', workflowId: dbos.workflowID },
-        runCoordinatorV2Topic,
+        runCoordinatorTopic,
       );
       expect(dbos.send.mock.invocationCallOrder[0]).toBeLessThan(
         dbos.recv.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
@@ -187,14 +187,14 @@ describe('RR-07 unknown-outcome readiness barrier', () => {
     dbos.recv
       .mockResolvedValueOnce({ kind: 'settled' })
       .mockResolvedValueOnce({ kind: 'cancel', extra: true });
-    const client = new RunCoordinatorV2Client(request.runId);
+    const client = new RunCoordinatorClient(request.runId);
 
     await expect(client.scopeSettled()).rejects.toThrow('Scope directive is invalid.');
 
     expect(dbos.send).toHaveBeenCalledWith(
       runWorkflowId(request.runId),
       { kind: 'scopeSettled', workflowId: dbos.workflowID },
-      runCoordinatorV2Topic,
+      runCoordinatorTopic,
     );
     expect(dbos.send.mock.invocationCallOrder[0]).toBeLessThan(
       dbos.recv.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
@@ -203,7 +203,7 @@ describe('RR-07 unknown-outcome readiness barrier', () => {
 
   it('rejects a malformed settlement acknowledgement after publishing settlement', async () => {
     dbos.recv.mockResolvedValueOnce({ kind: 'settled', extra: true });
-    const client = new RunCoordinatorV2Client(request.runId);
+    const client = new RunCoordinatorClient(request.runId);
 
     await expect(client.scopeSettled()).rejects.toThrow(
       'Scope settlement acknowledgement is invalid.',
@@ -212,7 +212,7 @@ describe('RR-07 unknown-outcome readiness barrier', () => {
     expect(dbos.send).toHaveBeenCalledWith(
       runWorkflowId(request.runId),
       { kind: 'scopeSettled', workflowId: dbos.workflowID },
-      runCoordinatorV2Topic,
+      runCoordinatorTopic,
     );
     expect(dbos.recv).toHaveBeenCalledOnce();
   });
@@ -226,7 +226,7 @@ describe('RR-07 unknown-outcome readiness barrier', () => {
         commandId: 'cmd_00000000-0000-4000-8000-000000000001',
         errorCode: 'unknown_outcome_resolved_failed',
       });
-    const client = new RunCoordinatorV2Client(request.runId);
+    const client = new RunCoordinatorClient(request.runId);
 
     await expect(
       client.waitForUnknownOutcome(
@@ -245,18 +245,18 @@ describe('RR-07 unknown-outcome readiness barrier', () => {
     expect(dbos.send).toHaveBeenCalledWith(
       runWorkflowId(request.runId),
       expect.objectContaining({ kind: 'unknownOutcomeWaiting', request }),
-      runCoordinatorV2Topic,
+      runCoordinatorTopic,
     );
-    expect(dbos.recv).toHaveBeenNthCalledWith(1, scopeReplyV2Topic, {
+    expect(dbos.recv).toHaveBeenNthCalledWith(1, scopeReplyTopic, {
       timeoutSeconds: orphanHealthCheckSeconds,
     });
     expect(dbos.runStep).toHaveBeenNthCalledWith(1, expect.any(Function), {
       name: unknownOutcomeReadyStepName(attemptId),
     });
-    expect(dbos.recv).toHaveBeenNthCalledWith(2, scopeDirectiveV2Topic, {
+    expect(dbos.recv).toHaveBeenNthCalledWith(2, scopeDirectiveTopic, {
       timeoutSeconds: 0,
     });
-    expect(dbos.recv).toHaveBeenNthCalledWith(3, unknownResolutionV2Topic(attemptId), {
+    expect(dbos.recv).toHaveBeenNthCalledWith(3, unknownResolutionTopic(attemptId), {
       timeoutSeconds: orphanHealthCheckSeconds,
     });
     expect(dbos.runStep).toHaveBeenNthCalledWith(2, expect.any(Function), {

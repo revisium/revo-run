@@ -5,19 +5,24 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { CommandDispatchWorkflowInput } from '../../src/contracts/workflow/run-command-workflow.js';
 import type { RunWorkflowInput } from '../../src/contracts/workflow/run-workflow-input.js';
-import { RunCoordinatorV2Client } from '../../src/dbos/coordination/run-coordinator-v2-client.js';
-import { RunWorkflowV2Coordinator } from '../../src/dbos/coordination/run-workflow-v2-coordinator.js';
+import { RunCoordinatorClient } from '../../src/dbos/coordination/run-coordinator-client.js';
+import { RunWorkflowCoordinator } from '../../src/dbos/coordination/run-workflow-coordinator.js';
 import { ScopeCancellationRegistry } from '../../src/dbos/coordination/scope-cancellation-registry.js';
 import {
   commandDispatchWorkflowName,
-  runCoordinatorV2Topic,
-  runWorkflowV2Name,
-  scopeDirectiveV2Topic,
-  scopeSettlementV2Topic,
+  runCoordinatorTopic,
+  runWorkflowName,
+  scopeDirectiveTopic,
+  scopeSettlementTopic,
 } from '../../src/dbos/dbos-names.js';
+import { ProviderCallRegistry } from '../../src/dbos/executor/provider-call-registry.js';
 import { loadAllWorkflowSteps } from '../../src/dbos/read-model/dbos-step-pages.js';
 import { DbosRunEventStream } from '../../src/dbos/streams/run-event-stream.js';
-import { commandWorkflowId, runWorkflowId, scopeWorkflowV2Id } from '../../src/dbos/workflow-id.js';
+import {
+  commandWorkflowId,
+  runWorkflowId,
+  scopeWorkflowId as workflowIdForScope,
+} from '../../src/dbos/workflow-id.js';
 import { createCommandDispatchWorkflow } from '../../src/dbos/workflows/command-dispatch-workflow.js';
 import { parseRunWorkflowInput } from '../../src/validation/parse-run-workflow-data.js';
 import { terminalExecutionPlan } from '../support/execution-plan.fixture.js';
@@ -50,11 +55,11 @@ let scopeReturned = false;
 
 const settlementScope = DBOS.registerWorkflow(
   async ({ runId, rootWorkflowId }: SettlementScopeInput) => {
-    const client = new RunCoordinatorV2Client(runId);
+    const client = new RunCoordinatorClient(runId);
     await client.ready(rootWorkflowId);
     await client.scopeSettled();
-    const strandedDirective = await DBOS.recv(scopeDirectiveV2Topic, { timeoutSeconds: 0 });
-    const strandedAcknowledgement = await DBOS.recv(scopeSettlementV2Topic, {
+    const strandedDirective = await DBOS.recv(scopeDirectiveTopic, { timeoutSeconds: 0 });
+    const strandedAcknowledgement = await DBOS.recv(scopeSettlementTopic, {
       timeoutSeconds: 0,
     });
     scopeReturned = true;
@@ -65,7 +70,7 @@ const settlementScope = DBOS.registerWorkflow(
       strandedAcknowledgement,
     };
   },
-  { name: 'revo-run.rr07-settlement-barrier-scope.v1' },
+  { name: 'revo-run.rr07-settlement-barrier-scope' },
 );
 
 const scopeIdFromInput = (durableInput: unknown): string => {
@@ -85,13 +90,14 @@ const scopeIdFromInput = (durableInput: unknown): string => {
 const settlementBarrierRoot = DBOS.registerWorkflow(
   async (durableInput: unknown) => {
     const input = parseRunWorkflowInput([durableInput]);
-    const scopeWorkflowId = scopeWorkflowV2Id(scopeIdFromInput(durableInput));
+    const scopeWorkflowId = workflowIdForScope(scopeIdFromInput(durableInput));
     const events = new DbosRunEventStream(input.runId);
-    const coordinator = new RunWorkflowV2Coordinator(
+    const coordinator = new RunWorkflowCoordinator(
       input.runId,
       events,
       input.executionPlan.policies.maximumTotalNodeExecutions,
       new ScopeCancellationRegistry(),
+      new ProviderCallRegistry(),
     );
     coordinator.registerRootScope(scopeWorkflowId);
     try {
@@ -105,7 +111,7 @@ const settlementBarrierRoot = DBOS.registerWorkflow(
       await events.close();
     }
   },
-  { name: runWorkflowV2Name },
+  { name: runWorkflowName },
 );
 
 const commandDispatcher = DBOS.registerWorkflow(createCommandDispatchWorkflow(), {
@@ -137,7 +143,7 @@ describe('RR-07 terminal settlement barrier', () => {
   it('drains a cancellation committed before the root processes settlement', async () => {
     const runId = `settlement-cancel-first-${randomUUID()}`;
     const scopeId = `sc1_${randomBytes(32).toString('base64url')}`;
-    const scopeWorkflowId = scopeWorkflowV2Id(scopeId);
+    const scopeWorkflowId = workflowIdForScope(scopeId);
     const settlementAttempted = deferred();
     const releaseSettlement = deferred();
     const send = DBOS.send.bind(DBOS);
@@ -145,7 +151,7 @@ describe('RR-07 terminal settlement barrier', () => {
       .spyOn(DBOS, 'send')
       .mockImplementation(async (workflowId, message, topic) => {
         if (
-          topic === runCoordinatorV2Topic &&
+          topic === runCoordinatorTopic &&
           message !== null &&
           typeof message === 'object' &&
           'kind' in message &&
@@ -198,14 +204,14 @@ describe('RR-07 terminal settlement barrier', () => {
     scopeReturned = false;
     const runId = `settlement-first-${randomUUID()}`;
     const scopeId = `sc1_${randomBytes(32).toString('base64url')}`;
-    const scopeWorkflowId = scopeWorkflowV2Id(scopeId);
+    const scopeWorkflowId = workflowIdForScope(scopeId);
     const settlementDequeued = deferred();
     const releaseSettlementProcessing = deferred();
     const receive = DBOS.recv.bind(DBOS);
     const receiveSpy = vi.spyOn(DBOS, 'recv').mockImplementation(async (topic, options) => {
       const value = await receive(topic, options);
       if (
-        topic === runCoordinatorV2Topic &&
+        topic === runCoordinatorTopic &&
         value !== null &&
         typeof value === 'object' &&
         'kind' in value &&
@@ -256,7 +262,7 @@ describe('RR-07 terminal settlement barrier', () => {
     const runId = `settlement-malformed-directive-${randomUUID()}`;
     const rootWorkflowId = runWorkflowId(runId);
     const scopeId = `sc1_${randomBytes(32).toString('base64url')}`;
-    const scopeWorkflowId = scopeWorkflowV2Id(scopeId);
+    const scopeWorkflowId = workflowIdForScope(scopeId);
     const malformedCommitted = deferred();
     const send = DBOS.send.bind(DBOS);
     const receive = DBOS.recv.bind(DBOS);
@@ -264,15 +270,15 @@ describe('RR-07 terminal settlement barrier', () => {
       .spyOn(DBOS, 'send')
       .mockImplementation(async (workflowId, message, topic) => {
         const result = await send(workflowId, message, topic);
-        if (workflowId === scopeWorkflowId && topic === scopeSettlementV2Topic) {
-          await send(scopeWorkflowId, { kind: 'cancel', extra: true }, scopeDirectiveV2Topic);
+        if (workflowId === scopeWorkflowId && topic === scopeSettlementTopic) {
+          await send(scopeWorkflowId, { kind: 'cancel', extra: true }, scopeDirectiveTopic);
           malformedCommitted.resolve();
         }
         return result;
       });
     const receiveSpy = vi.spyOn(DBOS, 'recv').mockImplementation(async (topic, options) => {
       const result = await receive(topic, options);
-      if (topic === scopeSettlementV2Topic && result !== null) {
+      if (topic === scopeSettlementTopic && result !== null) {
         await malformedCommitted.promise;
       }
       return result;

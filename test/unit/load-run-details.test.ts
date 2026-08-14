@@ -27,7 +27,7 @@ import {
 } from '../../src/dbos/dbos-names.js';
 import { loadRunDetails } from '../../src/dbos/read-model/load-run-details.js';
 import { scopeWorkflowId } from '../../src/dbos/workflow-id.js';
-import { runDetailsHumanResolutionFixture } from '../support/run-details-v2.fixture.js';
+import { runDetailsHumanResolutionFixture } from '../support/run-details-command.fixture.js';
 import {
   rootScope,
   runDetailsStatuses,
@@ -163,13 +163,13 @@ describe('recursive run details projection', () => {
     );
     workflowSteps = fixture.beforeReadySteps;
 
-    const beforeReady = await loadRunDetails(fixture.snapshot, 'v2');
+    const beforeReady = await loadRunDetails(fixture.snapshot);
     const { commandId, request } = fixture;
-    expect(beforeReady.attempts.some(({ id }) => id === request.attemptId)).toBe(false);
+    expect(beforeReady.attempts.some(({ id }) => id === request.attemptId)).toBe(true);
 
     workflowSteps = fixture.acceptedAdoptionSteps;
 
-    const details = await loadRunDetails(fixture.snapshot, 'v2');
+    const details = await loadRunDetails(fixture.snapshot);
     const attempt = details.attempts.find(({ id }) => id === request.attemptId);
     const node = details.nodeInstances.find(({ id }) => id === request.nodeInstanceId);
 

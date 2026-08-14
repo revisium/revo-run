@@ -23,7 +23,7 @@ vi.mock('@dbos-inc/dbos-sdk', async (importOriginal) => {
   return { ...actual, DBOS: dbos };
 });
 
-import { runWorkflowV2Name } from '../../src/dbos/dbos-names.js';
+import { runWorkflowName } from '../../src/dbos/dbos-names.js';
 import { DbosRunRuntime } from '../../src/dbos/dbos-run-runtime.js';
 import { commandWorkflowId } from '../../src/dbos/workflow-id.js';
 import { WorkflowRegistry } from '../../src/dbos/workflow-registry.js';
@@ -54,7 +54,7 @@ describe('DBOS public command identity admission', () => {
 
   it('preserves the generated ID when delivery becomes indeterminate after a nonmissing precheck', async () => {
     dbos.getWorkflowStatus.mockResolvedValue({
-      workflowName: runWorkflowV2Name,
+      workflowName: runWorkflowName,
       status: 'PENDING',
     });
     dbos.startWorkflow.mockReturnValue(() => Promise.reject(new Error('delivery indeterminate')));
@@ -79,7 +79,7 @@ describe('DBOS public command identity admission', () => {
       },
     };
     dbos.getWorkflowStatus.mockResolvedValue({
-      workflowName: runWorkflowV2Name,
+      workflowName: runWorkflowName,
       status: 'PENDING',
     });
     dbos.startWorkflow.mockReturnValue(() =>
@@ -96,5 +96,51 @@ describe('DBOS public command identity admission', () => {
     ).rejects.toMatchObject({ code: 'run_command_failed', commandId });
 
     expect(dbos.retrieveWorkflow).toHaveBeenCalledWith(commandWorkflowId(commandId));
+  });
+
+  it('routes a recorded current command through its canonical identity', async () => {
+    const commandId = 'cmd_00000000-0000-4000-8000-000000000001';
+    const command = {
+      kind: 'cancelRun' as const,
+      input: { runId: 'current-run', actorId: 'operator' },
+    };
+    const durableInput = { commandId, command };
+    dbos.getWorkflowStatus.mockResolvedValue({ workflowName: runWorkflowName, status: 'PENDING' });
+    dbos.startWorkflow.mockReturnValue(() =>
+      Promise.resolve({
+        getResult: async () => ({
+          status: 'receipt',
+          receipt: { status: 'accepted', commandId },
+        }),
+      }),
+    );
+    dbos.retrieveWorkflow.mockReturnValue({ getWorkflowInputs: async () => [durableInput] });
+
+    await expect(runtime().dispatchCommand(command, commandId)).resolves.toEqual({
+      status: 'accepted',
+      commandId,
+    });
+    expect(dbos.startWorkflow).toHaveBeenCalledWith(expect.any(Function), {
+      workflowID: commandWorkflowId(commandId),
+    });
+    expect(dbos.retrieveWorkflow).toHaveBeenCalledWith(commandWorkflowId(commandId));
+  });
+
+  it('uses the sole dispatcher and reports its failure for an unknown recorded root workflow', async () => {
+    const commandId = 'cmd_00000000-0000-4000-8000-000000000001';
+    dbos.getWorkflowStatus.mockResolvedValue({ workflowName: 'foreign.run', status: 'PENDING' });
+
+    await expect(
+      runtime().dispatchCommand(
+        {
+          kind: 'cancelRun',
+          input: { runId: 'foreign-run', actorId: 'operator' },
+        },
+        commandId,
+      ),
+    ).rejects.toMatchObject({ code: 'run_command_failed', commandId });
+    expect(dbos.startWorkflow).toHaveBeenCalledWith(expect.any(Function), {
+      workflowID: commandWorkflowId(commandId),
+    });
   });
 });

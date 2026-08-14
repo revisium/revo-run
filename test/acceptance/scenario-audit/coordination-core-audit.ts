@@ -59,15 +59,12 @@ export const coordinationCoreScenarioAudit = [
   {
     intentId: 'rr-034',
     requiredCapabilities: ['parallelThresholdJoin', 'parallelBranchCancellation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['parallelBranchCancellation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-034' },
   },
   {
     intentId: 'rr-035',
     requiredCapabilities: ['parallelThresholdUnreachable'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['parallelThresholdUnreachable'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-035' },
   },
   {
     intentId: 'rr-036',

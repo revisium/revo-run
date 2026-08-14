@@ -58,10 +58,26 @@ export class RecoveryProcessExecutor implements RunExecutor {
       });
     }
     if (this.scenario === 'timeout' && request.displayPath === 'main/work') {
-      return new Promise(() => {
-        context.signal.addEventListener('abort', () => {
-          this.report({ kind: 'timeoutSignalled', path: request.displayPath });
-        });
+      return new Promise((resolve, reject) => {
+        const pending = this.pending.get(request.displayPath) ?? [];
+        const execution = { resolve, reject };
+        pending.push(execution);
+        this.pending.set(request.displayPath, pending);
+        context.signal.addEventListener(
+          'abort',
+          () => {
+            this.report({ kind: 'timeoutSignalled', path: request.displayPath });
+            if (this.ignoreAbort) {
+              return;
+            }
+            const index = pending.indexOf(execution);
+            if (index >= 0) {
+              pending.splice(index, 1);
+            }
+            reject(context.signal.reason);
+          },
+          { once: true },
+        );
       });
     }
 
@@ -73,13 +89,13 @@ export class RecoveryProcessExecutor implements RunExecutor {
       context.signal.addEventListener(
         'abort',
         () => {
-          const index = pending.indexOf(execution);
-          if (index >= 0) {
-            pending.splice(index, 1);
-          }
           this.report({ kind: 'executorAborted', path: request.displayPath });
           if (this.ignoreAbort) {
             return;
+          }
+          const index = pending.indexOf(execution);
+          if (index >= 0) {
+            pending.splice(index, 1);
           }
           reject(context.signal.reason);
         },

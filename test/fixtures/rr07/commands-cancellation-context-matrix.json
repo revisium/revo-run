@@ -21,7 +21,7 @@
       "succeeded",
       "failed",
       "cancelled",
-      "v1Live"
+      "foreignWorkflow"
     ],
     "delivery": ["first", "sameInternalIdReplay", "distinctSemanticRepeat", "conflictingSameId"],
     "resolutionTarget": [
@@ -53,7 +53,7 @@
       "rejectedLiveEvent",
       "eventBudgetDispatchFailure",
       "noTerminalAppend",
-      "noV1Append",
+      "noForeignAppend",
       "streamClosesWithoutFinalCancelledEvent"
     ]
   },
@@ -103,15 +103,15 @@
       "historyEffect": "acceptedLiveEvent"
     },
     {
-      "id": "v1-rejection",
+      "id": "foreign-workflow-rejection",
       "commandKind": "cancelRun",
       "managerState": "restarted",
-      "runState": "v1Live",
+      "runState": "foreignWorkflow",
       "delivery": "first",
       "executionLocus": "beforeDispatch",
       "processBoundary": "restartBeforeDecision",
       "providerSettlement": "cooperativeAbort",
-      "historyEffect": "noV1Append"
+      "historyEffect": "noForeignAppend"
     },
     {
       "id": "unknown-adopt",

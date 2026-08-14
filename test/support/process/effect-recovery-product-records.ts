@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { DBOSClient } from '@dbos-inc/dbos-sdk';
 
 import {
-  parallelBranchWorkflowV2Name,
-  runExecutionWorkflowV2Name,
+  parallelBranchWorkflowName,
+  runExecutionWorkflowName,
 } from '../../../src/dbos/dbos-names.js';
 import { runWorkflowId } from '../../../src/dbos/workflow-id.js';
 import { testDatabaseUrl } from '../test-environment.js';
@@ -42,7 +42,7 @@ export class EffectRecoveryProductRecords {
     const rootWorkflowId = await this.rootExecutionWorkflowId(runId);
     const workflow =
       scope === 'root-execution'
-        ? { workflowID: rootWorkflowId, workflowName: runExecutionWorkflowV2Name }
+        ? { workflowID: rootWorkflowId, workflowName: runExecutionWorkflowName }
         : await this.recoveredParallelWorkflow(rootWorkflowId);
     const steps = await this.client.listWorkflowSteps(workflow.workflowID);
     assert(steps !== undefined, `Workflow ${workflow.workflowID} was not found.`);
@@ -55,7 +55,7 @@ export class EffectRecoveryProductRecords {
   private async rootExecutionWorkflowId(runId: string): Promise<string> {
     const workflows = await this.client.listWorkflows({
       parentWorkflowID: runWorkflowId(runId),
-      workflowName: runExecutionWorkflowV2Name,
+      workflowName: runExecutionWorkflowName,
       limit: 2,
     });
     assert.equal(workflows.length, 1, `Run ${runId} must have one root execution workflow.`);
@@ -69,7 +69,7 @@ export class EffectRecoveryProductRecords {
   ): Promise<{ readonly workflowID: string; readonly workflowName: string }> {
     const workflows = await this.client.listWorkflows({
       parentWorkflowID: rootWorkflowId,
-      workflowName: parallelBranchWorkflowV2Name,
+      workflowName: parallelBranchWorkflowName,
       limit: 10,
     });
     const inspected = await Promise.all(

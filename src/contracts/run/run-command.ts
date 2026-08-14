@@ -52,7 +52,6 @@ export const RunCommandRejectionReasonSchema = Type.Union([
   Type.Literal('unknown_outcome_not_pending'),
   Type.Literal('unknown_outcome_already_resolved'),
   Type.Literal('unknown_outcome_retry_not_permitted'),
-  Type.Literal('unsupported_run_version'),
   Type.Literal('command_not_supported'),
 ]);
 

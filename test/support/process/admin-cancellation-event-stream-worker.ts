@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 import { DBOS } from '@dbos-inc/dbos-sdk';
 
-import { scopeWorkflowV2Id, runWorkflowId } from '../../../src/dbos/workflow-id.js';
+import { runWorkflowId, scopeWorkflowId } from '../../../src/dbos/workflow-id.js';
 import { createRunManager } from '../../../src/index.js';
 import type { RunEvent } from '../../../src/index.js';
 import { createRootScopeId } from '../../../src/pipeline/identity/execution-identity.js';
@@ -76,7 +76,7 @@ const run = async (): Promise<void> => {
 
   await DBOS.cancelWorkflow(runWorkflowId(runId), { cancelChildren: true });
   const childStatus = await waitForCancelledWorkflow(
-    scopeWorkflowV2Id(createRootScopeId({ runId, rootPipelineId: 'main' })),
+    scopeWorkflowId(createRootScopeId({ runId, rootPipelineId: 'main' })),
   );
   const runSnapshot = await manager.waitForTerminal(runId, { timeoutMs: 1_000 });
   const acceptedPrefix = await acceptedPrefixAfterCancellation(subscription, first);

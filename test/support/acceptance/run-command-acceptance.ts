@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import { vi } from 'vitest';
 
-import { scopeWorkflowV2Id } from '../../../src/dbos/workflow-id.js';
+import { scopeWorkflowId } from '../../../src/dbos/workflow-id.js';
 import { isActiveWorkflowStatus } from '../../../src/dbos/workflow-status.js';
 import type { RunCommandReceipt, RunManager, RunScope } from '../../../src/index.js';
 import type { ScenarioStep } from '../../dsl/scenario.js';
@@ -151,7 +151,7 @@ export class RunCommandAcceptance {
       details.scopes
         .filter((scope) => scope.kind !== 'inlineSubpipeline')
         .map(async (scope) => {
-          const status = await DBOS.getWorkflowStatus(scopeWorkflowV2Id(scope.id));
+          const status = await DBOS.getWorkflowStatus(scopeWorkflowId(scope.id));
           assert(status !== null && !isActiveWorkflowStatus(status.status));
         }),
     );

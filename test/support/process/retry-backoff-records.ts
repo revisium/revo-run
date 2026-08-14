@@ -3,10 +3,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 
 import { DBOSClient } from '@dbos-inc/dbos-sdk';
 
-import {
-  isRetryBackoffStepName,
-  runExecutionWorkflowV2Name,
-} from '../../../src/dbos/dbos-names.js';
+import { isRetryBackoffStepName, runExecutionWorkflowName } from '../../../src/dbos/dbos-names.js';
 import { runWorkflowId } from '../../../src/dbos/workflow-id.js';
 import { testDatabaseUrl } from '../test-environment.js';
 
@@ -102,7 +99,7 @@ export class RetryBackoffRecords {
   private async owningWorkflowId(runId: string): Promise<string | undefined> {
     const workflows = await this.client.listWorkflows({
       parentWorkflowID: runWorkflowId(runId),
-      workflowName: runExecutionWorkflowV2Name,
+      workflowName: runExecutionWorkflowName,
       limit: 2,
     });
     assert(workflows.length <= 1, `Run ${runId} has multiple owning scope workflows.`);

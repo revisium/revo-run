@@ -1,25 +1,24 @@
-export const runWorkflowName = 'revo-run.run.v1';
-export const runExecutionWorkflowName = 'revo-run.execution.v1';
-export const parallelBranchWorkflowName = 'revo-run.parallel-branch.v1';
-export const runWorkflowV2Name = 'revo-run.run.v2';
-export const runExecutionWorkflowV2Name = 'revo-run.execution.v2';
-export const parallelBranchWorkflowV2Name = 'revo-run.parallel-branch.v2';
-export const commandDispatchWorkflowName = 'revo-run.command-dispatch.v1';
+export const runWorkflowName = 'revo-run.run';
+export const runExecutionWorkflowName = 'revo-run.execution';
+export const parallelBranchWorkflowName = 'revo-run.parallel-branch';
+export const commandDispatchWorkflowName = 'revo-run.command-dispatch';
 export const runEventStreamName = 'revo-run.events';
-export const runCoordinatorMessageTopic = 'revo-run.coordinator';
 export const runCoordinatorReplyTopic = 'revo-run.coordinator.reply';
-export const runCoordinatorV2Topic = 'revo-run.coordinator.v2';
-export const commandReplyV2Topic = 'revo-run.command.reply.v2';
-export const scopeDirectiveV2Topic = 'revo-run.scope-command.v2';
-export const scopeReplyV2Topic = 'revo-run.scope-command.reply.v2';
-export const scopeSettlementV2Topic = 'revo-run.scope-settlement.v2';
-export const unknownResolutionV2Topic = (attemptId: string): string =>
-  `revo-run.unknown-resolution.v2:${attemptId}`;
+export const runCoordinatorTopic = 'revo-run.coordinator';
+export const commandReplyTopic = 'revo-run.command.reply';
+export const scopeDirectiveTopic = 'revo-run.scope-command';
+export const scopeReplyTopic = 'revo-run.scope-command.reply';
+export const scopeSettlementTopic = 'revo-run.scope-settlement';
+export const scopeAdmissionReplyTopic = (workflowId: string): string =>
+  `revo-run.scope-admission.reply:${workflowId}`;
+export const unknownResolutionTopic = (attemptId: string): string =>
+  `revo-run.unknown-resolution:${attemptId}`;
 
 const runCommandDecisionStepPrefix = 'run-command-decision:';
 const unknownOutcomeResolutionStepPrefix = 'unknown-outcome-resolution:';
 const unknownOutcomeReadyStepPrefix = 'unknown-outcome-ready:';
 const retryBackoffStepPrefix = 'retry-backoff:';
+const parallelJoinDecisionStepPrefix = 'parallel-join-decision:';
 
 export const runCommandDecisionStepName = (commandId: string): string =>
   `${runCommandDecisionStepPrefix}${commandId}`;
@@ -55,6 +54,19 @@ export const unknownOutcomeResolutionStepName = (attemptId: string): string =>
 export const retryBackoffStepName = (attemptId: string): string =>
   `${retryBackoffStepPrefix}${attemptId}`;
 
+export const parallelJoinDecisionStepName = (displayPath: string): string =>
+  `${parallelJoinDecisionStepPrefix}${displayPath}`;
+
+export const isParallelJoinDecisionStepName = (name: string): boolean =>
+  name.startsWith(parallelJoinDecisionStepPrefix);
+
+export const parallelJoinDecisionDisplayPath = (name: string): string => {
+  if (!isParallelJoinDecisionStepName(name)) {
+    throw new Error('DBOS step is not a parallel join decision.');
+  }
+  return name.slice(parallelJoinDecisionStepPrefix.length);
+};
+
 export const isRetryBackoffStepName = (name: string): boolean =>
   name.startsWith(retryBackoffStepPrefix);
 
@@ -63,6 +75,7 @@ export const isUnknownOutcomeResolutionStepName = (name: string): boolean =>
 
 const nodeEffectIntentStepPrefix = 'node-effect-intent:';
 const nodeEffectDecisionStepPrefix = 'node-effect-decision:';
+const nodeEffectSelectionStepPrefix = 'node-effect-selection:';
 const nodeReconciliationStepPrefix = 'node-effect-reconcile:';
 const nodeReconciliationFailureStepPrefix = 'node-effect-reconcile-failed:';
 const nodeReconciliationOutcomeStepPrefix = 'node-effect-reconcile-outcome:';
@@ -92,6 +105,9 @@ export const nodeEffectIntentStepName = (path: string, attemptOrdinal: number): 
 
 export const nodeEffectDecisionStepName = (path: string, attemptOrdinal: number): string =>
   nodeAttemptStepName(nodeEffectDecisionStepPrefix, path, attemptOrdinal);
+
+export const nodeEffectSelectionStepName = (path: string, attemptOrdinal: number): string =>
+  nodeAttemptStepName(nodeEffectSelectionStepPrefix, path, attemptOrdinal);
 
 const reconciliationStepName = (
   prefix: string,

@@ -10,7 +10,7 @@ import {
 import { isValidRunId } from '../../validation/run-id.validator.js';
 import { runWorkflowId } from '../workflow-id.js';
 
-const workflowIdPrefix = 'rr:run:v1:';
+const workflowIdPrefix = 'rr:run:';
 
 export const mapRunStatus = (status: string): RunStatus => {
   switch (status) {

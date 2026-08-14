@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DbosRunRuntime } from '../../src/dbos/dbos-run-runtime.js';
 import { loadAllWorkflowSteps } from '../../src/dbos/read-model/dbos-step-pages.js';
-import { scopeWorkflowV2Id } from '../../src/dbos/workflow-id.js';
+import { scopeWorkflowId } from '../../src/dbos/workflow-id.js';
 import { WorkflowRegistry } from '../../src/dbos/workflow-registry.js';
 import {
   createAuthoredNodeId,
@@ -54,12 +54,12 @@ describe('RR-07 terminal directive draining', () => {
       nodeKind: 'parallel',
     });
     const scopeWorkflowIds = [
-      ['root', scopeWorkflowV2Id(rootScopeId)],
+      ['root', scopeWorkflowId(rootScopeId)],
       ...['first', 'second'].map(
         (branchKey) =>
           [
             branchKey,
-            scopeWorkflowV2Id(
+            scopeWorkflowId(
               createParallelBranchScopeId({
                 parentScopeId: rootScopeId,
                 authoredNodeId,

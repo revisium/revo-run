@@ -5,7 +5,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { isNodeEffectDecisionStepName } from '../../src/dbos/dbos-names.js';
-import { scopeWorkflowV2Id } from '../../src/dbos/workflow-id.js';
+import { scopeWorkflowId } from '../../src/dbos/workflow-id.js';
 import { createRunManager } from '../../src/index.js';
 import type {
   RunEvent,
@@ -96,7 +96,7 @@ describe('task retry', () => {
 
     const scopeId = requests[0]?.scopeId;
     expect(scopeId).toBeDefined();
-    const steps = await DBOS.listWorkflowSteps(scopeWorkflowV2Id(scopeId ?? ''));
+    const steps = await DBOS.listWorkflowSteps(scopeWorkflowId(scopeId ?? ''));
     expect(
       steps?.filter(({ name }) => isNodeEffectDecisionStepName(name)).map(({ name }) => name),
     ).toStrictEqual(['node-effect-decision:1:main/work', 'node-effect-decision:2:main/work']);
@@ -218,7 +218,7 @@ describe('task retry', () => {
       await vi.waitFor(() => expect(requests).toHaveLength(1));
       const scopeId = requests[0]?.scopeId;
       expect(scopeId).toBeDefined();
-      const owningWorkflowId = scopeWorkflowV2Id(scopeId ?? '');
+      const owningWorkflowId = scopeWorkflowId(scopeId ?? '');
       const sleep = await records.waitForPositiveDurationSleep(runId);
       await expect(DBOS.getWorkflowStatus(owningWorkflowId)).resolves.toMatchObject({
         status: 'PENDING',

@@ -34,7 +34,7 @@ import {
   parseCommandDispatchInput,
   parseCommandDispatchResult,
 } from '../validation/run-command-workflow.validator.js';
-import { runWorkflowName, runWorkflowV2Name } from './dbos-names.js';
+import { runWorkflowName } from './dbos-names.js';
 import { loadRunDetails } from './read-model/load-run-details.js';
 import { loadRunPage } from './read-model/load-run-page.js';
 import { mapRunSnapshot, RunOwnershipError } from './read-model/map-run-snapshot.js';
@@ -44,16 +44,6 @@ import { commandWorkflowId, runWorkflowId } from './workflow-id.js';
 import type { WorkflowRegistry } from './workflow-registry.js';
 
 const applicationName = 'revo-run';
-
-const knownRunWorkflowName = (workflowName: string): string | undefined => {
-  if (workflowName === runWorkflowName) {
-    return runWorkflowName;
-  }
-  if (workflowName === runWorkflowV2Name) {
-    return runWorkflowV2Name;
-  }
-  return undefined;
-};
 
 export class DbosRunRuntime {
   private readonly databaseUrl: string;
@@ -139,11 +129,10 @@ export class DbosRunRuntime {
     }
 
     try {
-      const workflowName = knownRunWorkflowName(status.workflowName);
-      if (workflowName === undefined) {
+      if (status.workflowName !== runWorkflowName) {
         return undefined;
       }
-      return mapRunSnapshot(status, workflowName, runId);
+      return mapRunSnapshot(status, runWorkflowName, runId);
     } catch (error) {
       if (error instanceof RunOwnershipError) {
         return undefined;
@@ -189,8 +178,10 @@ export class DbosRunRuntime {
       if (status === null) {
         throw new Error('Run disappeared while loading details.');
       }
-      const version = status.workflowName === runWorkflowV2Name ? 'v2' : 'v1';
-      return await loadRunDetails(run, version);
+      if (status.workflowName !== runWorkflowName) {
+        return undefined;
+      }
+      return await loadRunDetails(run);
     } catch {
       throw new RunManagerError('run_read_failed');
     }
@@ -244,7 +235,7 @@ export class DbosRunRuntime {
     if (status === null) {
       throw new RunManagerError('run_admission_failed');
     }
-    if (status.workflowName !== runWorkflowV2Name) {
+    if (status.workflowName !== runWorkflowName) {
       throw new RunManagerError('run_id_conflict');
     }
 
@@ -275,12 +266,12 @@ export class DbosRunRuntime {
     }
     const durableInput: CommandDispatchWorkflowInput = { commandId, command };
     try {
+      const workflowId = commandWorkflowId(commandId);
       const handle = await DBOS.startWorkflow(this.workflows.commandDispatch, {
-        workflowID: commandWorkflowId(commandId),
+        workflowID: workflowId,
       })(durableInput);
-      const storedArguments = await DBOS.retrieveWorkflow(
-        commandWorkflowId(commandId),
-      ).getWorkflowInputs<unknown[]>();
+      const storedArguments =
+        await DBOS.retrieveWorkflow(workflowId).getWorkflowInputs<unknown[]>();
       const storedInput = parseCommandDispatchInput(storedArguments[0]);
       if (!isDeepStrictEqual(storedInput, durableInput)) {
         throw new RunManagerError('run_command_failed', commandId);

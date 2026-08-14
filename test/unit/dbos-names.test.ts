@@ -14,10 +14,10 @@ import {
 } from '../../src/dbos/dbos-names.js';
 
 describe('DBOS workflow names', () => {
-  it('uses the stable first-release namespace for every workflow kind', () => {
-    expect(runWorkflowName).toBe('revo-run.run.v1');
-    expect(runExecutionWorkflowName).toBe('revo-run.execution.v1');
-    expect(parallelBranchWorkflowName).toBe('revo-run.parallel-branch.v1');
+  it('uses the canonical namespace for every workflow kind', () => {
+    expect(runWorkflowName).toBe('revo-run.run');
+    expect(runExecutionWorkflowName).toBe('revo-run.execution');
+    expect(parallelBranchWorkflowName).toBe('revo-run.parallel-branch');
   });
 });
 

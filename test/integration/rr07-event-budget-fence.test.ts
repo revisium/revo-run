@@ -26,7 +26,9 @@ describe('RR-07 event-budget command fence', () => {
       expect(process.dispatched('main/work/a')).toBe(0);
       await process.waitFor({ kind: 'details' });
       expect(process.reportedDetails().commands).toStrictEqual([]);
-      expect(process.reportedDetails().nodeStatuses).toStrictEqual([]);
+      expect(process.reportedDetails().nodeStatuses).toStrictEqual([
+        { path: 'main/work/b', status: 'cancelled' },
+      ]);
       await process.waitFor({ kind: 'events' });
       expect(
         process

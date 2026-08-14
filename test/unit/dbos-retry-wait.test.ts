@@ -11,7 +11,7 @@ vi.mock('@dbos-inc/dbos-sdk', async (importOriginal) => {
 });
 
 import type { RunExecutorRequest } from '../../src/contracts/executor/run-executor.js';
-import { waitForDurableRetryV1 } from '../../src/dbos/wait/dbos-retry-wait.js';
+import { waitForDurableRetry } from '../../src/dbos/wait/dbos-retry-wait.js';
 
 const request: RunExecutorRequest = {
   runId: 'run-1',
@@ -31,14 +31,14 @@ const request: RunExecutorRequest = {
   input: {},
 };
 
-describe('v1 durable retry wait', () => {
+describe('durable retry wait', () => {
   beforeEach(() => {
     dbos.runStep.mockReset().mockImplementation(async (callback) => callback());
     dbos.sleep.mockReset().mockResolvedValue(undefined);
   });
 
   it('preserves the frozen sleep-only durable function order', async () => {
-    await waitForDurableRetryV1(request, 5_000);
+    await waitForDurableRetry(request, 5_000);
 
     expect(dbos.runStep).not.toHaveBeenCalled();
     expect(dbos.sleep).toHaveBeenCalledWith(5_000);

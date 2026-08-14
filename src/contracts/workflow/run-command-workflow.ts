@@ -4,7 +4,7 @@ import type { DeepReadonly } from '../deep-readonly.js';
 import {
   AttemptIdSchema,
   ScopeParentWorkflowIdSchema,
-  ScopeWorkflowV2IdSchema,
+  ScopeWorkflowIdSchema,
 } from '../execution-identity.js';
 import { RunExecutorRequestSchema } from '../executor/run-executor.js';
 import { NodeOutputSchema } from '../pipeline/node-output.js';
@@ -76,7 +76,7 @@ export type CommandDispatchWorkflowResult = DeepReadonly<
 export const ScopeReadySchema = Type.Object(
   {
     kind: Type.Literal('scopeReady'),
-    workflowId: ScopeWorkflowV2IdSchema,
+    workflowId: ScopeWorkflowIdSchema,
     parentWorkflowId: ScopeParentWorkflowIdSchema,
   },
   { additionalProperties: false },
@@ -85,7 +85,7 @@ export const ScopeReadySchema = Type.Object(
 export const ScopeBoundarySchema = Type.Object(
   {
     kind: Type.Literal('scopeBoundary'),
-    workflowId: ScopeWorkflowV2IdSchema,
+    workflowId: ScopeWorkflowIdSchema,
     boundaryId: Type.String({ minLength: 1 }),
   },
   { additionalProperties: false },
@@ -94,7 +94,7 @@ export const ScopeBoundarySchema = Type.Object(
 export const ScopeFinishSchema = Type.Object(
   {
     kind: Type.Literal('scopeFinish'),
-    workflowId: ScopeWorkflowV2IdSchema,
+    workflowId: ScopeWorkflowIdSchema,
   },
   { additionalProperties: false },
 );
@@ -119,7 +119,7 @@ export type ScopeSettlementAcknowledgement = DeepReadonly<
 export const UnknownOutcomeWaitingSchema = Type.Object(
   {
     kind: Type.Literal('unknownOutcomeWaiting'),
-    workflowId: ScopeWorkflowV2IdSchema,
+    workflowId: ScopeWorkflowIdSchema,
     request: RunExecutorRequestSchema,
     attemptOrdinal: PositiveSafeIntegerSchema,
     reconciliationRound: PositiveSafeIntegerSchema,

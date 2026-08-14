@@ -13,7 +13,7 @@ import { waitForRunStatus } from '../support/run-manager.fixture.js';
 import { testDatabaseUrl } from '../support/test-environment.js';
 
 const foreignWorkflow = DBOS.registerWorkflow(async (value: string) => value, {
-  name: 'revo-run.test.foreign-observation.v1',
+  name: 'revo-run.test.foreign-observation',
 });
 
 const activePlan = () =>

@@ -381,7 +381,7 @@
       "evidence": [
         {
           "file": "test/integration/run-details-observation.test.ts",
-          "anchor": "projects root and nested parallel child workflows with their completed attempts"
+          "anchor": "projects root and nested branch scopes in traversal order"
         }
       ]
     },

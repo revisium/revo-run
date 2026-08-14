@@ -275,7 +275,7 @@ describe('RR-05 repository-owned assurance artifacts', () => {
     const { bytes, value } = load('attempt-retry-timeout-golden-vectors.json', goldenValidator);
 
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '50c1c5eb02ce961a4ab8f98bf259a0b75b98537c0ba60984ca58c8487c3b551b',
+      '710071813510064282663aa12a5895821568b475bf63c17fd72e74b745ebdd41',
     );
     expect(value.sourceRevision).toBe(sourceRevision);
     expect(new Set(value.vectors.map(({ id }) => id)).size).toBe(value.vectors.length);

@@ -127,6 +127,7 @@ export const parallelJoinScenarios: readonly RunScenario[] = [
       expectRunStatus('running'),
       completeNode('main/checks/tests'),
       expectRunStatus('failed'),
+      { kind: 'expectNoActiveDurableScopes' },
     ],
   }),
   scenario({

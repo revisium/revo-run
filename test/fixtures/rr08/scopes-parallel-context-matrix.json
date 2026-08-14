@@ -1,0 +1,438 @@
+{
+  "metadata": {
+    "contract": "rr-08-scopes-parallel",
+    "artifactVersion": 1,
+    "sourceRevision": "a959aa4203fb6bc66e642aa8c054f3c689c8f141",
+    "cloudRevision": "Xx-qwSEgx953UpLTLlTjo"
+  },
+  "axes": {
+    "joinKind": ["all", "any", "threshold"],
+    "settlementOrder": ["authored", "reverse", "interleaved"],
+    "remaining": ["cancel", "drain"],
+    "decisionOutcome": ["succeeded", "failed"],
+    "admission": ["initial", "beforeDecision", "afterDecision"],
+    "startDirective": ["start", "startCancelled"],
+    "branchDisposition": ["execute", "settlementOnly", "skipped"],
+    "providerState": ["queued", "active", "settled"],
+    "operation": ["execute", "reconcile"],
+    "processBoundary": [
+      "sameProcess",
+      "crashAfterSelection",
+      "crashAfterExecute",
+      "crashAfterDecision"
+    ],
+    "capacity": ["one", "two", "sharedAcrossBranches"],
+    "observation": ["running", "cancelled", "skipped", "terminalJoin"],
+    "protocolEvidence": ["singleRegistration", "currentContractSurface", "noncanonicalRejected"]
+  },
+  "proofCases": [
+    {
+      "id": "rr034-threshold-cancel-success",
+      "settlementOrder": "authored",
+      "joinKind": "threshold",
+      "remaining": "cancel",
+      "decisionOutcome": "succeeded",
+      "admission": "initial",
+      "startDirective": "start",
+      "branchDisposition": "execute",
+      "providerState": "active",
+      "processBoundary": "sameProcess",
+      "capacity": "sharedAcrossBranches",
+      "observation": "cancelled",
+      "scenario": "rr-034",
+      "evidence": {
+        "testFile": "test/acceptance/pipeline-execution.test.ts",
+        "testName": "executes the planned scenario",
+        "assertionFile": "test/acceptance/scenarios/parallel/cancel.scenarios.ts",
+        "assertions": [
+          "intentId: 'rr-034'",
+          "count: 2",
+          "expectEvent('nodeExecution.cancelled'",
+          "expectRunStatus('succeeded')"
+        ]
+      }
+    },
+    {
+      "id": "rr035-threshold-unreachable",
+      "joinKind": "threshold",
+      "settlementOrder": "authored",
+      "remaining": "cancel",
+      "decisionOutcome": "failed",
+      "admission": "initial",
+      "startDirective": "start",
+      "branchDisposition": "execute",
+      "providerState": "active",
+      "processBoundary": "sameProcess",
+      "capacity": "sharedAcrossBranches",
+      "observation": "cancelled",
+      "scenario": "rr-035",
+      "evidence": {
+        "testFile": "test/acceptance/pipeline-execution.test.ts",
+        "testName": "executes the planned scenario",
+        "assertionFile": "test/acceptance/scenarios/parallel/cancel.scenarios.ts",
+        "assertions": [
+          "intentId: 'rr-035'",
+          "failNode('main/review/a'",
+          "failNode('main/review/b'",
+          "expectRunStatus('failed')"
+        ]
+      }
+    },
+    {
+      "id": "rr078-parallel-recovery",
+      "joinKind": "all",
+      "settlementOrder": "authored",
+      "remaining": "drain",
+      "decisionOutcome": "succeeded",
+      "admission": "beforeDecision",
+      "startDirective": "start",
+      "branchDisposition": "execute",
+      "providerState": "active",
+      "processBoundary": "crashAfterExecute",
+      "capacity": "two",
+      "observation": "running",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/acceptance/pipeline-execution.test.ts",
+        "testName": "executes the planned scenario",
+        "assertionFile": "test/support/process/run-parallel-recovery-scenario.ts",
+        "assertions": [
+          "scenario.intentId !== 'rr-078'",
+          "await firstProcess.kill()",
+          "recoveredProcess.dispatched('main/work/a') !== 0",
+          "status: 'succeeded'"
+        ]
+      }
+    },
+    {
+      "id": "settlement-only-drain",
+      "joinKind": "any",
+      "settlementOrder": "authored",
+      "remaining": "drain",
+      "decisionOutcome": "succeeded",
+      "admission": "afterDecision",
+      "startDirective": "start",
+      "branchDisposition": "settlementOnly",
+      "providerState": "settled",
+      "processBoundary": "sameProcess",
+      "capacity": "one",
+      "observation": "terminalJoin",
+      "scenario": "rr-034",
+      "evidence": {
+        "testFile": "test/integration/rr08-scope-admission.test.ts",
+        "testName": "starts drain-only branches after a decision and settles them without provider calls",
+        "assertionFile": "test/integration/rr08-scope-admission.test.ts",
+        "assertions": [
+          "remaining: 'drain'",
+          "executor.expectNotDispatched('main/review/second')",
+          "['main/review/second', 'cancelled']"
+        ]
+      }
+    },
+    {
+      "id": "cancel-before-admission",
+      "admission": "afterDecision",
+      "startDirective": "startCancelled",
+      "branchDisposition": "execute",
+      "providerState": "queued",
+      "operation": "execute",
+      "processBoundary": "sameProcess",
+      "capacity": "one",
+      "observation": "cancelled",
+      "scenario": "rr-034",
+      "evidence": {
+        "testFile": "test/integration/rr08-scope-admission.test.ts",
+        "testName": "starts a cancel-fenced child, consumes startCancelled before provider work, and settles it",
+        "assertionFile": "test/integration/rr08-scope-admission.test.ts",
+        "assertions": [
+          "pauseBeforeAdmission: true",
+          "process.dispatched('main/work/a')).toBe(0)",
+          "!isActiveWorkflowStatus(status)"
+        ]
+      }
+    },
+    {
+      "id": "never-admitted-skipped",
+      "joinKind": "any",
+      "settlementOrder": "authored",
+      "remaining": "cancel",
+      "decisionOutcome": "succeeded",
+      "admission": "afterDecision",
+      "startDirective": "start",
+      "branchDisposition": "skipped",
+      "providerState": "settled",
+      "processBoundary": "sameProcess",
+      "capacity": "one",
+      "observation": "skipped",
+      "scenario": "rr-034",
+      "evidence": {
+        "testFile": "test/integration/rr08-scope-admission.test.ts",
+        "testName": "keeps pending cancel branches never admitted and reports them as skipped in authored order",
+        "assertionFile": "test/integration/rr08-scope-admission.test.ts",
+        "assertions": [
+          "skippedBranchKeys: ['alpha', 'middle']",
+          "details?.skippedParallelBranches.map",
+          "toEqual(['main/review/zebra'])"
+        ]
+      }
+    },
+    {
+      "id": "crash-after-join-decision",
+      "joinKind": "all",
+      "settlementOrder": "authored",
+      "remaining": "drain",
+      "decisionOutcome": "succeeded",
+      "admission": "initial",
+      "startDirective": "start",
+      "branchDisposition": "execute",
+      "providerState": "settled",
+      "processBoundary": "crashAfterDecision",
+      "capacity": "two",
+      "observation": "terminalJoin",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/integration/rr08-scope-admission.test.ts",
+        "testName": "recovers after the durable join decision without duplicating settled effects",
+        "assertionFile": "test/integration/rr08-scope-admission.test.ts",
+        "assertions": [
+          "pauseAfterDecision: true",
+          "kind: 'afterDecision'",
+          "recovered.dispatched('main/work/a')).toBe(0)"
+        ]
+      }
+    },
+    {
+      "id": "abandoned-execute-capacity",
+      "providerState": "queued",
+      "operation": "execute",
+      "processBoundary": "sameProcess",
+      "capacity": "one",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/unit/rr08-node-execution-step.test.ts",
+        "testName": "retains execute capacity until an abandoned abort-ignoring provider promise settles",
+        "assertionFile": "test/unit/rr08-node-execution-step.test.ts",
+        "assertions": ["expect(active).toBe(1)", "expect(maximumActive).toBe(1)"]
+      }
+    },
+    {
+      "id": "abandoned-reconcile-capacity",
+      "providerState": "queued",
+      "operation": "reconcile",
+      "processBoundary": "sameProcess",
+      "capacity": "one",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/unit/rr08-node-execution-step.test.ts",
+        "testName": "retains reconcile capacity until an abandoned abort-ignoring provider promise settles",
+        "assertionFile": "test/unit/rr08-node-execution-step.test.ts",
+        "assertions": ["expect(reconcile).toHaveBeenCalledOnce()", "expect(maximumActive).toBe(1)"]
+      }
+    },
+    {
+      "id": "root-terminal-provider-idle-barrier",
+      "providerState": "active",
+      "operation": "execute",
+      "processBoundary": "sameProcess",
+      "capacity": "one",
+      "observation": "running",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/integration/rr08-scope-admission.test.ts",
+        "testName": "keeps the root nonterminal until an abort-ignoring timed-out provider settles",
+        "assertionFile": "test/integration/rr08-scope-admission.test.ts",
+        "assertions": [
+          "kind: 'attemptObserved', path: 'main/work', status: 'timedOut'",
+          "status: 'PENDING'",
+          "process.complete('main/work'",
+          "kind: 'terminal', status: 'succeeded'"
+        ]
+      }
+    },
+    {
+      "id": "execute-late-success-cancellation-dominates",
+      "providerState": "settled",
+      "operation": "execute",
+      "processBoundary": "sameProcess",
+      "capacity": "one",
+      "observation": "cancelled",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/unit/rr08-node-execution-step.test.ts",
+        "testName": "persists cancellation when execute resolves successfully after ignoring abort",
+        "assertionFile": "test/unit/rr08-node-execution-step.test.ts",
+        "assertions": [
+          "cancellation.cancelScope(request.scopeId)",
+          "call.resolve({ kind: 'completed', outcome: 'too-late' })",
+          "resolves.toEqual({ kind: 'cancelled' })"
+        ]
+      }
+    },
+    {
+      "id": "execute-late-rejection-cancellation-dominates",
+      "providerState": "settled",
+      "operation": "execute",
+      "processBoundary": "sameProcess",
+      "capacity": "one",
+      "observation": "cancelled",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/unit/rr08-node-execution-step.test.ts",
+        "testName": "persists cancellation when execute rejects with a provider-owned error after abort",
+        "assertionFile": "test/unit/rr08-node-execution-step.test.ts",
+        "assertions": [
+          "call.reject(new Error('provider rejected after cancellation'))",
+          "resolves.toEqual({ kind: 'cancelled' })"
+        ]
+      }
+    },
+    {
+      "id": "reconcile-late-success-cancellation-dominates",
+      "providerState": "settled",
+      "operation": "reconcile",
+      "processBoundary": "sameProcess",
+      "capacity": "one",
+      "observation": "cancelled",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/unit/rr08-node-execution-step.test.ts",
+        "testName": "persists cancellation when reconcile resolves successfully after ignoring abort",
+        "assertionFile": "test/unit/rr08-node-execution-step.test.ts",
+        "assertions": [
+          "expect(reconcile).toHaveBeenCalledOnce()",
+          "kind: 'effectCompleted'",
+          "resolves.toEqual({ kind: 'cancelled' })"
+        ]
+      }
+    },
+    {
+      "id": "reconcile-late-rejection-cancellation-dominates",
+      "providerState": "settled",
+      "operation": "reconcile",
+      "processBoundary": "sameProcess",
+      "capacity": "one",
+      "observation": "cancelled",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/unit/rr08-node-execution-step.test.ts",
+        "testName": "persists cancellation when reconcile rejects with a provider-owned error after abort",
+        "assertionFile": "test/unit/rr08-node-execution-step.test.ts",
+        "assertions": [
+          "call.reject(new Error('reconcile rejected after cancellation'))",
+          "resolves.toEqual({ kind: 'cancelled' })"
+        ]
+      }
+    },
+    {
+      "id": "crash-after-selection",
+      "providerState": "active",
+      "processBoundary": "crashAfterSelection",
+      "capacity": "sharedAcrossBranches",
+      "observation": "running",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/integration/effect-recovery-process.test.ts",
+        "testName": "fences recovered execute in the registered %s workflow",
+        "assertionFile": "test/integration/effect-recovery-process.test.ts",
+        "assertions": [
+          "await firstProcess.kill()",
+          "expect(recoveredProcess.dispatched(path, 1)).toBe(0)",
+          "kind: 'mustReconcile'"
+        ]
+      }
+    },
+    {
+      "id": "golden-any-reverse",
+      "joinKind": "any",
+      "settlementOrder": "reverse",
+      "remaining": "drain",
+      "decisionOutcome": "succeeded",
+      "processBoundary": "sameProcess",
+      "scenario": "rr-034",
+      "evidence": {
+        "testFile": "test/unit/rr08-assurance-artifacts.test.ts",
+        "testName": "executes join vectors and keeps the decisive prefix immutable after late settlements",
+        "assertionFile": "test/fixtures/rr08/scopes-parallel-golden-vectors.json",
+        "assertions": ["any-succeeds-out-of-order", "\"decisionAfter\": 2"]
+      }
+    },
+    {
+      "id": "golden-threshold-interleaved",
+      "joinKind": "threshold",
+      "settlementOrder": "interleaved",
+      "remaining": "cancel",
+      "decisionOutcome": "failed",
+      "processBoundary": "sameProcess",
+      "scenario": "rr-035",
+      "evidence": {
+        "testFile": "test/unit/rr08-assurance-artifacts.test.ts",
+        "testName": "executes join vectors and keeps the decisive prefix immutable after late settlements",
+        "assertionFile": "test/fixtures/rr08/scopes-parallel-golden-vectors.json",
+        "assertions": ["threshold-becomes-unreachable", "\"observedBranchKeys\":"]
+      }
+    },
+    {
+      "id": "single-registration",
+      "protocolEvidence": "singleRegistration",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/unit/rr07-single-protocol.test.ts",
+        "testName": "registers exactly one workflow of each current contract kind",
+        "assertionFile": "test/unit/rr07-single-protocol.test.ts",
+        "assertions": [
+          "registerWorkflow.mock.calls",
+          "parallelBranchWorkflowName",
+          "commandDispatchWorkflowName"
+        ]
+      }
+    },
+    {
+      "id": "current-contract-surface",
+      "protocolEvidence": "currentContractSurface",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/unit/rr07-single-protocol.test.ts",
+        "testName": "registers exactly one workflow of each current contract kind",
+        "assertionFile": "test/unit/rr07-single-protocol.test.ts",
+        "assertions": [
+          "expect(registerWorkflow).toHaveBeenCalledTimes(4)",
+          "expect(registry).toHaveProperty('run')",
+          "expect(registry).toHaveProperty('commandDispatch')"
+        ]
+      }
+    },
+    {
+      "id": "noncanonical-rejected",
+      "protocolEvidence": "noncanonicalRejected",
+      "scenario": "rr-078",
+      "evidence": {
+        "testFile": "test/unit/rr07-single-protocol.test.ts",
+        "testName": "rejects noncanonical workflow names and foreign ID namespaces",
+        "assertionFile": "test/unit/rr07-single-protocol.test.ts",
+        "assertions": ["foreign.workflow", "foreign:run:Run_1", "Workflow is not a Revo run."]
+      }
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "start-cancelled-plus-process-crash",
+      "coordinates": {
+        "startDirective": "startCancelled",
+        "processBoundary": "crashAfterDecision"
+      },
+      "reason": "The start fence and decision-recovery boundaries are proven independently; no atomic cross-product claim is made.",
+      "sourceFile": "test/integration/rr08-scope-admission.test.ts",
+      "sourceAssertions": ["consumes startCancelled", "recovers after the durable join decision"]
+    },
+    {
+      "id": "ignored-abort-plus-process-restart",
+      "coordinates": {
+        "capacity": "sharedAcrossBranches",
+        "processBoundary": "crashAfterSelection"
+      },
+      "reason": "Process recovery and ignored-abort permit lifetime are separate executable boundaries; no atomic cross-product claim is made.",
+      "sourceFile": "test/unit/rr08-node-execution-step.test.ts",
+      "sourceAssertions": ["abandoned abort-ignoring provider promise", "maximumActive"]
+    }
+  ]
+}

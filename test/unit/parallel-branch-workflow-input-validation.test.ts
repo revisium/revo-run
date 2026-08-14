@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { parseParallelBranchWorkflowInput } from '../../src/validation/parallel-branch-workflow-input.validator.js';
 
+const scopeId = `sc1_${'a'.repeat(43)}`;
+const workflowId = `rr:scope:${scopeId}`;
+
 const workflowInput = () => ({
   runId: 'run_01',
-  scopeId: `sc1_${'a'.repeat(43)}`,
+  scopeId,
   branchKey: 'security',
   node: { kind: 'task', key: 'scan' },
   pipelineId: 'main',
@@ -13,6 +16,14 @@ const workflowInput = () => ({
   parentPath: 'checks',
   inheritedOutputs: [],
   maximumParallelism: 2,
+  parentWorkflowId: `rr:scope:sc1_${'b'.repeat(43)}`,
+  disposition: 'execute',
+  startFence: {
+    requestId: 'request:security',
+    admissionId: 'admission:security',
+    workflowId,
+    directive: 'start',
+  },
 });
 
 describe('parallel branch workflow input validation', () => {

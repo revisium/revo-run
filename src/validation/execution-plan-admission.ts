@@ -11,9 +11,6 @@ export const executionPlanAdmissionError = (
   reconciliationAvailable: boolean,
 ): RunManagerErrorCode | undefined => {
   const allNodes = nodes(plan);
-  if (allNodes.some((node) => node.kind === 'parallel' && node.join.remaining === 'cancel')) {
-    return 'invalid_execution_plan';
-  }
   if (
     !reconciliationAvailable &&
     allNodes.some((node) => node.kind === 'task' && node.recovery?.reconciliation === 'required')

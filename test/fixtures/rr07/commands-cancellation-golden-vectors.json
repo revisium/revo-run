@@ -8,14 +8,17 @@
   "identities": {
     "commandId": "cmd_00000000-0000-4000-8000-000000000000",
     "attemptId": "at1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-    "scopeWorkflowId": "rr:scope:v2:sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "scopeWorkflowId": "rr:scope:sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   },
   "publicInputs": [
     {
       "id": "cancel.valid",
       "schema": "cancel",
       "valid": true,
-      "value": { "runId": "run-1", "actorId": "operator" }
+      "value": {
+        "runId": "run-1",
+        "actorId": "operator"
+      }
     },
     {
       "id": "cancel.command-id-excess",
@@ -38,7 +41,12 @@
         "resolution": {
           "kind": "adoptSuccess",
           "outcome": "released",
-          "output": { "release": { "kind": "json", "value": "approved" } }
+          "output": {
+            "release": {
+              "kind": "json",
+              "value": "approved"
+            }
+          }
         }
       }
     },
@@ -50,7 +58,9 @@
         "runId": "run-1",
         "attemptId": "at1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "actorId": "operator",
-        "resolution": { "kind": "markFailed" }
+        "resolution": {
+          "kind": "markFailed"
+        }
       }
     },
     {
@@ -61,7 +71,9 @@
         "runId": "run-1",
         "attemptId": "at1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "actorId": "operator",
-        "resolution": { "kind": "retry" }
+        "resolution": {
+          "kind": "retry"
+        }
       }
     },
     {
@@ -72,7 +84,10 @@
         "runId": "run-1",
         "attemptId": "at1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "actorId": "operator",
-        "resolution": { "kind": "markFailed", "errorCode": "unsafe" }
+        "resolution": {
+          "kind": "markFailed",
+          "errorCode": "unsafe"
+        }
       }
     },
     {
@@ -83,22 +98,48 @@
         "runId": "run-1",
         "attemptId": "at1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "actorId": "operator",
-        "resolution": { "kind": "retry", "outcome": "released" }
+        "resolution": {
+          "kind": "retry",
+          "outcome": "released"
+        }
       }
     }
   ],
   "commandIds": [
-    { "id": "uuid-v4", "valid": true, "value": "cmd_00000000-0000-4000-8000-000000000000" },
-    { "id": "missing-prefix", "valid": false, "value": "00000000-0000-4000-8000-000000000000" },
-    { "id": "wrong-version", "valid": false, "value": "cmd_00000000-0000-5000-8000-000000000000" },
-    { "id": "wrong-variant", "valid": false, "value": "cmd_00000000-0000-4000-7000-000000000000" },
-    { "id": "wrong-case", "valid": false, "value": "cmd_00000000-0000-4000-8000-00000000000A" }
+    {
+      "id": "uuid-v4",
+      "valid": true,
+      "value": "cmd_00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "missing-prefix",
+      "valid": false,
+      "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "id": "wrong-version",
+      "valid": false,
+      "value": "cmd_00000000-0000-5000-8000-000000000000"
+    },
+    {
+      "id": "wrong-variant",
+      "valid": false,
+      "value": "cmd_00000000-0000-4000-7000-000000000000"
+    },
+    {
+      "id": "wrong-case",
+      "valid": false,
+      "value": "cmd_00000000-0000-4000-8000-00000000000A"
+    }
   ],
   "receipts": [
     {
       "id": "accepted",
       "valid": true,
-      "value": { "status": "accepted", "commandId": "cmd_00000000-0000-4000-8000-000000000000" }
+      "value": {
+        "status": "accepted",
+        "commandId": "cmd_00000000-0000-4000-8000-000000000000"
+      }
     },
     {
       "id": "rejected",
@@ -125,7 +166,13 @@
       "valid": true,
       "value": {
         "commandId": "cmd_00000000-0000-4000-8000-000000000000",
-        "command": { "kind": "cancelRun", "input": { "runId": "run-1", "actorId": "operator" } }
+        "command": {
+          "kind": "cancelRun",
+          "input": {
+            "runId": "run-1",
+            "actorId": "operator"
+          }
+        }
       }
     },
     {
@@ -139,7 +186,9 @@
             "runId": "run-1",
             "attemptId": "at1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             "actorId": "operator",
-            "resolution": { "kind": "retry" }
+            "resolution": {
+              "kind": "retry"
+            }
           }
         }
       }
@@ -149,7 +198,9 @@
       "valid": true,
       "value": {
         "commandId": "cmd_00000000-0000-4000-8000-000000000000",
-        "command": { "kind": "answerGate" }
+        "command": {
+          "kind": "answerGate"
+        }
       }
     },
     {
@@ -157,7 +208,12 @@
       "valid": false,
       "value": {
         "commandId": "cmd_00000000-0000-4000-8000-000000000000",
-        "command": { "kind": "answerGate", "input": { "runId": "run-1" } }
+        "command": {
+          "kind": "answerGate",
+          "input": {
+            "runId": "run-1"
+          }
+        }
       }
     }
   ],
@@ -167,13 +223,19 @@
       "valid": true,
       "value": {
         "status": "receipt",
-        "receipt": { "status": "accepted", "commandId": "cmd_00000000-0000-4000-8000-000000000000" }
+        "receipt": {
+          "status": "accepted",
+          "commandId": "cmd_00000000-0000-4000-8000-000000000000"
+        }
       }
     },
     {
       "id": "run-not-found",
       "valid": true,
-      "value": { "status": "runNotFound", "commandId": "cmd_00000000-0000-4000-8000-000000000000" }
+      "value": {
+        "status": "runNotFound",
+        "commandId": "cmd_00000000-0000-4000-8000-000000000000"
+      }
     },
     {
       "id": "dispatch-failed",
@@ -189,24 +251,93 @@
       "value": {
         "status": "runNotFound",
         "commandId": "cmd_00000000-0000-4000-8000-000000000000",
-        "receipt": { "status": "accepted", "commandId": "cmd_00000000-0000-4000-8000-000000000000" }
+        "receipt": {
+          "status": "accepted",
+          "commandId": "cmd_00000000-0000-4000-8000-000000000000"
+        }
       }
     }
   ],
   "scopeDirectives": [
-    { "id": "continue", "valid": true, "value": { "kind": "continue" } },
-    { "id": "cancel", "valid": true, "value": { "kind": "cancel" } },
-    { "id": "fail", "valid": true, "value": { "kind": "fail" } },
-    { "id": "directive-excess", "valid": false, "value": { "kind": "cancel", "reason": "unsafe" } }
+    {
+      "id": "continue",
+      "valid": true,
+      "value": {
+        "kind": "continue"
+      }
+    },
+    {
+      "id": "cancel",
+      "valid": true,
+      "value": {
+        "kind": "cancel"
+      }
+    },
+    {
+      "id": "fail",
+      "valid": true,
+      "value": {
+        "kind": "fail"
+      }
+    },
+    {
+      "id": "directive-excess",
+      "valid": false,
+      "value": {
+        "kind": "cancel",
+        "reason": "unsafe"
+      }
+    }
   ],
   "scopeSettlementAcknowledgements": [
-    { "id": "settled", "valid": true, "value": { "kind": "settled" } },
-    { "id": "missing-kind", "valid": false, "value": {} },
-    { "id": "malformed-kind", "valid": false, "value": { "kind": 1 } },
-    { "id": "settled-excess", "valid": false, "value": { "kind": "settled", "extra": true } },
-    { "id": "continue-cross-discriminant", "valid": false, "value": { "kind": "continue" } },
-    { "id": "cancel-cross-discriminant", "valid": false, "value": { "kind": "cancel" } },
-    { "id": "fail-cross-discriminant", "valid": false, "value": { "kind": "fail" } },
+    {
+      "id": "settled",
+      "valid": true,
+      "value": {
+        "kind": "settled"
+      }
+    },
+    {
+      "id": "missing-kind",
+      "valid": false,
+      "value": {}
+    },
+    {
+      "id": "malformed-kind",
+      "valid": false,
+      "value": {
+        "kind": 1
+      }
+    },
+    {
+      "id": "settled-excess",
+      "valid": false,
+      "value": {
+        "kind": "settled",
+        "extra": true
+      }
+    },
+    {
+      "id": "continue-cross-discriminant",
+      "valid": false,
+      "value": {
+        "kind": "continue"
+      }
+    },
+    {
+      "id": "cancel-cross-discriminant",
+      "valid": false,
+      "value": {
+        "kind": "cancel"
+      }
+    },
+    {
+      "id": "fail-cross-discriminant",
+      "valid": false,
+      "value": {
+        "kind": "fail"
+      }
+    },
     {
       "id": "retry-cross-discriminant",
       "valid": false,
@@ -225,7 +356,12 @@
         "kind": "adoptSuccess",
         "commandId": "cmd_00000000-0000-4000-8000-000000000000",
         "outcome": "released",
-        "output": { "release": { "kind": "json", "value": "approved" } }
+        "output": {
+          "release": {
+            "kind": "json",
+            "value": "approved"
+          }
+        }
       }
     },
     {
@@ -246,12 +382,27 @@
         "attemptId": "at1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
       }
     },
-    { "id": "cancel", "valid": true, "value": { "kind": "cancel" } },
-    { "id": "fail", "valid": true, "value": { "kind": "fail" } },
+    {
+      "id": "cancel",
+      "valid": true,
+      "value": {
+        "kind": "cancel"
+      }
+    },
+    {
+      "id": "fail",
+      "valid": true,
+      "value": {
+        "kind": "fail"
+      }
+    },
     {
       "id": "retry-missing-attempt",
       "valid": false,
-      "value": { "kind": "retry", "commandId": "cmd_00000000-0000-4000-8000-000000000000" }
+      "value": {
+        "kind": "retry",
+        "commandId": "cmd_00000000-0000-4000-8000-000000000000"
+      }
     }
   ],
   "decisions": [
@@ -323,7 +474,9 @@
         "attemptId": "at1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "resolutionKind": "adoptSuccess",
         "outcome": "released",
-        "output": { "secret": "must-not-appear" },
+        "output": {
+          "secret": "must-not-appear"
+        },
         "decision": "accepted"
       }
     },
@@ -420,7 +573,9 @@
           "attemptId": "at1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "resolutionKind": "adoptSuccess",
           "outcome": "released",
-          "output": { "secret": "must-not-appear" }
+          "output": {
+            "secret": "must-not-appear"
+          }
         }
       }
     },
@@ -490,7 +645,6 @@
     "unknown_outcome_not_pending",
     "unknown_outcome_already_resolved",
     "unknown_outcome_retry_not_permitted",
-    "unsupported_run_version",
     "command_not_supported"
   ],
   "managerErrors": [
@@ -501,6 +655,5 @@
     "run_not_found",
     "manager_stop_failed"
   ],
-  "fixedMarkFailedCode": "unknown_outcome_resolved_failed",
-  "v1Commands": []
+  "fixedMarkFailedCode": "unknown_outcome_resolved_failed"
 }

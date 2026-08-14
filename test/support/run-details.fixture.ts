@@ -150,30 +150,43 @@ export const runDetailsStatuses = (): Map<string, WorkflowStatus> => {
         { status: 'succeeded', outcome: 'succeeded' },
       ),
     ],
-    ...branchScopes.map(
-      (branch, index) =>
-        [
-          scopeWorkflowId(branch.id),
-          workflowStatus(
-            scopeWorkflowId(branch.id),
-            parallelBranchWorkflowName,
-            {
-              runId,
-              scopeId: branch.id,
-              branchKey: index === 0 ? 'a' : 'b',
-              node: index === 0 ? task('a') : task('b'),
-              pipelineId: 'main',
-              pipelineInput: { kind: 'value', value: { kind: 'json', value: null } },
-              runtimePath: 'main',
-              parentPath: 'batch',
-              inheritedOutputs: [],
-              maximumParallelism: 1,
+    ...branchScopes.map((branch, index) => {
+      const branchWorkflowId = scopeWorkflowId(branch.id);
+      return [
+        scopeWorkflowId(branch.id),
+        workflowStatus(
+          branchWorkflowId,
+          parallelBranchWorkflowName,
+          {
+            runId,
+            scopeId: branch.id,
+            branchKey: index === 0 ? 'a' : 'b',
+            node: index === 0 ? task('a') : task('b'),
+            pipelineId: 'main',
+            pipelineInput: { kind: 'value', value: { kind: 'json', value: null } },
+            runtimePath: 'main',
+            parentPath: 'batch',
+            inheritedOutputs: [],
+            maximumParallelism: 1,
+            parentWorkflowId: scopeWorkflowId(rootScope.id),
+            disposition: 'execute',
+            startFence: {
+              requestId: `request:${branchWorkflowId}`,
+              admissionId: `admission:${branchWorkflowId}`,
+              workflowId: branchWorkflowId,
+              directive: 'start',
             },
-            scopeWorkflowId(rootScope.id),
-            { key: index === 0 ? 'a' : 'b', outcome: 'completed', outputs: [] },
-          ),
-        ] as const,
-    ),
+          },
+          scopeWorkflowId(rootScope.id),
+          {
+            status: 'completed',
+            key: index === 0 ? 'a' : 'b',
+            outcome: 'completed',
+            outputs: [],
+          },
+        ),
+      ] as const;
+    }),
   ]);
 };
 

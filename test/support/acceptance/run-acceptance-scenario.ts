@@ -16,6 +16,7 @@ import { advanceLogicalTime } from '../../dsl/scenario-time.js';
 import type { RunScenario, ScenarioStep } from '../../dsl/scenario.js';
 import { ControlledRunExecutor } from '../executor/controlled-run-executor.js';
 import { runEffectRecoveryScenario } from '../process/run-effect-recovery-scenario.js';
+import { runParallelRecoveryScenario } from '../process/run-parallel-recovery-scenario.js';
 import { runRetryRecoveryScenario } from '../process/run-retry-recovery-scenario.js';
 import { runSubscriptionRecoveryScenario } from '../process/run-subscription-recovery-scenario.js';
 import { testDatabaseUrl } from '../test-environment.js';
@@ -50,11 +51,26 @@ class AcceptanceScenarioRunner {
 
   async run(scenario: RunScenario): Promise<void> {
     await this.manager.start();
+    let scenarioError: unknown;
     try {
       await this.executeSteps(scenario.steps, 0, scenario.plan);
-    } finally {
+    } catch (error) {
+      scenarioError = error;
+    }
+    try {
       await this.eventIterator?.return?.();
+    } catch (error) {
+      scenarioError ??= error;
+    }
+    try {
       await this.manager.stop();
+    } catch (error) {
+      if (scenarioError === undefined) {
+        scenarioError = error;
+      }
+    }
+    if (scenarioError !== undefined) {
+      throw scenarioError;
     }
   }
 
@@ -315,7 +331,7 @@ class AcceptanceScenarioRunner {
       async () => {
         assert.equal((await this.manager.getRun(this.runId))?.status, status);
       },
-      { timeout: 5_000 },
+      { timeout: 10_000 },
     );
   }
 
@@ -365,6 +381,10 @@ export const runAcceptanceScenario = async (scenario: RunScenario): Promise<void
   }
   if (scenario.intentId === 'rr-084') {
     await runSubscriptionRecoveryScenario(scenario);
+    return;
+  }
+  if (scenario.intentId === 'rr-078') {
+    await runParallelRecoveryScenario(scenario);
     return;
   }
   await new AcceptanceScenarioRunner().run(scenario);

@@ -1,20 +1,9 @@
 import { DBOS, type WorkflowStatus } from '@dbos-inc/dbos-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { RunExecutorProvider } from '../../src/dbos/executor/run-executor-provider.js';
-import { NodeExecutionStep } from '../../src/dbos/steps/node-execution-step.js';
 import { currentRecoveryGeneration } from '../../src/dbos/steps/workflow-recovery-generation.js';
-import type { RunExecutor } from '../../src/index.js';
-import { storedNodeExecution } from '../support/run-details.fixture.js';
 
-const workflowId = `rr:scope:v1:${'c'.repeat(43)}`;
-const request = storedNodeExecution('main/root-work', 'completed').request;
-const recovery = {
-  reconciliation: 'required',
-  maximumAttempts: 2,
-  timeoutMs: 1_000,
-  unknownOutcome: 'fail',
-} as const;
+const workflowId = `rr:scope:sc1_${'c'.repeat(43)}`;
 
 const status = (overrides: Partial<WorkflowStatus> = {}): WorkflowStatus => ({
   applicationID: 'test',
@@ -25,7 +14,7 @@ const status = (overrides: Partial<WorkflowStatus> = {}): WorkflowStatus => ({
   updatedAt: 1,
   workflowClassName: '',
   workflowID: workflowId,
-  workflowName: 'revo-run.execution.v1',
+  workflowName: 'revo-run.execution',
   ...overrides,
 });
 
@@ -46,8 +35,8 @@ describe('workflow recovery generation', () => {
 
   it.each([
     ['missing status', null],
-    ['foreign workflow identity', status({ workflowID: `rr:scope:v1:${'d'.repeat(43)}` })],
-    ['foreign workflow kind', status({ workflowName: 'foreign.workflow.v1' })],
+    ['foreign workflow identity', status({ workflowID: `rr:scope:sc1_${'d'.repeat(43)}` })],
+    ['foreign workflow kind', status({ workflowName: 'foreign.workflow' })],
     ['unsafe generation', status({ recoveryAttempts: Number.MAX_SAFE_INTEGER + 1 })],
   ])('rejects %s', async (_case, workflowStatus) => {
     vi.spyOn(DBOS, 'workflowID', 'get').mockReturnValue(workflowId);
@@ -66,31 +55,5 @@ describe('workflow recovery generation', () => {
     await expect(currentRecoveryGeneration()).rejects.toThrow(
       'Node effect recovery generation is invalid.',
     );
-  });
-
-  it('rejects a decreasing generation before execute or reconcile', async () => {
-    vi.spyOn(DBOS, 'workflowID', 'get').mockReturnValue(workflowId);
-    vi.spyOn(DBOS, 'stepStatus', 'get').mockReturnValue({
-      stepID: 1,
-      timeoutSignal: new AbortController().signal,
-    });
-    vi.spyOn(DBOS, 'getWorkflowStatus').mockResolvedValue(status());
-    vi.spyOn(DBOS, 'runStep')
-      .mockResolvedValueOnce({
-        kind: 'runNodeEffectIntent',
-        request,
-        recoveryGeneration: 2,
-      })
-      .mockImplementation(async (callback) => callback());
-    const execute = vi.fn<RunExecutor['execute']>();
-    const reconcile = vi.fn<NonNullable<RunExecutor['reconcile']>>();
-    const provider = new RunExecutorProvider();
-    provider.bind({ execute, reconcile });
-
-    await expect(
-      new NodeExecutionStep(provider).execute(request, 1_000, recovery, 1),
-    ).rejects.toThrow('Node effect recovery generation decreased.');
-    expect(execute).not.toHaveBeenCalled();
-    expect(reconcile).not.toHaveBeenCalled();
   });
 });

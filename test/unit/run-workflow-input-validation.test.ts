@@ -16,8 +16,8 @@ describe('durable run workflow arguments', () => {
     expect(parseRunWorkflowInput([input])).toEqual(input);
   });
 
-  it.each([1, 2, 3, 'v1'])('rejects contractVersion selector %s', (contractVersion) => {
-    expect(() => parseRunWorkflowInput([{ ...validInput(), contractVersion }])).toThrow(
+  it('rejects a noncanonical protocol selector', () => {
+    expect(() => parseRunWorkflowInput([{ ...validInput(), protocolSelector: 'foreign' }])).toThrow(
       'Run workflow input is invalid.',
     );
   });

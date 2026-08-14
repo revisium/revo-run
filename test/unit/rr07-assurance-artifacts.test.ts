@@ -13,7 +13,7 @@ import {
   ScopeSettlementAcknowledgementSchema,
   UnknownResolutionDirectiveSchema,
 } from '../../src/contracts/workflow/run-command-workflow.js';
-import { RunCoordinatorV2MessageSchema } from '../../src/contracts/workflow/run-coordinator-v2-message.js';
+import { RunCoordinatorMessageSchema } from '../../src/contracts/workflow/run-coordinator-message.js';
 import {
   CancelRunInputSchema,
   CommandIdSchema,
@@ -44,7 +44,6 @@ interface GoldenFixture {
   readonly scopeSettlementAcknowledgements: readonly Vector[];
   readonly storedEvents: readonly Vector[];
   readonly unknownDirectives: readonly Vector[];
-  readonly v1Commands: readonly unknown[];
 }
 
 interface Metadata {
@@ -88,10 +87,10 @@ const checkVectors = (
 describe('RR-07 assurance artifacts', () => {
   it('pins exact checked-in fixture bytes and contract metadata', () => {
     expect(digest(goldenName)).toBe(
-      'cbf567048dc2e1230f4f78e98f9a8d379df9ad5a9622301dc1542b996662422e',
+      '313db13ee17d495bec1b0c8cc67f9e14498b320baa513f8a012c8e925fb42452',
     );
     expect(digest(matrixName)).toBe(
-      '3c28396322b3f50fd758f7c51eb173e1948a71c05b7f81d563f41ff4867e8370',
+      'b093ed38891f6b50ef69a45de726e10c3badb40f9e4293db165c6473b525d621',
     );
     expect(golden.metadata).toStrictEqual(metadata);
     expect(matrix.metadata).toStrictEqual(metadata);
@@ -125,14 +124,13 @@ describe('RR-07 assurance artifacts', () => {
     );
   });
 
-  it('pins every rejection, manager error, fixed failure code, and v1 empty view', () => {
+  it('pins every rejection, manager error, and fixed failure code', () => {
     expect(golden.rejectionReasons).toStrictEqual([
       'run_already_terminal',
       'run_cancellation_requested',
       'unknown_outcome_not_pending',
       'unknown_outcome_already_resolved',
       'unknown_outcome_retry_not_permitted',
-      'unsupported_run_version',
       'command_not_supported',
     ]);
     expect(golden.managerErrors).toStrictEqual([
@@ -144,13 +142,12 @@ describe('RR-07 assurance artifacts', () => {
       'manager_stop_failed',
     ]);
     expect(golden.fixedMarkFailedCode).toBe('unknown_outcome_resolved_failed');
-    expect(golden.v1Commands).toStrictEqual([]);
   });
 
   it('rejects cross-command metadata, excess fields, and foreign scope lineage', () => {
     const decisions = Schema.Compile(RunCommandDecisionSchema);
     const events = Schema.Compile(RunEventSchema);
-    const messages = Schema.Compile(RunCoordinatorV2MessageSchema);
+    const messages = Schema.Compile(RunCoordinatorMessageSchema);
     const cancelMetadata = {
       commandId: 'cmd_00000000-0000-4000-8000-000000000001',
       commandKind: 'cancelRun',
@@ -241,8 +238,8 @@ describe('RR-07 assurance artifacts', () => {
     expect(
       messages.Check({
         kind: 'scopeReady',
-        workflowId: `rr:scope:v2:sc1_${'a'.repeat(43)}`,
-        parentWorkflowId: 'rr:scope:v2:foreign',
+        workflowId: `rr:scope:sc1_${'a'.repeat(43)}`,
+        parentWorkflowId: 'rr:scope:foreign',
       }),
     ).toBe(false);
   });
@@ -264,7 +261,7 @@ describe('RR-07 assurance artifacts', () => {
         'succeeded',
         'failed',
         'cancelled',
-        'v1Live',
+        'foreignWorkflow',
       ],
       delivery: ['first', 'sameInternalIdReplay', 'distinctSemanticRepeat', 'conflictingSameId'],
       resolutionTarget: [
@@ -296,7 +293,7 @@ describe('RR-07 assurance artifacts', () => {
         'rejectedLiveEvent',
         'eventBudgetDispatchFailure',
         'noTerminalAppend',
-        'noV1Append',
+        'noForeignAppend',
         'streamClosesWithoutFinalCancelledEvent',
       ],
     } as const;

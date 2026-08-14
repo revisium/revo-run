@@ -11,6 +11,10 @@ export {
   RunEventSubscriptionInputSchema,
 } from './contracts/run/run-event-page.js';
 export { RunEventSchema } from './contracts/run/run-event.js';
+export {
+  ParallelJoinObservationSchema,
+  SkippedParallelBranchSchema,
+} from './contracts/run/run-details.js';
 export { RunIdSchema } from './contracts/run/run-id.js';
 export {
   CancelRunInputSchema,
@@ -91,6 +95,8 @@ export type {
   RunNodeInstance,
   RunScope,
   RunCommandDetails,
+  ParallelJoinObservation,
+  SkippedParallelBranch,
 } from './contracts/run/run-details.js';
 export type { RunEvent } from './contracts/run/run-event.js';
 export type {

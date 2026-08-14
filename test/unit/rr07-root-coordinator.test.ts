@@ -13,25 +13,26 @@ vi.mock('@dbos-inc/dbos-sdk', async (importOriginal) => {
 });
 
 import type { RunEventDraft } from '../../src/contracts/run/run-event.js';
-import { RunWorkflowV2Coordinator } from '../../src/dbos/coordination/run-workflow-v2-coordinator.js';
+import { RunWorkflowCoordinator } from '../../src/dbos/coordination/run-workflow-coordinator.js';
 import { ScopeCancellationRegistry } from '../../src/dbos/coordination/scope-cancellation-registry.js';
 import {
-  commandReplyV2Topic,
+  commandReplyTopic,
   runCoordinatorReplyTopic,
-  scopeDirectiveV2Topic,
-  scopeReplyV2Topic,
-  scopeSettlementV2Topic,
-  unknownResolutionV2Topic,
+  scopeDirectiveTopic,
+  scopeReplyTopic,
+  scopeSettlementTopic,
+  unknownResolutionTopic,
 } from '../../src/dbos/dbos-names.js';
+import { ProviderCallRegistry } from '../../src/dbos/executor/provider-call-registry.js';
 import { RunEventBudgetExceededError } from '../../src/dbos/streams/run-event-stream.js';
 import { commandWorkflowId } from '../../src/dbos/workflow-id.js';
 import type { RunExecutorRequest } from '../../src/index.js';
 import { createAttemptId } from '../../src/pipeline/identity/execution-identity.js';
 
 const digest = (character: string): string => character.repeat(43);
-const rootWorkflowId = `rr:scope:v2:sc1_${digest('a')}`;
-const childWorkflowId = `rr:scope:v2:sc1_${digest('b')}`;
-const secondChildWorkflowId = `rr:scope:v2:sc1_${digest('c')}`;
+const rootWorkflowId = `rr:scope:sc1_${digest('a')}`;
+const childWorkflowId = `rr:scope:sc1_${digest('b')}`;
+const secondChildWorkflowId = `rr:scope:sc1_${digest('c')}`;
 const commandId = 'cmd_00000000-0000-4000-8000-000000000001';
 const secondCommandId = 'cmd_00000000-0000-4000-8000-000000000002';
 const nodeInstanceId = `ni1_${digest('d')}`;
@@ -96,6 +97,21 @@ const cancelCommand = (id = commandId) => ({
   command: { kind: 'cancelRun' as const, input: { runId: 'run-1', actorId: 'operator' } },
 });
 
+const scopeAdmission = (workflowId: string, parentWorkflowId = rootWorkflowId) => ({
+  kind: 'scopeAdmission' as const,
+  requestId: `request:${workflowId}`,
+  workflowId,
+  parentWorkflowId,
+});
+
+const scopeReady = (workflowId: string, parentWorkflowId = rootWorkflowId) => ({
+  kind: 'scopeReady' as const,
+  requestId: `request:${workflowId}`,
+  admissionId: `admission:${workflowId}`,
+  workflowId,
+  parentWorkflowId,
+});
+
 const runCoordinator = async (
   messages: readonly unknown[],
   maximumExecutions = 10,
@@ -105,11 +121,12 @@ const runCoordinator = async (
   dbos.recv.mockImplementation(async () => queue.shift() ?? null);
   const cancellation = new ScopeCancellationRegistry();
   const cancel = vi.spyOn(cancellation, 'cancelRun');
-  const coordinator = new RunWorkflowV2Coordinator(
+  const coordinator = new RunWorkflowCoordinator(
     'run-1',
     { append },
     maximumExecutions,
     cancellation,
+    new ProviderCallRegistry(),
   );
   coordinator.registerRootScope(rootWorkflowId);
   const result = await coordinator.execute({
@@ -142,7 +159,7 @@ describe('RR-07 root coordinator authority', () => {
     const rootDirectiveCall = dbos.send.mock.calls.findIndex(
       ([workflowId, directive, topic]) =>
         workflowId === rootWorkflowId &&
-        topic === scopeDirectiveV2Topic &&
+        topic === scopeDirectiveTopic &&
         isDirective(directive, 'cancel'),
     );
     expect(dbos.send.mock.invocationCallOrder[rootDirectiveCall]).toBeLessThan(
@@ -151,7 +168,7 @@ describe('RR-07 root coordinator authority', () => {
     const settlementAcknowledgementCall = dbos.send.mock.calls.findIndex(
       ([workflowId, acknowledgement, topic]) =>
         workflowId === rootWorkflowId &&
-        topic === scopeSettlementV2Topic &&
+        topic === scopeSettlementTopic &&
         isDirective(acknowledgement, 'settled'),
     );
     expect(rootDirectiveCall).toBeGreaterThanOrEqual(0);
@@ -159,7 +176,7 @@ describe('RR-07 root coordinator authority', () => {
     expect(dbos.send).toHaveBeenCalledWith(
       commandWorkflowId(commandId),
       { status: 'receipt', receipt: { status: 'accepted', commandId } },
-      commandReplyV2Topic,
+      commandReplyTopic,
     );
   });
 
@@ -173,12 +190,12 @@ describe('RR-07 root coordinator authority', () => {
     expect(dbos.send).toHaveBeenCalledWith(
       rootWorkflowId,
       { kind: 'settled' },
-      scopeSettlementV2Topic,
+      scopeSettlementTopic,
     );
     expect(dbos.send).not.toHaveBeenCalledWith(
       rootWorkflowId,
       { kind: 'cancel' },
-      scopeDirectiveV2Topic,
+      scopeDirectiveTopic,
     );
   });
 
@@ -200,7 +217,7 @@ describe('RR-07 root coordinator authority', () => {
         status: 'receipt',
         receipt: { status: 'rejected', commandId, reason: 'run_already_terminal' },
       },
-      commandReplyV2Topic,
+      commandReplyTopic,
     );
   });
 
@@ -218,17 +235,14 @@ describe('RR-07 root coordinator authority', () => {
     expect(dbos.send).toHaveBeenCalledWith(
       commandWorkflowId(commandId),
       { status: 'receipt', receipt: { status: 'accepted', commandId } },
-      commandReplyV2Topic,
+      commandReplyTopic,
     );
   });
 
   it('keeps child finish nonterminal while avoiding a stranded asynchronous directive', async () => {
     const messages = [
-      {
-        kind: 'scopeRegistered',
-        workflowId: childWorkflowId,
-        parentWorkflowId: rootWorkflowId,
-      },
+      scopeAdmission(childWorkflowId),
+      scopeReady(childWorkflowId),
       { kind: 'scopeFinish', workflowId: childWorkflowId },
       cancelCommand(),
       { kind: 'scopeSettled', workflowId: childWorkflowId },
@@ -237,21 +251,13 @@ describe('RR-07 root coordinator authority', () => {
     const { result } = await runCoordinator(messages);
 
     expect(result).toEqual({ status: 'cancelled', outcome: 'cancelled' });
-    expect(dbos.send).toHaveBeenCalledWith(
-      childWorkflowId,
-      { kind: 'continue' },
-      scopeReplyV2Topic,
-    );
+    expect(dbos.send).toHaveBeenCalledWith(childWorkflowId, { kind: 'continue' }, scopeReplyTopic);
     expect(dbos.send).not.toHaveBeenCalledWith(
       childWorkflowId,
       { kind: 'cancel' },
-      scopeDirectiveV2Topic,
+      scopeDirectiveTopic,
     );
-    expect(dbos.send).toHaveBeenCalledWith(
-      rootWorkflowId,
-      { kind: 'cancel' },
-      scopeDirectiveV2Topic,
-    );
+    expect(dbos.send).toHaveBeenCalledWith(rootWorkflowId, { kind: 'cancel' }, scopeDirectiveTopic);
   });
 
   it('allows one unknown resolution and rejects the competing decision', async () => {
@@ -268,7 +274,7 @@ describe('RR-07 root coordinator authority', () => {
     expect(dbos.send).toHaveBeenCalledWith(
       rootWorkflowId,
       { kind: 'markFailed', commandId, errorCode: 'unknown_outcome_resolved_failed' },
-      unknownResolutionV2Topic(request.attemptId),
+      unknownResolutionTopic(request.attemptId),
     );
     expect(dbos.send).toHaveBeenCalledWith(
       commandWorkflowId(secondCommandId),
@@ -280,7 +286,7 @@ describe('RR-07 root coordinator authority', () => {
           reason: 'unknown_outcome_already_resolved',
         },
       },
-      commandReplyV2Topic,
+      commandReplyTopic,
     );
   });
 
@@ -344,7 +350,7 @@ describe('RR-07 root coordinator authority', () => {
           reason: 'unknown_outcome_retry_not_permitted',
         },
       },
-      commandReplyV2Topic,
+      commandReplyTopic,
     );
   });
 
@@ -362,16 +368,10 @@ describe('RR-07 root coordinator authority', () => {
       },
     } as const;
     const messages = [
-      {
-        kind: 'scopeRegistered',
-        workflowId: childWorkflowId,
-        parentWorkflowId: rootWorkflowId,
-      },
-      {
-        kind: 'scopeRegistered',
-        workflowId: secondChildWorkflowId,
-        parentWorkflowId: rootWorkflowId,
-      },
+      scopeAdmission(childWorkflowId),
+      scopeReady(childWorkflowId),
+      scopeAdmission(secondChildWorkflowId),
+      scopeReady(secondChildWorkflowId),
       unknownWaiting(childWorkflowId),
       unknownWaiting(secondChildWorkflowId, secondRequest),
       cancelCommand(),
@@ -385,12 +385,12 @@ describe('RR-07 root coordinator authority', () => {
     expect(dbos.send).toHaveBeenCalledWith(
       childWorkflowId,
       { kind: 'cancel' },
-      unknownResolutionV2Topic(request.attemptId),
+      unknownResolutionTopic(request.attemptId),
     );
     expect(dbos.send).toHaveBeenCalledWith(
       secondChildWorkflowId,
       { kind: 'cancel' },
-      unknownResolutionV2Topic(secondRequest.attemptId),
+      unknownResolutionTopic(secondRequest.attemptId),
     );
     expect(dbos.send).toHaveBeenCalledWith(
       commandWorkflowId(secondCommandId),
@@ -402,7 +402,7 @@ describe('RR-07 root coordinator authority', () => {
           reason: 'run_cancellation_requested',
         },
       },
-      commandReplyV2Topic,
+      commandReplyTopic,
     );
   });
 
@@ -419,13 +419,9 @@ describe('RR-07 root coordinator authority', () => {
       throw new RunEventBudgetExceededError('maximum_run_event_count_exceeded');
     });
     const messages = [
-      {
-        kind: 'scopeRegistered',
-        workflowId: childWorkflowId,
-        parentWorkflowId: rootWorkflowId,
-      },
+      scopeAdmission(childWorkflowId),
       { kind: 'event', workflowId: rootWorkflowId, event },
-      { kind: 'scopeReady', workflowId: childWorkflowId, parentWorkflowId: rootWorkflowId },
+      scopeReady(childWorkflowId),
       cancelCommand(),
       { kind: 'scopeSettled', workflowId: childWorkflowId },
       { kind: 'scopeSettled', workflowId: rootWorkflowId },
@@ -438,23 +434,23 @@ describe('RR-07 root coordinator authority', () => {
     const rootDirectiveCall = dbos.send.mock.calls.findIndex(
       ([workflowId, directive, topic]) =>
         workflowId === rootWorkflowId &&
-        topic === scopeDirectiveV2Topic &&
+        topic === scopeDirectiveTopic &&
         isDirective(directive, 'fail'),
     );
     expect(dbos.send.mock.invocationCallOrder[rootDirectiveCall]).toBeLessThan(
       cancel.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
     expect(dbos.runStep).not.toHaveBeenCalled();
-    expect(dbos.send).toHaveBeenCalledWith(childWorkflowId, { kind: 'fail' }, scopeReplyV2Topic);
+    expect(dbos.send).toHaveBeenCalledWith(childWorkflowId, { kind: 'fail' }, scopeReplyTopic);
     expect(dbos.send).not.toHaveBeenCalledWith(
       childWorkflowId,
       { kind: 'fail' },
-      scopeDirectiveV2Topic,
+      scopeDirectiveTopic,
     );
     expect(dbos.send).toHaveBeenCalledWith(
       commandWorkflowId(commandId),
       { status: 'dispatchFailed', commandId },
-      commandReplyV2Topic,
+      commandReplyTopic,
     );
   });
 });
