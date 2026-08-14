@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
 
-import { vi } from 'vitest';
-
 import type {
   ExecutorInput,
   AttemptId,
@@ -14,14 +12,29 @@ import type {
 
 interface PendingExecution {
   readonly request: RunExecutorRequest;
+  readonly tryClaim: () => boolean;
   readonly resolve: (result: RunExecutorResult) => void;
-  readonly reject: (error: unknown) => void;
 }
 
 interface PendingReconciliation {
   readonly request: RunExecutorRequest;
   readonly resolve: (result: RunExecutorReconciliationResult) => void;
 }
+
+interface ObservationChange {
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+}
+
+const executorObservationTimeoutMs = 10_000;
+
+const createObservationChange = (): ObservationChange => {
+  let resolve = (): void => undefined;
+  const promise = new Promise<void>((createdResolve) => {
+    resolve = createdResolve;
+  });
+  return { promise, resolve };
+};
 
 const visibleInput = (input: ExecutorInput): JsonValue =>
   Object.fromEntries(
@@ -37,6 +50,7 @@ export class ControlledRunExecutor implements RunExecutor {
   private maximumActiveExecutions = 0;
   private readonly abortedPaths = new Set<string>();
   private readonly ignoredAbortPaths = new Set<string>();
+  private observationChange = createObservationChange();
 
   execute(
     request: RunExecutorRequest,
@@ -45,29 +59,66 @@ export class ControlledRunExecutor implements RunExecutor {
     this.requests.push(request);
     return new Promise((resolve, reject) => {
       const pending = this.pending.get(request.displayPath) ?? [];
-      const execution = { request, resolve, reject };
+      let state: 'pending' | 'claimed' | 'settled' = 'pending';
+      let abort = (): void => undefined;
+      let abortListenerRegistered = false;
+      let abortObserved = false;
+      const removeAbortListener = (): void => {
+        if (!abortListenerRegistered) {
+          return;
+        }
+        abortListenerRegistered = false;
+        context.signal.removeEventListener('abort', abort);
+      };
+      const execution: PendingExecution = {
+        request,
+        tryClaim: () => {
+          if (state !== 'pending') {
+            return false;
+          }
+          state = 'claimed';
+          return true;
+        },
+        resolve: (result) => {
+          assert.equal(state, 'claimed');
+          state = 'settled';
+          removeAbortListener();
+          resolve(result);
+        },
+      };
       pending.push(execution);
       this.pending.set(request.displayPath, pending);
       this.maximumActiveExecutions = Math.max(
         this.maximumActiveExecutions,
         this.activeExecutions(),
       );
-      context.signal.addEventListener(
-        'abort',
-        () => {
-          this.abortedPaths.add(request.displayPath);
-          if (this.ignoredAbortPaths.has(request.displayPath)) {
-            return;
-          }
-          const current = this.pending.get(request.displayPath);
-          const index = current?.indexOf(execution) ?? -1;
-          if (index >= 0) {
-            current?.splice(index, 1);
-          }
-          reject(context.signal.reason);
-        },
-        { once: true },
-      );
+      this.signalObservationChange();
+      abort = () => {
+        if (abortObserved) {
+          return;
+        }
+        abortObserved = true;
+        removeAbortListener();
+        this.abortedPaths.add(request.displayPath);
+        if (this.ignoredAbortPaths.has(request.displayPath) || state !== 'pending') {
+          this.signalObservationChange();
+          return;
+        }
+
+        state = 'settled';
+        const current = this.pending.get(request.displayPath);
+        const index = current?.indexOf(execution) ?? -1;
+        if (index >= 0) {
+          current?.splice(index, 1);
+        }
+        this.signalObservationChange();
+        reject(context.signal.reason);
+      };
+      abortListenerRegistered = true;
+      context.signal.addEventListener('abort', abort, { once: true });
+      if (context.signal.aborted) {
+        abort();
+      }
     });
   }
 
@@ -79,22 +130,29 @@ export class ControlledRunExecutor implements RunExecutor {
       const pending = this.pendingReconciliations.get(request.displayPath) ?? [];
       pending.push({ request, resolve });
       this.pendingReconciliations.set(request.displayPath, pending);
+      this.signalObservationChange();
     });
   }
 
   async reconcileNode(path: string, result: RunExecutorReconciliationResult): Promise<void> {
-    await vi.waitFor(() => {
-      assert((this.pendingReconciliations.get(path)?.length ?? 0) > 0);
-    });
-    const pending = this.pendingReconciliations.get(path)?.shift();
-    if (pending === undefined) {
-      throw new Error(`Reconciliation ${path} was not requested.`);
-    }
+    const pending = await this.waitForObservation(
+      () => {
+        const reconciliation = this.pendingReconciliations.get(path)?.shift();
+        if (reconciliation !== undefined) {
+          this.signalObservationChange();
+        }
+        return reconciliation;
+      },
+      () => `Reconciliation ${path} was not requested`,
+    );
     pending.resolve(result);
   }
 
   async expectAborted(path: string): Promise<void> {
-    await vi.waitFor(() => assert(this.abortedPaths.has(path)), { timeout: 5_000 });
+    await this.waitForCondition(
+      () => this.abortedPaths.has(path),
+      () => `Execution ${path} was not aborted`,
+    );
   }
 
   ignoreAbort(path: string): void {
@@ -149,14 +207,9 @@ export class ControlledRunExecutor implements RunExecutor {
   }
 
   async expectStarted(path: string): Promise<void> {
-    await vi.waitFor(
-      () => {
-        assert(
-          this.requests.some((request) => request.displayPath === path),
-          `Execution ${path} was not dispatched.`,
-        );
-      },
-      { timeout: 5_000 },
+    await this.waitForCondition(
+      () => this.requests.some((request) => request.displayPath === path),
+      () => `Execution ${path} was not dispatched`,
     );
   }
 
@@ -198,17 +251,18 @@ export class ControlledRunExecutor implements RunExecutor {
   }
 
   async expectExecutionCount(path: string, count: number): Promise<void> {
-    await vi.waitFor(() => {
-      assert.equal(this.executionCount(path), count);
-    });
+    await this.waitForCondition(
+      () => this.executionCount(path) === count,
+      () =>
+        `Expected ${String(count)} execution(s) for ${path}, observed ${String(this.executionCount(path))}`,
+    );
   }
 
   async expectMaximumActiveExecutions(count: number): Promise<void> {
-    await vi.waitFor(
-      () => {
-        assert.equal(this.activeExecutions(), count);
-      },
-      { timeout: 5_000 },
+    await this.waitForCondition(
+      () => this.activeExecutions() === count,
+      () =>
+        `Expected ${String(count)} active execution(s), observed ${String(this.activeExecutions())}`,
     );
     assert.equal(this.maximumActiveExecutions, count);
   }
@@ -225,40 +279,88 @@ export class ControlledRunExecutor implements RunExecutor {
   }
 
   private async takeAttempt(path: string, attemptOrdinal: number): Promise<PendingExecution> {
-    await vi.waitFor(
+    return this.waitForObservation(
       () => {
-        assert(
-          this.pending.get(path)?.some(({ request }) => request.attemptOrdinal === attemptOrdinal),
+        const pending = this.pending.get(path);
+        const executionIndex = pending?.findIndex(
+          ({ request }) => request.attemptOrdinal === attemptOrdinal,
         );
-      },
-      { timeout: 5_000 },
-    );
+        if (pending === undefined || executionIndex === undefined || executionIndex < 0) {
+          return undefined;
+        }
 
-    const pending = this.pending.get(path);
-    const executionIndex = pending?.findIndex(
-      ({ request }) => request.attemptOrdinal === attemptOrdinal,
+        const execution = pending[executionIndex];
+        if (execution === undefined || !execution.tryClaim()) {
+          return undefined;
+        }
+        pending.splice(executionIndex, 1);
+        this.signalObservationChange();
+        return execution;
+      },
+      () => `Execution ${path} attempt ${String(attemptOrdinal)} was not started`,
     );
-    const execution =
-      executionIndex === undefined ? undefined : pending?.splice(executionIndex, 1)[0];
-    if (execution === undefined) {
-      throw new Error(`Execution ${path} attempt ${attemptOrdinal} was not started.`);
-    }
-    return execution;
   }
 
   private async takeLatest(path: string): Promise<PendingExecution> {
-    await vi.waitFor(
+    return this.waitForObservation(
       () => {
-        assert((this.pending.get(path)?.length ?? 0) > 0);
+        const pending = this.pending.get(path);
+        const execution = pending?.at(-1);
+        if (execution === undefined || !execution.tryClaim()) {
+          return undefined;
+        }
+        pending?.pop();
+        this.signalObservationChange();
+        return execution;
       },
-      { timeout: 5_000 },
+      () => `Execution ${path} was not started`,
     );
+  }
 
-    const execution = this.pending.get(path)?.pop();
-    if (execution === undefined) {
-      throw new Error(`Execution ${path} was not started.`);
+  private async waitForCondition(
+    condition: () => boolean,
+    failureMessage: () => string,
+  ): Promise<void> {
+    await this.waitForObservation(() => (condition() ? true : undefined), failureMessage);
+  }
+
+  private async waitForObservation<T>(
+    observe: () => T | undefined,
+    failureMessage: () => string,
+  ): Promise<T> {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(new Error(`${failureMessage()} within ${String(executorObservationTimeoutMs)} ms.`));
+      }, executorObservationTimeoutMs);
+    });
+    const wait = async (): Promise<T> => {
+      const observation = observe();
+      if (observation !== undefined) {
+        return observation;
+      }
+
+      const observationChange = this.observationChange.promise;
+      // Close the race where state changes while the current signal is being captured.
+      const observationAfterSignalCapture = observe();
+      if (observationAfterSignalCapture !== undefined) {
+        return observationAfterSignalCapture;
+      }
+      await Promise.race([observationChange, timeout]);
+      return wait();
+    };
+
+    try {
+      return await wait();
+    } finally {
+      clearTimeout(timeoutHandle);
     }
-    return execution;
+  }
+
+  private signalObservationChange(): void {
+    const observationChange = this.observationChange;
+    this.observationChange = createObservationChange();
+    observationChange.resolve();
   }
 
   private recordExternalEffect(path: string): void {
