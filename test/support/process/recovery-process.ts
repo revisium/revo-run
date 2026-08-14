@@ -37,6 +37,8 @@ export interface RecoveryProcessOptions {
   readonly input?: JsonValue;
   readonly instructions?: readonly RecoveryInstruction[];
   readonly pauseBeforeIntent?: boolean;
+  readonly pauseBeforeAdmission?: boolean | number;
+  readonly pauseAfterDecision?: boolean;
   readonly pauseBeforeReadiness?: boolean | number;
   readonly failCommandEventBudget?: boolean;
 }
@@ -44,16 +46,21 @@ export interface RecoveryProcessOptions {
 export interface RecoveryWorkerMessage {
   readonly kind:
     | 'beforeIntent'
+    | 'beforeAdmission'
     | 'beforeReadiness'
+    | 'afterDecision'
+    | 'attemptObserved'
     | 'checkpointed'
     | 'details'
     | 'dispatched'
     | 'error'
     | 'events'
     | 'executorAborted'
+    | 'parallelObserved'
     | 'ready'
     | 'reconciled'
     | 'commandReceipt'
+    | 'scopeCancellationAcknowledged'
     | 'stopped'
     | 'terminal'
     | 'timeoutSignalled';
@@ -72,6 +79,9 @@ export interface RecoveryWorkerMessage {
   readonly nodeStatuses?: ReportedDetails['nodeStatuses'];
   readonly runOutput?: NodeOutput;
   readonly workflowName?: string;
+  readonly observedBranchKeys?: readonly string[];
+  readonly skippedBranchKeys?: readonly string[];
+  readonly remaining?: string;
 }
 
 export class RecoveryProcess {
@@ -103,6 +113,16 @@ export class RecoveryProcess {
           : { REVO_RUN_TEST_RECONCILIATIONS: JSON.stringify(options.instructions) }),
         ...(options.pauseBeforeIntent === true
           ? { REVO_RUN_TEST_PAUSE_BEFORE_INTENT: 'true' }
+          : {}),
+        ...(options.pauseBeforeAdmission === undefined || options.pauseBeforeAdmission === false
+          ? {}
+          : {
+              REVO_RUN_TEST_PAUSE_BEFORE_ADMISSION: String(
+                options.pauseBeforeAdmission === true ? 1 : options.pauseBeforeAdmission,
+              ),
+            }),
+        ...(options.pauseAfterDecision === true
+          ? { REVO_RUN_TEST_PAUSE_AFTER_DECISION: 'true' }
           : {}),
         ...(options.pauseBeforeReadiness === undefined || options.pauseBeforeReadiness === false
           ? {}
@@ -167,6 +187,14 @@ export class RecoveryProcess {
 
   releaseReadiness(): void {
     this.child.send({ kind: 'releaseReadiness' });
+  }
+
+  releaseAdmission(): void {
+    this.child.send({ kind: 'releaseAdmission' });
+  }
+
+  releaseDecision(): void {
+    this.child.send({ kind: 'releaseDecision' });
   }
 
   async waitForCount(kind: RecoveryWorkerMessage['kind'], count: number): Promise<void> {

@@ -22,6 +22,10 @@ export class ScopeCancellationRegistry {
     }
   }
 
+  cancelScope(scopeId: string): void {
+    this.controllers.get(scopeId)?.abort(cancellationReason);
+  }
+
   release(runId: string, scopeId: string): void {
     this.controllers.delete(scopeId);
     const scopes = this.runScopes.get(runId);
@@ -33,5 +37,10 @@ export class ScopeCancellationRegistry {
 
   isCancellation(error: unknown, signal: AbortSignal): boolean {
     return signal.aborted && signal.reason === cancellationReason && error === cancellationReason;
+  }
+
+  reset(): void {
+    this.controllers.clear();
+    this.runScopes.clear();
   }
 }

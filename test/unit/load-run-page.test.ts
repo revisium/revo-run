@@ -30,7 +30,7 @@ const status = (runId: string, overrides: Partial<WorkflowStatus> = {}): Workflo
   status: 'SUCCESS',
   updatedAt: 200,
   workflowClassName: '',
-  workflowID: `rr:run:v1:${runId}`,
+  workflowID: `rr:run:${runId}`,
   workflowName: runWorkflowName,
   ...overrides,
 });
@@ -55,7 +55,7 @@ describe('DBOS-backed run listing', () => {
     });
     expect(dbos.listWorkflows).toHaveBeenCalledWith(
       expect.objectContaining({
-        workflow_id_prefix: 'rr:run:v1:',
+        workflow_id_prefix: 'rr:run:',
         offset: 0,
         sortDesc: true,
         loadInput: true,
@@ -94,12 +94,16 @@ describe('DBOS-backed run listing', () => {
     await expect(loadRunPage({})).rejects.toThrow('Run workflow input is invalid.');
   });
 
-  it('excludes rows from unversioned, retired, abandoned, and cross-kind ID namespaces', async () => {
+  it('excludes rows with noncanonical names and foreign or cross-kind ID namespaces', async () => {
     dbos.listWorkflows.mockResolvedValue([
-      status('Unversioned_1', { workflowID: 'rr:run:Unversioned_1' }),
-      status('Retired_2', { workflowID: 'rr:run:v2:Retired_2' }),
-      status('Abandoned_3', { workflowID: 'rr:run:v3:Abandoned_3' }),
-      status('CrossKind_1', { workflowID: 'rr:scope:v1:CrossKind_1' }),
+      status('ForeignName_1', {
+        workflowID: 'rr:run:ForeignName_1',
+        workflowName: 'foreign.workflow',
+      }),
+      status('ForeignNamespace_1', {
+        workflowID: 'foreign:run:ForeignNamespace_1',
+      }),
+      status('CrossKind_1', { workflowID: 'rr:scope:CrossKind_1' }),
       status('Owned_1'),
     ]);
 
@@ -110,7 +114,7 @@ describe('DBOS-backed run listing', () => {
 
   it('fails closed for a malformed ID in the owned namespace', async () => {
     dbos.listWorkflows.mockResolvedValue([
-      status('Malformed_1', { workflowID: 'rr:run:v1:malformed:run' }),
+      status('Malformed_1', { workflowID: 'rr:run:malformed:run' }),
     ]);
 
     await expect(loadRunPage({})).rejects.toThrow('Owned run workflow ID is invalid.');

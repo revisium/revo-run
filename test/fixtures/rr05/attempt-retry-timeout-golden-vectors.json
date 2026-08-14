@@ -4,13 +4,16 @@
   "sourceRevision": "20bb6b95bb0f94867e177041a9f1d27d7e2f6241",
   "vectors": [
     {
-      "id": "v1-run-workflow-id",
+      "id": "canonical-run-workflow-id",
       "operation": "runWorkflowId",
       "input": "Golden_1",
-      "expected": { "kind": "output", "value": "rr:run:v1:Golden_1" }
+      "expected": {
+        "kind": "output",
+        "value": "rr:run:Golden_1"
+      }
     },
     {
-      "id": "v1-durable-workflow-input",
+      "id": "current-durable-workflow-input",
       "operation": "parseRunWorkflowInput",
       "input": [
         {
@@ -21,7 +24,11 @@
             "rootPipelineId": "main",
             "pipelines": {
               "main": {
-                "root": { "kind": "end", "status": "succeeded", "outcome": "completed" }
+                "root": {
+                  "kind": "end",
+                  "status": "succeeded",
+                  "outcome": "completed"
+                }
               }
             },
             "bindings": [],
@@ -33,7 +40,9 @@
               "maximumTotalNodeExecutions": 1
             }
           },
-          "input": { "ticket": "RR-05" }
+          "input": {
+            "ticket": "RR-05"
+          }
         }
       ],
       "expected": {
@@ -46,7 +55,11 @@
             "rootPipelineId": "main",
             "pipelines": {
               "main": {
-                "root": { "kind": "end", "status": "succeeded", "outcome": "completed" }
+                "root": {
+                  "kind": "end",
+                  "status": "succeeded",
+                  "outcome": "completed"
+                }
               }
             },
             "bindings": [],
@@ -58,15 +71,23 @@
               "maximumTotalNodeExecutions": 1
             }
           },
-          "input": { "ticket": "RR-05" }
+          "input": {
+            "ticket": "RR-05"
+          }
         }
       }
     },
     {
       "id": "ordinal-addressed-node-step",
       "operation": "nodeEffectDecisionStepName",
-      "input": { "path": "main/review", "ordinal": 2 },
-      "expected": { "kind": "output", "value": "node-effect-decision:2:main/review" }
+      "input": {
+        "path": "main/review",
+        "ordinal": 2
+      },
+      "expected": {
+        "kind": "output",
+        "value": "node-effect-decision:2:main/review"
+      }
     },
     {
       "id": "ordinal-addressed-node-step-identity",
@@ -74,7 +95,10 @@
       "input": "node-effect-decision:2:main/review",
       "expected": {
         "kind": "output",
-        "value": { "attemptOrdinal": 2, "displayPath": "main/review" }
+        "value": {
+          "attemptOrdinal": 2,
+          "displayPath": "main/review"
+        }
       }
     },
     {
@@ -106,10 +130,19 @@
           "ordinal": 1,
           "result": {
             "kind": "failed",
-            "error": { "code": "rate_limited", "message": "secret provider detail" }
+            "error": {
+              "code": "rate_limited",
+              "message": "secret provider detail"
+            }
           }
         },
-        { "ordinal": 2, "result": { "kind": "completed", "outcome": "approved" } }
+        {
+          "ordinal": 2,
+          "result": {
+            "kind": "completed",
+            "outcome": "approved"
+          }
+        }
       ],
       "expected": {
         "kind": "output",
@@ -119,7 +152,9 @@
             "nodeInstanceId": "ni1_ITjeAYbOR4Xxzswfm4Mz33H6rdFlkxjLosiryBouLso",
             "ordinal": 1,
             "status": "failed",
-            "error": { "code": "rate_limited" },
+            "error": {
+              "code": "rate_limited"
+            },
             "startedAt": "1970-01-01T00:00:00.006Z",
             "completedAt": "1970-01-01T00:00:00.007Z"
           },
@@ -138,7 +173,12 @@
     {
       "id": "terminal-step-error-is-redacted",
       "operation": "mapRunAttempts",
-      "input": [{ "ordinal": 1, "stepError": "secret thrown step detail" }],
+      "input": [
+        {
+          "ordinal": 1,
+          "stepError": "secret thrown step detail"
+        }
+      ],
       "expected": {
         "kind": "output",
         "value": [
@@ -147,7 +187,9 @@
             "nodeInstanceId": "ni1_ITjeAYbOR4Xxzswfm4Mz33H6rdFlkxjLosiryBouLso",
             "ordinal": 1,
             "status": "failed",
-            "error": { "code": "step_failed" },
+            "error": {
+              "code": "step_failed"
+            },
             "startedAt": "1970-01-01T00:00:00.006Z",
             "completedAt": "1970-01-01T00:00:00.007Z"
           }

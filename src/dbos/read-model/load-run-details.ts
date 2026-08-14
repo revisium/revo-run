@@ -5,7 +5,6 @@ import type {
   RunAttempt,
   RunDetails,
   RunNodeInstance,
-  RunScope,
   RunCommandDetails,
 } from '../../contracts/run/run-details.js';
 import type { RunSnapshot } from '../../contracts/run/run.js';
@@ -17,27 +16,24 @@ import {
 import {
   isNodeAttemptOutcomeStepName,
   isRunCommandDecisionStepName,
-  isUnknownOutcomeReadyStepName,
   isUnknownOutcomeResolutionStepName,
   nodeAttemptStepIdentity,
   parallelBranchWorkflowName,
-  parallelBranchWorkflowV2Name,
   runCommandDecisionCommandId,
   runExecutionWorkflowName,
-  runExecutionWorkflowV2Name,
-  unknownOutcomeReadyAttemptId,
 } from '../dbos-names.js';
 import { runWorkflowId } from '../workflow-id.js';
 import { loadAllWorkflowSteps, type DbosStepRecord } from './dbos-step-pages.js';
-import { mapObservableScope, scopeCandidateFromStatus } from './map-observable-scope.js';
+import { scopeCandidateFromStatus } from './map-observable-scope.js';
 import { mapRunAttempt } from './map-run-attempt.js';
 import { mapRunCommandDecision } from './map-run-command-decision.js';
 import {
   buildObservablePlan,
-  type ObservableNodeCandidate,
   type ObservablePlan,
   type ObservableScopeCandidate,
 } from './observable-plan.js';
+import { RunParallelObservationProjector } from './run-parallel-observation-projector.js';
+import { RunScopeObservationProjector } from './run-scope-observation-projector.js';
 
 type DurableScopeCandidate = Exclude<
   ObservableScopeCandidate,
@@ -47,16 +43,11 @@ type DurableScopeCandidate = Exclude<
 const introducedScopeWorkflow = (
   step: DbosStepRecord,
   introduced: ReadonlySet<string>,
-  version: 'v1' | 'v2',
 ): string | undefined => {
   if (step.childWorkflowID === null) {
     return undefined;
   }
-  const names =
-    version === 'v1'
-      ? [runExecutionWorkflowName, parallelBranchWorkflowName]
-      : [runExecutionWorkflowV2Name, parallelBranchWorkflowV2Name];
-  if (names.includes(step.name)) {
+  if ([runExecutionWorkflowName, parallelBranchWorkflowName].includes(step.name)) {
     return step.childWorkflowID;
   }
   if (step.name === 'DBOS.getResult' && introduced.has(step.childWorkflowID)) {
@@ -68,33 +59,39 @@ const introducedScopeWorkflow = (
 class RunDetailsLoader {
   private readonly run: RunSnapshot;
   private readonly plan: ObservablePlan;
-  private readonly scopes: RunScope[] = [];
+  private readonly scopeProjection: RunScopeObservationProjector;
   private readonly nodeInstances: RunNodeInstance[] = [];
   private readonly attempts: RunAttempt[] = [];
   private readonly commands: RunCommandDetails[] = [];
-  private readonly version: 'v1' | 'v2';
-  private readonly includedScopes = new Set<string>();
+  private readonly parallel: RunParallelObservationProjector;
   private readonly nodeIndexes = new Map<string, number>();
   private readonly includedAttempts = new Set<string>();
   private readonly visitedWorkflows = new Set<string>();
   private readonly activeWorkflows = new Set<string>();
 
-  constructor(run: RunSnapshot, version: 'v1' | 'v2') {
+  constructor(run: RunSnapshot) {
     this.run = run;
     this.plan = buildObservablePlan(run.executionPlan, run.id);
-    this.version = version;
+    this.parallel = new RunParallelObservationProjector(
+      this.plan,
+      run.status !== 'pending' && run.status !== 'running',
+    );
+    this.scopeProjection = new RunScopeObservationProjector(this.plan);
   }
 
   async load(): Promise<RunDetails> {
     const wrapperSteps = await loadAllWorkflowSteps(runWorkflowId(this.run.id));
     this.includeCommandDecisions(wrapperSteps);
     await this.visitIntroducedScopes(wrapperSteps);
+    this.parallel.finish();
     return {
       run: this.run,
-      scopes: this.scopes,
+      scopes: this.scopeProjection.scopes,
       nodeInstances: this.nodeInstances,
       attempts: this.attempts,
       commands: this.commands,
+      parallelJoins: this.parallel.observations,
+      skippedParallelBranches: this.parallel.skippedBranches,
     };
   }
 
@@ -106,14 +103,8 @@ class RunDetailsLoader {
     this.visitedWorkflows.add(workflowId);
     try {
       const status = await this.loadWorkflowStatus(workflowId);
-      const candidate = scopeCandidateFromStatus(
-        status,
-        this.run.id,
-        this.plan.scopes,
-        this.version,
-      );
-      this.includeScopeAncestors(candidate);
-      this.includeDurableScope(mapObservableScope(status, candidate));
+      const candidate = scopeCandidateFromStatus(status, this.run.id, this.plan.scopes);
+      this.scopeProjection.includeDurable(status, candidate);
 
       const steps = await loadAllWorkflowSteps(workflowId);
       await this.visitScopeSteps(steps, candidate);
@@ -126,7 +117,7 @@ class RunDetailsLoader {
     const introduced = new Set<string>();
     await steps.reduce<Promise<void>>(async (previous, step) => {
       await previous;
-      const childWorkflowId = introducedScopeWorkflow(step, introduced, this.version);
+      const childWorkflowId = introducedScopeWorkflow(step, introduced);
       if (childWorkflowId !== undefined) {
         introduced.add(childWorkflowId);
         await this.visitWorkflow(childWorkflowId);
@@ -139,20 +130,16 @@ class RunDetailsLoader {
     candidate: DurableScopeCandidate,
   ): Promise<void> {
     const introduced = new Set<string>();
-    const readyUnknownOutcomes = new Set(
-      steps
-        .filter(({ name }) => isUnknownOutcomeReadyStepName(name))
-        .map(({ name }) => unknownOutcomeReadyAttemptId(name)),
-    );
+    this.parallel.includeScopeSteps(steps, candidate);
     await steps.reduce<Promise<void>>(async (previous, step) => {
       await previous;
       if (isNodeAttemptOutcomeStepName(step.name)) {
-        this.includeAttempt(step, candidate, readyUnknownOutcomes);
+        this.includeAttempt(step, candidate);
       }
       if (isUnknownOutcomeResolutionStepName(step.name)) {
         this.includeUnknownOutcomeResolution(step);
       }
-      const childWorkflowId = introducedScopeWorkflow(step, introduced, this.version);
+      const childWorkflowId = introducedScopeWorkflow(step, introduced);
       if (childWorkflowId !== undefined) {
         introduced.add(childWorkflowId);
         await this.visitWorkflow(childWorkflowId);
@@ -161,9 +148,6 @@ class RunDetailsLoader {
   }
 
   private includeCommandDecisions(steps: readonly DbosStepRecord[]): void {
-    if (this.version === 'v1') {
-      return;
-    }
     for (const step of steps) {
       if (!isRunCommandDecisionStepName(step.name)) {
         continue;
@@ -214,74 +198,17 @@ class RunDetailsLoader {
     return parseDbosWorkflowStatus(status);
   }
 
-  private includeScopeAncestors(candidate: ObservableScopeCandidate): void {
-    if (candidate.kind === 'root') {
-      return;
-    }
-    if (this.includedScopes.has(candidate.parentScopeId)) {
-      return;
-    }
-    const parent = this.plan.scopes.get(candidate.parentScopeId);
-    if (parent === undefined) {
-      throw new Error('Observable scope parent was not found.');
-    }
-    if (parent.kind !== 'inlineSubpipeline') {
-      throw new Error('Durable scope parent has not been observed.');
-    }
-    this.includeScopeAncestors(parent);
-    this.includeInlineScope(parent);
-  }
-
-  private includeInlineScope(candidate: ObservableScopeCandidate): void {
-    if (candidate.kind !== 'inlineSubpipeline') {
-      throw new Error('Inline scope candidate is invalid.');
-    }
-    if (this.includedScopes.has(candidate.id)) {
-      return;
-    }
-    this.scopes.push({
-      kind: 'inlineSubpipeline',
-      id: candidate.id,
-      parentScopeId: candidate.parentScopeId,
-      pipelineId: candidate.pipelineId,
-      displayPath: candidate.displayPath,
-    });
-    this.includedScopes.add(candidate.id);
-  }
-
-  private includeDurableScope(
-    scope: Exclude<RunScope, { readonly kind: 'inlineSubpipeline' }>,
-  ): void {
-    if (this.includedScopes.has(scope.id)) {
-      throw new Error('Observable scope was included more than once.');
-    }
-    this.scopes.push(scope);
-    this.includedScopes.add(scope.id);
-  }
-
-  private includeAttempt(
-    step: DbosStepRecord,
-    physicalScope: DurableScopeCandidate,
-    readyUnknownOutcomes: ReadonlySet<string>,
-  ): void {
+  private includeAttempt(step: DbosStepRecord, physicalScope: DurableScopeCandidate): void {
     const stepIdentity = nodeAttemptStepIdentity(step.name);
     const candidate = this.plan.nodesByDisplayPath.get(stepIdentity.displayPath);
     if (candidate?.physicalScopeId !== physicalScope.id) {
       throw new Error('DBOS node step is not present in its admitted scope.');
     }
-    const attempt = mapRunAttempt(step, candidate, this.run.id, stepIdentity.attemptOrdinal);
+    const attempt = mapRunAttempt(step, candidate, this.run.id, stepIdentity.attemptOrdinal, true);
     if (attempt === undefined) {
       return;
     }
-    if (
-      this.version === 'v2' &&
-      attempt.status === 'outcomeUnknown' &&
-      candidate.awaitsHumanResolution &&
-      !readyUnknownOutcomes.has(attempt.id)
-    ) {
-      return;
-    }
-    this.includeScopeForNode(candidate);
+    this.scopeProjection.includeForNode(candidate);
     if (this.includedAttempts.has(attempt.id)) {
       throw new Error('DBOS node attempt is duplicated.');
     }
@@ -313,21 +240,7 @@ class RunDetailsLoader {
     }
     this.includedAttempts.add(attempt.id);
   }
-
-  private includeScopeForNode(candidate: ObservableNodeCandidate): void {
-    if (this.includedScopes.has(candidate.scopeId)) {
-      return;
-    }
-    const scope = this.plan.scopes.get(candidate.scopeId);
-    if (scope?.kind !== 'inlineSubpipeline') {
-      throw new Error('Node belongs to an unobserved durable scope.');
-    }
-    this.includeScopeAncestors(scope);
-    this.includeInlineScope(scope);
-  }
 }
 
-export const loadRunDetails = (
-  run: RunSnapshot,
-  version: 'v1' | 'v2' = 'v1',
-): Promise<RunDetails> => new RunDetailsLoader(run, version).load();
+export const loadRunDetails = (run: RunSnapshot): Promise<RunDetails> =>
+  new RunDetailsLoader(run).load();

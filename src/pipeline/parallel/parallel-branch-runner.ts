@@ -1,5 +1,5 @@
-import type { PipelineNode } from '../../contracts/pipeline/pipeline-node.js';
-import type { ParallelBranchResult } from '../../contracts/workflow/parallel-branch-result.js';
+import type { NodeOutput } from '../../contracts/pipeline/node-output.js';
+import type { ParallelNode, PipelineNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { PipelineExecutionContext } from '../interpreter/interpreter-context.js';
 
 export interface ParallelBranch {
@@ -7,13 +7,21 @@ export interface ParallelBranch {
   readonly node: PipelineNode;
 }
 
-export interface ParallelBranchRunner {
-  readonly supportsRemainingCancellation: boolean;
-  execute(
-    branches: readonly ParallelBranch[],
-    context: PipelineExecutionContext,
-    parentPath: string,
-  ): Promise<readonly ParallelBranchResult[]>;
+export interface ParallelBranchResult {
+  readonly key: string;
+  readonly outcome: string;
+  readonly outputs: readonly (readonly [string, NodeOutput])[];
 }
 
-export type { ParallelBranchResult } from '../../contracts/workflow/parallel-branch-result.js';
+export interface ParallelExecutionResult {
+  readonly outcome: 'completed' | 'failed';
+  readonly eligibleResults: readonly ParallelBranchResult[];
+}
+
+export interface ParallelBranchRunner {
+  execute(
+    node: ParallelNode,
+    context: PipelineExecutionContext,
+    nodePath: string,
+  ): Promise<ParallelExecutionResult>;
+}

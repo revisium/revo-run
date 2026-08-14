@@ -156,6 +156,85 @@ const parallelPlan: ExecutionPlan = {
   policies: { ...policies, maximumActiveNodeExecutions: 2, maximumTotalNodeExecutions: 4 },
 };
 
+const nestedCancelPlan: ExecutionPlan = {
+  schemaVersion: 1,
+  rootPipelineId: 'main',
+  pipelines: {
+    main: {
+      root: {
+        kind: 'sequence',
+        children: [
+          {
+            kind: 'parallel',
+            key: 'review',
+            branches: {
+              winner: { kind: 'task', key: 'winner', recovery: recoverAbsentEffect },
+              nested: {
+                kind: 'parallel',
+                key: 'inner',
+                branches: {
+                  descendant: {
+                    kind: 'task',
+                    key: 'descendant',
+                    recovery: recoverAbsentEffect,
+                  },
+                },
+                join: { kind: 'all', successfulOutcomes: ['completed'], remaining: 'drain' },
+              },
+            },
+            join: { kind: 'any', successfulOutcomes: ['completed'], remaining: 'cancel' },
+          },
+          { kind: 'end', status: 'succeeded', outcome: 'completed' },
+        ],
+      },
+    },
+  },
+  bindings: [
+    {
+      kind: 'script',
+      target: { pipelineId: 'main', nodePath: 'review/winner' },
+      script: { id: 'test.winner', revision: 1 },
+    },
+    {
+      kind: 'script',
+      target: { pipelineId: 'main', nodePath: 'review/inner/descendant' },
+      script: { id: 'test.descendant', revision: 1 },
+    },
+  ],
+  policies: { ...policies, maximumActiveNodeExecutions: 2, maximumTotalNodeExecutions: 4 },
+};
+
+const drainTransientPlan: ExecutionPlan = {
+  schemaVersion: 1,
+  rootPipelineId: 'main',
+  pipelines: {
+    main: {
+      root: {
+        kind: 'sequence',
+        children: [
+          {
+            kind: 'parallel',
+            key: 'review',
+            branches: {
+              first: { kind: 'task', key: 'first', recovery: recoverAbsentEffect },
+              second: { kind: 'task', key: 'second', recovery: recoverAbsentEffect },
+              third: { kind: 'task', key: 'third', recovery: recoverAbsentEffect },
+            },
+            join: { kind: 'any', successfulOutcomes: ['completed'], remaining: 'drain' },
+          },
+          { kind: 'end', status: 'succeeded', outcome: 'completed' },
+        ],
+      },
+    },
+  },
+  bindings: ['first', 'second', 'third'].map((key) => ({
+    kind: 'script',
+    target: { pipelineId: 'main', nodePath: `review/${key}` },
+    script: { id: `test.${key}`, revision: 1 },
+  })),
+  policies: { ...policies, maximumActiveNodeExecutions: 1, maximumTotalNodeExecutions: 6 },
+};
+
 export const recoveryExecutionPlan = (scenario: string, retryDelayMs = 5_000): ExecutionPlan => {
   if (scenario === 'timeout') {
     return timeoutPlan;
@@ -165,6 +244,12 @@ export const recoveryExecutionPlan = (scenario: string, retryDelayMs = 5_000): E
   }
   if (scenario === 'parallel') {
     return parallelPlan;
+  }
+  if (scenario === 'nested-cancel') {
+    return nestedCancelPlan;
+  }
+  if (scenario === 'drain-transient') {
+    return drainTransientPlan;
   }
   return sequencePlan;
 };

@@ -6,6 +6,7 @@ import { parseRunEvent } from '../../src/validation/run-event.validator.js';
 
 const digest = (character: string): string => character.repeat(43);
 const scopeId = `sc1_${digest('a')}`;
+const scopeWorkflowId = `rr:scope:${scopeId}`;
 const authoredNodeId = `an1_${digest('b')}`;
 const nodeInstanceId = `ni1_${digest('c')}`;
 const attemptId = `at1_${digest('d')}`;
@@ -101,14 +102,17 @@ describe('run event contract', () => {
   });
 
   it.each(goldenEvents.slice(0, 9))('accepts the $type child event draft', (event) => {
-    expect(parseRunCoordinatorMessage({ kind: 'event', event: draftFrom(event) })).toStrictEqual({
-      kind: 'event',
-      event: draftFrom(event),
-    });
+    expect(
+      parseRunCoordinatorMessage({
+        kind: 'event',
+        workflowId: scopeWorkflowId,
+        event: draftFrom(event),
+      }),
+    ).toStrictEqual({ kind: 'event', workflowId: scopeWorkflowId, event: draftFrom(event) });
   });
 
   it.each([
-    { ...goldenEvents[0], contractVersion: 1 },
+    { ...goldenEvents[0], protocolSelector: 'foreign' },
     { ...goldenEvents[0], path: 'main/work' },
     { ...goldenEvents[0], data: { ...goldenEvents[0].data, output: { leaked: true } } },
     { ...goldenEvents[2], data: { ...goldenEvents[2].data, errorMessage: 'sensitive' } },
@@ -146,7 +150,11 @@ describe('run event contract', () => {
 
   it('rejects terminal drafts sent by child workflows', () => {
     expect(() =>
-      parseRunCoordinatorMessage({ kind: 'event', event: draftFrom(goldenEvents[10]) }),
-    ).toThrow('Run coordinator received an invalid message.');
+      parseRunCoordinatorMessage({
+        kind: 'event',
+        workflowId: scopeWorkflowId,
+        event: draftFrom(goldenEvents[10]),
+      }),
+    ).toThrow('Run coordinator message is invalid.');
   });
 });

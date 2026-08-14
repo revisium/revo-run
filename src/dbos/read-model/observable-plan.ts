@@ -52,10 +52,19 @@ export interface ObservableNodeCandidate {
   readonly awaitsHumanResolution: boolean;
 }
 
+export interface ObservableParallelCandidate {
+  readonly node: Extract<PipelineNode, { readonly kind: 'parallel' }>;
+  readonly nodeInstanceId: string;
+  readonly scopeId: string;
+  readonly physicalScopeId: string;
+  readonly branchScopeIds: ReadonlyMap<string, string>;
+}
+
 export interface ObservablePlan {
   readonly rootScopeId: string;
   readonly scopes: ReadonlyMap<string, ObservableScopeCandidate>;
   readonly nodesByDisplayPath: ReadonlyMap<string, ObservableNodeCandidate>;
+  readonly parallelNodesByDisplayPath: ReadonlyMap<string, ObservableParallelCandidate>;
 }
 
 interface TraversalContext {
@@ -72,6 +81,7 @@ class ObservablePlanBuilder {
   private readonly plan: ExecutionPlan;
   private readonly scopeCandidates = new Map<string, ObservableScopeCandidate>();
   private readonly nodeCandidates = new Map<string, ObservableNodeCandidate>();
+  private readonly parallelCandidates = new Map<string, ObservableParallelCandidate>();
 
   constructor(plan: ExecutionPlan, runId: string) {
     this.plan = plan;
@@ -101,6 +111,7 @@ class ObservablePlanBuilder {
       rootScopeId: root.id,
       scopes: this.scopeCandidates,
       nodesByDisplayPath: this.nodeCandidates,
+      parallelNodesByDisplayPath: this.parallelCandidates,
     };
   }
 
@@ -232,12 +243,15 @@ class ObservablePlanBuilder {
       nodePath,
       nodeKind: node.kind,
     });
+    const parallelDisplayPath = displayPath(context, nodePath);
+    const branchScopeIds = new Map<string, string>();
     for (const [branchKey, branch] of Object.entries(node.branches)) {
       const id = createParallelBranchScopeId({
         parentScopeId: context.logicalScopeId,
         authoredNodeId,
         branchKey,
       });
+      branchScopeIds.set(branchKey, id);
       this.addScope({
         id,
         kind: 'parallelBranch',
@@ -261,6 +275,16 @@ class ObservablePlanBuilder {
         runtimePath: context.runtimePath,
       });
     }
+    this.parallelCandidates.set(parallelDisplayPath, {
+      node,
+      nodeInstanceId: createNodeInstanceId({
+        scopeId: context.logicalScopeId,
+        authoredNodeId,
+      }),
+      scopeId: context.logicalScopeId,
+      physicalScopeId: context.physicalScopeId,
+      branchScopeIds,
+    });
   }
 
   private addScope(candidate: ObservableScopeCandidate): void {

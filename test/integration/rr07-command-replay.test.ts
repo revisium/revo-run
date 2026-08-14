@@ -6,7 +6,7 @@ import type { CommandDispatchWorkflowInput } from '../../src/contracts/workflow/
 import { orphanHealthCheckSeconds } from '../../src/dbos/coordination/orphan-health-check.js';
 import { DbosRunRuntime } from '../../src/dbos/dbos-run-runtime.js';
 import { loadAllWorkflowSteps } from '../../src/dbos/read-model/dbos-step-pages.js';
-import { scopeWorkflowV2Id } from '../../src/dbos/workflow-id.js';
+import { scopeWorkflowId } from '../../src/dbos/workflow-id.js';
 import { WorkflowRegistry } from '../../src/dbos/workflow-registry.js';
 import type { RunExecutorResult } from '../../src/index.js';
 import { agentBinding, end, executionPlan, sequence, task } from '../dsl/pipeline-builder.js';
@@ -81,7 +81,7 @@ describe('RR-07 durable command replay', () => {
       if (providerScopeId === undefined) {
         throw new Error('Provider scope was not observed.');
       }
-      const scopeSteps = await loadAllWorkflowSteps(scopeWorkflowV2Id(providerScopeId));
+      const scopeSteps = await loadAllWorkflowSteps(scopeWorkflowId(providerScopeId));
       const receives = scopeSteps.filter(({ name }) => name === 'DBOS.recv');
       const healthDeadlines = scopeSteps.filter(
         ({ name, output, startedAtEpochMs }) =>
@@ -102,6 +102,7 @@ describe('RR-07 durable command replay', () => {
       expect(durableReceives.every(({ output }) => output !== null)).toBe(true);
       expect(healthDeadlines).toHaveLength(durableReceives.length);
       expect(directiveDrains.map(({ output }) => output)).toStrictEqual([
+        null,
         null,
         null,
         { kind: 'cancel' },

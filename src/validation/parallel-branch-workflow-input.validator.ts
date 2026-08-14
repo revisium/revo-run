@@ -15,7 +15,6 @@ export const parseParallelBranchWorkflowInput = (value: unknown): ParallelBranch
   if (!validator.Check(value)) {
     throw invalidInput();
   }
-
   return value;
 };
 
@@ -24,7 +23,6 @@ export const ParallelBranchWorkflowArgumentsParser = {
     if (!argumentsValidator.Check(value)) {
       throw invalidInput();
     }
-
     return value;
   },
 };

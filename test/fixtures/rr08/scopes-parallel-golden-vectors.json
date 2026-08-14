@@ -1,0 +1,343 @@
+{
+  "metadata": {
+    "contract": "rr-08-scopes-parallel",
+    "artifactVersion": 1,
+    "sourceRevision": "a959aa4203fb6bc66e642aa8c054f3c689c8f141",
+    "cloudRevision": "Xx-qwSEgx953UpLTLlTjo"
+  },
+  "identities": {
+    "scopeId": "sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "parentScopeId": "sc1_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+    "nodeInstanceId": "ni1_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+    "attemptId": "at1_DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+    "authoredNodeId": "an1_EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE"
+  },
+  "publicObservations": [
+    {
+      "id": "join.cancel.success",
+      "schema": "parallelJoin",
+      "valid": true,
+      "value": {
+        "scopeId": "sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "nodeInstanceId": "ni1_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+        "outcome": "succeeded",
+        "remaining": "cancel",
+        "observedBranchKeys": ["second"],
+        "outputEligibleBranchKeys": ["second"],
+        "skippedBranchKeys": ["third"]
+      }
+    },
+    {
+      "id": "join.drain.failure",
+      "schema": "parallelJoin",
+      "valid": true,
+      "value": {
+        "scopeId": "sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "nodeInstanceId": "ni1_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+        "outcome": "failed",
+        "remaining": "drain",
+        "observedBranchKeys": ["third", "first"],
+        "outputEligibleBranchKeys": ["first", "third"],
+        "skippedBranchKeys": []
+      }
+    },
+    {
+      "id": "join.duplicate-eligible",
+      "schema": "parallelJoin",
+      "valid": false,
+      "value": {
+        "scopeId": "sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "nodeInstanceId": "ni1_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+        "outcome": "succeeded",
+        "remaining": "cancel",
+        "observedBranchKeys": ["first"],
+        "outputEligibleBranchKeys": ["first", "first"],
+        "skippedBranchKeys": []
+      }
+    },
+    {
+      "id": "skipped.valid",
+      "schema": "skippedBranch",
+      "valid": true,
+      "value": {
+        "kind": "parallelBranch",
+        "disposition": "skipped",
+        "reason": "join-decided",
+        "scopeId": "sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "parentScopeId": "sc1_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "nodeInstanceId": "ni1_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+        "branchKey": "third"
+      }
+    },
+    {
+      "id": "skipped.cross-discriminant",
+      "schema": "skippedBranch",
+      "valid": false,
+      "value": {
+        "kind": "parallelBranch",
+        "disposition": "cancelled",
+        "reason": "join-decided",
+        "scopeId": "sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "parentScopeId": "sc1_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "nodeInstanceId": "ni1_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+        "branchKey": "third"
+      }
+    },
+    {
+      "id": "event.cancelled",
+      "schema": "runEvent",
+      "valid": true,
+      "value": {
+        "cursor": "run-1:1",
+        "timestamp": "2026-08-13T00:00:00.000Z",
+        "type": "nodeExecution.cancelled",
+        "data": {
+          "scopeId": "sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "authoredNodeId": "an1_EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+          "nodeInstanceId": "ni1_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+          "attemptId": "at1_DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+          "attemptOrdinal": 1
+        }
+      }
+    },
+    {
+      "id": "event.cancelled-excess-reason",
+      "schema": "runEvent",
+      "valid": false,
+      "value": {
+        "cursor": "run-1:1",
+        "timestamp": "2026-08-13T00:00:00.000Z",
+        "type": "nodeExecution.cancelled",
+        "data": {
+          "scopeId": "sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "authoredNodeId": "an1_EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+          "nodeInstanceId": "ni1_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+          "attemptId": "at1_DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+          "attemptOrdinal": 1,
+          "reason": "secret-provider-state"
+        }
+      }
+    }
+  ],
+  "durableVectors": [
+    {
+      "id": "decision.cancel",
+      "schema": "joinDecision",
+      "valid": true,
+      "value": {
+        "kind": "parallelJoinDecision",
+        "scopeId": "sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "nodeInstanceId": "ni1_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+        "outcome": "succeeded",
+        "remaining": "cancel",
+        "settlements": [
+          {
+            "key": "second",
+            "outcome": "completed"
+          }
+        ],
+        "outputEligibleBranchKeys": ["second"],
+        "skippedBranchKeys": ["third"]
+      }
+    },
+    {
+      "id": "decision.empty-settlements",
+      "schema": "joinDecision",
+      "valid": false,
+      "value": {
+        "kind": "parallelJoinDecision",
+        "scopeId": "sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "nodeInstanceId": "ni1_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+        "outcome": "succeeded",
+        "remaining": "cancel",
+        "settlements": [],
+        "outputEligibleBranchKeys": ["first"],
+        "skippedBranchKeys": []
+      }
+    },
+    {
+      "id": "admission.start-cancelled",
+      "schema": "admissionReply",
+      "valid": true,
+      "value": {
+        "requestId": "request:third",
+        "admissionId": "admission:third",
+        "workflowId": "rr:scope:sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "directive": "startCancelled",
+        "cancellation": {
+          "source": "run",
+          "id": "cmd_cancel"
+        }
+      }
+    },
+    {
+      "id": "admission.foreign-id",
+      "schema": "admissionReply",
+      "valid": false,
+      "value": {
+        "requestId": "request:third",
+        "admissionId": "admission:third",
+        "workflowId": "foreign:scope:sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "directive": "start"
+      }
+    },
+    {
+      "id": "branch.settlement-only",
+      "schema": "branchInput",
+      "valid": true,
+      "value": {
+        "runId": "run-1",
+        "scopeId": "sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "parentWorkflowId": "rr:scope:sc1_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "branchKey": "third",
+        "node": {
+          "kind": "end",
+          "status": "succeeded",
+          "outcome": "completed"
+        },
+        "pipelineId": "main",
+        "pipelineInput": {
+          "kind": "mapping",
+          "values": {}
+        },
+        "runtimePath": "main",
+        "parentPath": "main/fanout",
+        "inheritedOutputs": [],
+        "maximumParallelism": 1,
+        "disposition": "settlementOnly",
+        "startFence": {
+          "requestId": "request:third",
+          "admissionId": "admission:third",
+          "workflowId": "rr:scope:sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "directive": "start"
+        }
+      }
+    },
+    {
+      "id": "branch.invalid-disposition",
+      "schema": "branchInput",
+      "valid": false,
+      "value": {
+        "runId": "run-1",
+        "scopeId": "sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "parentWorkflowId": "rr:scope:sc1_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "branchKey": "third",
+        "node": {
+          "kind": "end",
+          "status": "succeeded",
+          "outcome": "completed"
+        },
+        "pipelineId": "main",
+        "pipelineInput": {
+          "kind": "mapping",
+          "values": {}
+        },
+        "runtimePath": "main",
+        "parentPath": "main/fanout",
+        "inheritedOutputs": [],
+        "maximumParallelism": 1,
+        "disposition": "skipped",
+        "startFence": {
+          "requestId": "request:third",
+          "admissionId": "admission:third",
+          "workflowId": "rr:scope:sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "directive": "start"
+        }
+      }
+    }
+  ],
+  "joinCases": [
+    {
+      "id": "all-fails-on-first-failure",
+      "policy": {
+        "kind": "all",
+        "successfulOutcomes": ["completed"],
+        "remaining": "cancel"
+      },
+      "authoredBranchKeys": ["first", "second", "third"],
+      "settlements": [
+        {
+          "key": "second",
+          "outcome": "failed",
+          "outputs": []
+        },
+        {
+          "key": "first",
+          "outcome": "completed",
+          "outputs": []
+        }
+      ],
+      "decisionAfter": 1,
+      "expected": {
+        "outcome": "failed",
+        "observedBranchKeys": ["second"],
+        "outputEligibleBranchKeys": ["second"]
+      }
+    },
+    {
+      "id": "any-succeeds-out-of-order",
+      "policy": {
+        "kind": "any",
+        "successfulOutcomes": ["completed"],
+        "remaining": "drain"
+      },
+      "authoredBranchKeys": ["first", "second", "third"],
+      "settlements": [
+        {
+          "key": "third",
+          "outcome": "failed",
+          "outputs": []
+        },
+        {
+          "key": "second",
+          "outcome": "completed",
+          "outputs": []
+        },
+        {
+          "key": "first",
+          "outcome": "late",
+          "outputs": []
+        }
+      ],
+      "decisionAfter": 2,
+      "expected": {
+        "outcome": "succeeded",
+        "observedBranchKeys": ["third", "second"],
+        "outputEligibleBranchKeys": ["second", "third"]
+      }
+    },
+    {
+      "id": "threshold-becomes-unreachable",
+      "policy": {
+        "kind": "threshold",
+        "successfulOutcomes": ["completed"],
+        "remaining": "cancel",
+        "count": 2
+      },
+      "authoredBranchKeys": ["first", "second", "third"],
+      "settlements": [
+        {
+          "key": "third",
+          "outcome": "failed",
+          "outputs": []
+        },
+        {
+          "key": "first",
+          "outcome": "failed",
+          "outputs": []
+        },
+        {
+          "key": "second",
+          "outcome": "late",
+          "outputs": []
+        }
+      ],
+      "decisionAfter": 2,
+      "expected": {
+        "outcome": "failed",
+        "observedBranchKeys": ["third", "first"],
+        "outputEligibleBranchKeys": ["first", "third"]
+      }
+    }
+  ]
+}

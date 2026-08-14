@@ -1,31 +1,75 @@
 import { DBOS } from '@dbos-inc/dbos-sdk';
 
 import type { ScopeDirective } from '../../contracts/workflow/run-command-workflow.js';
-import { scopeDirectiveV2Topic, scopeReplyV2Topic, scopeSettlementV2Topic } from '../dbos-names.js';
+import type { ScopeStartFenceReply } from '../../contracts/workflow/run-coordinator-message.js';
+import type { ScopeCancellationFence } from '../../contracts/workflow/run-coordinator-message.js';
+import {
+  scopeAdmissionReplyTopic,
+  scopeDirectiveTopic,
+  scopeReplyTopic,
+  scopeSettlementTopic,
+} from '../dbos-names.js';
 import { isActiveWorkflowStatus } from '../workflow-status.js';
 
-/** Root-owned registry for readiness, fencing, and cooperative scope settlement. */
+/** Root-owned lineage, cancellation fence, and settlement-obligation registry. */
 export class RunScopeRegistry {
   private readonly parents = new Map<string, string>();
+  private readonly admissions = new Map<
+    string,
+    { readonly requestId: string; readonly admissionId: string }
+  >();
   private readonly ready = new Set<string>();
   private readonly finished = new Set<string>();
   private readonly settled = new Set<string>();
+  private readonly cancellationFences = new Map<string, ScopeCancellationFence>();
 
   registerRoot(workflowId: string, rootWorkflowId: string): void {
     this.register(workflowId, rootWorkflowId, false);
     this.ready.add(workflowId);
   }
 
-  registerChild(workflowId: string, parentWorkflowId: string): void {
+  admitChild(
+    workflowId: string,
+    parentWorkflowId: string,
+    requestId: string,
+    admissionId: string,
+  ): void {
     if (!this.parents.has(parentWorkflowId)) {
       throw new Error('Run scope parent is not registered.');
     }
     this.register(workflowId, parentWorkflowId, true);
+    const existing = this.admissions.get(workflowId);
+    if (
+      existing !== undefined &&
+      (existing.requestId !== requestId || existing.admissionId !== admissionId)
+    ) {
+      throw new Error('Run scope admission was replayed with conflicting identity.');
+    }
+    this.admissions.set(workflowId, { requestId, admissionId });
+    if (this.cancellationFences.has(parentWorkflowId)) {
+      this.retainCancellation(workflowId, { source: 'parent', id: parentWorkflowId });
+    }
   }
 
   assertLineage(workflowId: string, parentWorkflowId: string): void {
     if (this.parents.get(workflowId) !== parentWorkflowId) {
       throw new Error('Run scope lineage is invalid.');
+    }
+  }
+
+  assertAdmission(workflowId: string, requestId: string, admissionId: string): void {
+    const admission = this.admissions.get(workflowId);
+    if (admission?.requestId !== requestId || admission.admissionId !== admissionId) {
+      throw new Error('Run scope readiness has invalid admission identity.');
+    }
+  }
+
+  assertDirectChildren(parentWorkflowId: string, childWorkflowIds: readonly string[]): void {
+    this.assertRegistered(parentWorkflowId);
+    for (const workflowId of childWorkflowIds) {
+      if (this.parents.get(workflowId) !== parentWorkflowId) {
+        throw new Error('Parallel cancellation target has invalid lineage.');
+      }
     }
   }
 
@@ -40,14 +84,14 @@ export class RunScopeRegistry {
     this.ready.add(workflowId);
   }
 
-  settle(workflowId: string): void {
-    this.assertRegistered(workflowId);
-    this.settled.add(workflowId);
-  }
-
   finish(workflowId: string): void {
     this.assertRegistered(workflowId);
     this.finished.add(workflowId);
+  }
+
+  settle(workflowId: string): void {
+    this.assertRegistered(workflowId);
+    this.settled.add(workflowId);
   }
 
   allSettled(rootWorkflowId: string): boolean {
@@ -57,20 +101,62 @@ export class RunScopeRegistry {
     );
   }
 
-  direct(workflowId: string, directive: ScopeDirective): Promise<void> {
-    return DBOS.send(workflowId, directive, scopeDirectiveV2Topic);
+  cancellationFence(workflowId: string): ScopeCancellationFence | undefined {
+    this.assertRegistered(workflowId);
+    return this.cancellationFences.get(workflowId);
+  }
+
+  directive(workflowId: string, global: ScopeDirective): ScopeDirective {
+    return global.kind === 'continue' && this.cancellationFence(workflowId) !== undefined
+      ? { kind: 'cancel' }
+      : global;
+  }
+
+  cancelSubtrees(workflowIds: readonly string[], cause: ScopeCancellationFence): readonly string[] {
+    const cancelled: string[] = [];
+    for (const workflowId of workflowIds) {
+      this.retainCancellation(workflowId, cause);
+      cancelled.push(workflowId);
+      this.cancelDescendants(workflowId, cancelled);
+    }
+    return cancelled;
+  }
+
+  cancelAll(cause: ScopeCancellationFence): void {
+    for (const workflowId of this.parents.keys()) {
+      this.cancellationFences.set(workflowId, cause);
+    }
   }
 
   reply(workflowId: string, directive: ScopeDirective): Promise<void> {
-    return DBOS.send(workflowId, directive, scopeReplyV2Topic);
+    return DBOS.send(workflowId, directive, scopeReplyTopic);
+  }
+
+  replyAdmission(parentWorkflowId: string, reply: ScopeStartFenceReply): Promise<void> {
+    return DBOS.send(parentWorkflowId, reply, scopeAdmissionReplyTopic(reply.workflowId));
   }
 
   acknowledgeSettlement(workflowId: string): Promise<void> {
-    return DBOS.send(workflowId, { kind: 'settled' }, scopeSettlementV2Topic);
+    return DBOS.send(workflowId, { kind: 'settled' }, scopeSettlementTopic);
+  }
+
+  async direct(workflowId: string, directive: ScopeDirective): Promise<void> {
+    this.assertRegistered(workflowId);
+    if (
+      this.ready.has(workflowId) &&
+      !this.finished.has(workflowId) &&
+      !this.settled.has(workflowId)
+    ) {
+      await DBOS.send(workflowId, directive, scopeDirectiveTopic);
+    }
   }
 
   async directAll(directive: ScopeDirective): Promise<void> {
     await this.directNext([...this.parents.keys()], directive);
+  }
+
+  async directMany(workflowIds: readonly string[], directive: ScopeDirective): Promise<void> {
+    await this.directNext(workflowIds, directive);
   }
 
   async assertUnsettledActive(): Promise<void> {
@@ -88,6 +174,29 @@ export class RunScopeRegistry {
     this.parents.set(workflowId, parentWorkflowId);
   }
 
+  private retainCancellation(workflowId: string, cause: ScopeCancellationFence): void {
+    this.assertRegistered(workflowId);
+    const existing = this.cancellationFences.get(workflowId);
+    if (
+      existing?.source === 'run' ||
+      (existing?.source === 'parent' && cause.source === 'joinDecision')
+    ) {
+      return;
+    }
+    this.cancellationFences.set(workflowId, cause);
+  }
+
+  private cancelDescendants(parentWorkflowId: string, cancelled: string[]): void {
+    for (const [workflowId, parent] of this.parents) {
+      if (parent !== parentWorkflowId) {
+        continue;
+      }
+      this.retainCancellation(workflowId, { source: 'parent', id: parentWorkflowId });
+      cancelled.push(workflowId);
+      this.cancelDescendants(workflowId, cancelled);
+    }
+  }
+
   private async directNext(
     workflowIds: readonly string[],
     directive: ScopeDirective,
@@ -96,13 +205,7 @@ export class RunScopeRegistry {
     if (workflowId === undefined) {
       return;
     }
-    if (
-      this.ready.has(workflowId) &&
-      !this.finished.has(workflowId) &&
-      !this.settled.has(workflowId)
-    ) {
-      await this.direct(workflowId, directive);
-    }
+    await this.direct(workflowId, directive);
     await this.directNext(remaining, directive);
   }
 

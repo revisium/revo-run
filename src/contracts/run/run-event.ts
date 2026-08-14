@@ -99,6 +99,7 @@ const nodeExecutionRecoveryExhausted = eventVariant(
   ),
 );
 const nodeExecutionTimedOut = eventVariant('nodeExecution.timedOut', AttemptIdentitySchema);
+const nodeExecutionCancelled = eventVariant('nodeExecution.cancelled', AttemptIdentitySchema);
 const inputResolutionFailed = eventVariant(
   'inputResolution.failed',
   Type.Object(
@@ -143,6 +144,7 @@ export const PipelineEventDraftSchema = Type.Union([
   nodeExecutionFailed.draft,
   nodeExecutionRecoveryExhausted.draft,
   nodeExecutionTimedOut.draft,
+  nodeExecutionCancelled.draft,
   inputResolutionFailed.draft,
   pipelineInvalidState.draft,
   pipelineBranchDefaulted.draft,
@@ -156,6 +158,7 @@ export const RunEventDraftSchema = Type.Union([
   nodeExecutionFailed.draft,
   nodeExecutionRecoveryExhausted.draft,
   nodeExecutionTimedOut.draft,
+  nodeExecutionCancelled.draft,
   inputResolutionFailed.draft,
   pipelineInvalidState.draft,
   pipelineBranchDefaulted.draft,
@@ -173,6 +176,7 @@ export const RunEventSchema = Type.Union([
   nodeExecutionFailed.stored,
   nodeExecutionRecoveryExhausted.stored,
   nodeExecutionTimedOut.stored,
+  nodeExecutionCancelled.stored,
   inputResolutionFailed.stored,
   pipelineInvalidState.stored,
   pipelineBranchDefaulted.stored,

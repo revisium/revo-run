@@ -11,7 +11,7 @@ import {
 } from '../../validation/run-command-workflow.validator.js';
 import { durableOperationLoop } from '../coordination/durable-operation-loop.js';
 import { orphanHealthCheckSeconds } from '../coordination/orphan-health-check.js';
-import { commandReplyV2Topic, runCoordinatorV2Topic, runWorkflowV2Name } from '../dbos-names.js';
+import { commandReplyTopic, runCoordinatorTopic, runWorkflowName } from '../dbos-names.js';
 import { runWorkflowId } from '../workflow-id.js';
 import { isActiveWorkflowStatus } from '../workflow-status.js';
 
@@ -20,11 +20,9 @@ export type CommandDispatchWorkflow = (
 ) => Promise<CommandDispatchWorkflowResult>;
 
 const commandRaceWindowSeconds = 1;
-/** Replies wake this receive immediately; the timeout only detects an orphaned active root. */
-export const commandOrphanHealthCheckSeconds = orphanHealthCheckSeconds;
 
 const finalReply = async (): Promise<CommandDispatchWorkflowResult | undefined> => {
-  const reply = await DBOS.recv(commandReplyV2Topic, { timeoutSeconds: 0 });
+  const reply = await DBOS.recv(commandReplyTopic, { timeoutSeconds: 0 });
   return reply === null ? undefined : parseCommandDispatchResult(reply);
 };
 
@@ -35,15 +33,14 @@ const waitForReply = async (
   const receiveOrObserveTerminal = async (
     timeoutSeconds: number,
   ): Promise<CommandDispatchWorkflowResult | undefined> => {
-    const reply = await DBOS.recv(commandReplyV2Topic, { timeoutSeconds });
+    const reply = await DBOS.recv(commandReplyTopic, { timeoutSeconds });
     if (reply !== null) {
       return parseCommandDispatchResult(reply);
     }
     const latest = await DBOS.getWorkflowStatus(rootWorkflowId);
     if (latest === null || !isActiveWorkflowStatus(latest.status)) {
-      const queued = await finalReply();
       return (
-        queued ?? {
+        (await finalReply()) ?? {
           status: 'receipt',
           receipt: {
             status: 'rejected',
@@ -61,7 +58,7 @@ const waitForReply = async (
     return initial;
   }
   for await (const result of durableOperationLoop(() =>
-    receiveOrObserveTerminal(commandOrphanHealthCheckSeconds),
+    receiveOrObserveTerminal(orphanHealthCheckSeconds),
   )) {
     if (result !== undefined) {
       return result;
@@ -94,20 +91,9 @@ export const createCommandDispatchWorkflow =
         },
       };
     }
-
     const rootWorkflowId = runWorkflowId(runId);
     const root = await DBOS.getWorkflowStatus(rootWorkflowId);
-    if (root?.workflowName !== runWorkflowV2Name) {
-      if (root?.workflowName === 'revo-run.run.v1') {
-        return {
-          status: 'receipt',
-          receipt: {
-            status: 'rejected',
-            commandId: input.commandId,
-            reason: 'unsupported_run_version',
-          },
-        };
-      }
+    if (root?.workflowName !== runWorkflowName) {
       return { status: 'runNotFound', commandId: input.commandId };
     }
     if (!(await isOwnedRoot(rootWorkflowId, runId))) {
@@ -123,7 +109,6 @@ export const createCommandDispatchWorkflow =
         },
       };
     }
-
-    await DBOS.send(rootWorkflowId, input, runCoordinatorV2Topic);
+    await DBOS.send(rootWorkflowId, input, runCoordinatorTopic);
     return waitForReply(input, rootWorkflowId);
   };

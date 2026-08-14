@@ -1,9 +1,57 @@
-import type { AttemptId, AuthoredNodeId, NodeInstanceId, ScopeId } from '../execution-identity.js';
+import Type from 'typebox';
+
+import type { DeepReadonly } from '../deep-readonly.js';
+import {
+  NodeInstanceIdSchema,
+  ScopeIdSchema,
+  type AttemptId,
+  type AuthoredNodeId,
+  type NodeInstanceId,
+  type ScopeId,
+} from '../execution-identity.js';
 import type { NodeOutput } from '../pipeline/node-output.js';
+import { IdentifierSchema } from '../schema-primitives.js';
 import type { CommandId, RunCommandRejectionReason } from './run-command.js';
 import type { RunSnapshot } from './run.js';
 
-export type RunNodeExecutionStatus = 'completed' | 'failed' | 'outcomeUnknown' | 'timedOut';
+export type RunNodeExecutionStatus =
+  | 'cancelled'
+  | 'completed'
+  | 'failed'
+  | 'outcomeUnknown'
+  | 'timedOut';
+
+export const ParallelJoinObservationSchema = Type.Object(
+  {
+    scopeId: ScopeIdSchema,
+    nodeInstanceId: NodeInstanceIdSchema,
+    outcome: Type.Union([Type.Literal('succeeded'), Type.Literal('failed')]),
+    remaining: Type.Union([Type.Literal('cancel'), Type.Literal('drain')]),
+    observedBranchKeys: Type.Array(IdentifierSchema, { minItems: 1, uniqueItems: true }),
+    outputEligibleBranchKeys: Type.Array(IdentifierSchema, { minItems: 1, uniqueItems: true }),
+    skippedBranchKeys: Type.Array(IdentifierSchema, { uniqueItems: true }),
+  },
+  { additionalProperties: false },
+);
+
+export type ParallelJoinObservation = DeepReadonly<
+  Type.Static<typeof ParallelJoinObservationSchema>
+>;
+
+export const SkippedParallelBranchSchema = Type.Object(
+  {
+    kind: Type.Literal('parallelBranch'),
+    disposition: Type.Literal('skipped'),
+    reason: Type.Literal('join-decided'),
+    scopeId: ScopeIdSchema,
+    parentScopeId: ScopeIdSchema,
+    nodeInstanceId: NodeInstanceIdSchema,
+    branchKey: IdentifierSchema,
+  },
+  { additionalProperties: false },
+);
+
+export type SkippedParallelBranch = DeepReadonly<Type.Static<typeof SkippedParallelBranchSchema>>;
 
 interface RunWorkflowScopeBase {
   readonly id: ScopeId;
@@ -64,7 +112,8 @@ export type RunAttempt =
       readonly status: 'outcomeUnknown';
       readonly recovery: { readonly reconciliationRound: number };
     })
-  | (RunAttemptBase & { readonly status: 'timedOut' });
+  | (RunAttemptBase & { readonly status: 'timedOut' })
+  | (RunAttemptBase & { readonly status: 'cancelled' });
 
 export interface RunDetails {
   readonly run: RunSnapshot;
@@ -72,6 +121,8 @@ export interface RunDetails {
   readonly nodeInstances: readonly RunNodeInstance[];
   readonly attempts: readonly RunAttempt[];
   readonly commands: readonly RunCommandDetails[];
+  readonly parallelJoins: readonly ParallelJoinObservation[];
+  readonly skippedParallelBranches: readonly SkippedParallelBranch[];
 }
 
 interface RunCommandDetailsBase {

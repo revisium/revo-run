@@ -23,7 +23,7 @@ import { runCommandDecisionStepName, runExecutionWorkflowName } from '../../src/
 import { loadRunDetails } from '../../src/dbos/read-model/load-run-details.js';
 import { runWorkflowId, scopeWorkflowId } from '../../src/dbos/workflow-id.js';
 import { task } from '../dsl/pipeline-builder.js';
-import { runDetailsHumanResolutionFixture } from '../support/run-details-v2.fixture.js';
+import { runDetailsHumanResolutionFixture } from '../support/run-details-command.fixture.js';
 import {
   branchScopes,
   rootScope,
@@ -122,7 +122,7 @@ describe('durable run details validation', () => {
     const workflowId = branchWorkflowId();
     statuses.set(workflowId, { ...statusFor(workflowId), output: null });
     await expect(loadRunDetails(snapshot)).rejects.toThrow(
-      'Parallel branch workflow output is invalid.',
+      'Parallel branch workflow result is invalid.',
     );
   });
 
@@ -130,7 +130,7 @@ describe('durable run details validation', () => {
     const workflowId = branchWorkflowId();
     statuses.set(workflowId, {
       ...statusFor(workflowId),
-      output: { key: 'b', outcome: 'completed', outputs: [] },
+      output: { status: 'completed', key: 'b', outcome: 'completed', outputs: [] },
     });
     await expect(loadRunDetails(snapshot)).rejects.toThrow(
       'Parallel branch workflow output identity is invalid.',
@@ -186,7 +186,7 @@ describe('durable run details validation', () => {
       ),
     );
 
-    await expect(loadRunDetails(fixture.snapshot, 'v2')).rejects.toThrow(
+    await expect(loadRunDetails(fixture.snapshot)).rejects.toThrow(
       'Run command decision identity is invalid.',
     );
   });

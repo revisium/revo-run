@@ -8,17 +8,17 @@ import type {
   CommandDispatchWorkflowResult,
 } from '../../src/contracts/workflow/run-command-workflow.js';
 import type { RunWorkflowInput } from '../../src/contracts/workflow/run-workflow-input.js';
+import { orphanHealthCheckSeconds } from '../../src/dbos/coordination/orphan-health-check.js';
 import {
   commandDispatchWorkflowName,
-  commandReplyV2Topic,
-  runCoordinatorV2Topic,
-  runWorkflowV2Name,
+  commandReplyTopic,
+  runCoordinatorTopic,
+  runWorkflowName,
 } from '../../src/dbos/dbos-names.js';
 import { loadAllWorkflowSteps } from '../../src/dbos/read-model/dbos-step-pages.js';
 import { commandWorkflowId, runWorkflowId } from '../../src/dbos/workflow-id.js';
 import { isActiveWorkflowStatus } from '../../src/dbos/workflow-status.js';
 import { createCommandDispatchWorkflow } from '../../src/dbos/workflows/command-dispatch-workflow.js';
-import { commandOrphanHealthCheckSeconds } from '../../src/dbos/workflows/command-dispatch-workflow.js';
 import { parseRunWorkflowInput } from '../../src/validation/parse-run-workflow-data.js';
 import { parseCommandDispatchInput } from '../../src/validation/run-command-workflow.validator.js';
 import { parseCommandDispatchResult } from '../../src/validation/run-command-workflow.validator.js';
@@ -62,15 +62,15 @@ const rootInput = (
 const boundaryRoot = DBOS.registerWorkflow(
   async (durableInput: unknown) => {
     const { commandWorkflowId: replyWorkflowId, receipt } = boundaryData(durableInput);
-    const command = parseCommandDispatchInput(await DBOS.recv(runCoordinatorV2Topic));
+    const command = parseCommandDispatchInput(await DBOS.recv(runCoordinatorTopic));
     if (command.commandId !== receipt.receipt.commandId) {
       throw new Error('Boundary root received an uncorrelated command.');
     }
     await DBOS.sleepms(1_100);
-    await DBOS.send(replyWorkflowId, receipt, commandReplyV2Topic);
+    await DBOS.send(replyWorkflowId, receipt, commandReplyTopic);
     return command.commandId;
   },
-  { name: runWorkflowV2Name },
+  { name: runWorkflowName },
 );
 
 const boundaryDispatcher = DBOS.registerWorkflow(createCommandDispatchWorkflow(), {
@@ -172,7 +172,7 @@ describe('command dispatcher terminal boundary', () => {
     const realReceive = DBOS.recv.bind(DBOS);
     const replyTimeouts: number[] = [];
     const receiveSpy = vi.spyOn(DBOS, 'recv').mockImplementation(async (topic, options) => {
-      if (topic === commandReplyV2Topic) {
+      if (topic === commandReplyTopic) {
         replyTimeouts.push(typeof options === 'number' ? options : (options?.timeoutSeconds ?? -1));
       }
       return realReceive(topic, options);
@@ -190,7 +190,7 @@ describe('command dispatcher terminal boundary', () => {
       await expect(dispatcher.getResult()).resolves.toStrictEqual(receipt);
       expect(Date.now() - startedAt).toBeLessThan(5_000);
       await expect(root.getResult()).resolves.toBe(commandId);
-      expect(replyTimeouts).toStrictEqual([1, commandOrphanHealthCheckSeconds]);
+      expect(replyTimeouts).toStrictEqual([1, orphanHealthCheckSeconds]);
 
       const receives = (await loadAllWorkflowSteps(dispatcherId)).filter(
         ({ name }) => name === 'DBOS.recv',

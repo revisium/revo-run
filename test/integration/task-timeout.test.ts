@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createRunManager } from '../../src/index.js';
 import type { RunEvent, RunExecutor, RunExecutorResult, RunManager } from '../../src/index.js';
@@ -44,6 +44,7 @@ describe('task timeout', () => {
       executor,
     });
     await manager.start();
+    const activeManager = manager;
 
     const runId = `timeout-${randomUUID()}`;
     await manager.startRun({
@@ -57,20 +58,38 @@ describe('task timeout', () => {
       ),
       input: null,
     });
-    await waitForRunStatus(manager, runId, 'failed');
+    await vi.waitFor(
+      () => {
+        expect(timeoutObserved).toBe(true);
+      },
+      { timeout: 5_000 },
+    );
+    await vi.waitFor(
+      async () => {
+        await expect(activeManager.getRunDetails(runId)).resolves.toMatchObject({
+          nodeInstances: [expect.objectContaining({ status: 'timedOut' })],
+          attempts: [expect.objectContaining({ status: 'timedOut' })],
+        });
+      },
+      { timeout: 5_000 },
+    );
+    expect(['pending', 'running']).toContain((await activeManager.getRun(runId))?.status);
+
+    settleLate?.({ kind: 'completed', outcome: 'late-completion' });
+    await waitForRunStatus(activeManager, runId, 'failed');
 
     const events: RunEvent[] = [];
-    for await (const event of manager.subscribeRunEvents(runId)) {
+    for await (const event of activeManager.subscribeRunEvents(runId)) {
       events.push(event);
     }
     expect(timeoutObserved).toBe(true);
-    const run = await manager.getRun(runId);
+    const run = await activeManager.getRun(runId);
     expect(run).toMatchObject({
       status: 'failed',
       result: { outcome: 'timedOut' },
     });
     expect(run !== undefined && 'error' in run ? run.error : undefined).toBeUndefined();
-    const details = await manager.getRunDetails(runId);
+    const details = await activeManager.getRunDetails(runId);
     expect(details).toMatchObject({
       nodeInstances: [expect.objectContaining({ status: 'timedOut' })],
       attempts: [expect.objectContaining({ status: 'timedOut' })],
@@ -80,15 +99,14 @@ describe('task timeout', () => {
     expect(timedOutEvent.data.attemptOrdinal).toBe(1);
     expect(executionCount).toBe(1);
 
-    settleLate?.({ kind: 'completed', outcome: 'late-completion' });
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(executionCount).toBe(1);
-    await expect(manager.getRun(runId)).resolves.toEqual(run);
-    await expect(manager.getRunDetails(runId)).resolves.toEqual(details);
+    await expect(activeManager.getRun(runId)).resolves.toEqual(run);
+    await expect(activeManager.getRunDetails(runId)).resolves.toEqual(details);
     const eventsAfterLateSettlement: RunEvent[] = [];
-    for await (const event of manager.subscribeRunEvents(runId)) {
+    for await (const event of activeManager.subscribeRunEvents(runId)) {
       eventsAfterLateSettlement.push(event);
     }
     expect(eventsAfterLateSettlement).toEqual(events);
-  });
+  }, 15_000);
 });

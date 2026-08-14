@@ -1,19 +1,9 @@
 import { DBOS } from '@dbos-inc/dbos-sdk';
 
 import { parseDbosWorkflowStatus } from '../../validation/dbos-workflow-status.validator.js';
-import {
-  parallelBranchWorkflowName,
-  parallelBranchWorkflowV2Name,
-  runExecutionWorkflowName,
-  runExecutionWorkflowV2Name,
-} from '../dbos-names.js';
+import { parallelBranchWorkflowName, runExecutionWorkflowName } from '../dbos-names.js';
 
-const supportedWorkflowNames = new Set([
-  runExecutionWorkflowName,
-  parallelBranchWorkflowName,
-  runExecutionWorkflowV2Name,
-  parallelBranchWorkflowV2Name,
-]);
+const supportedWorkflowNames = new Set([runExecutionWorkflowName, parallelBranchWorkflowName]);
 
 export const currentRecoveryGeneration = async (): Promise<number> => {
   const workflowId = DBOS.workflowID;

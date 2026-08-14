@@ -3,9 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { parallelBranchWorkflowV2Name } from '../../src/dbos/dbos-names.js';
+import { parallelBranchWorkflowName } from '../../src/dbos/dbos-names.js';
 import { loadAllWorkflowSteps } from '../../src/dbos/read-model/dbos-step-pages.js';
-import { scopeWorkflowV2Id } from '../../src/dbos/workflow-id.js';
+import { scopeWorkflowId } from '../../src/dbos/workflow-id.js';
 import { createRunManager } from '../../src/index.js';
 import { createRootScopeId } from '../../src/pipeline/identity/execution-identity.js';
 import { agentBinding, end, executionPlan, sequence, task } from '../dsl/pipeline-builder.js';
@@ -77,32 +77,54 @@ const startPagedRunObservationScenario = async () => {
   }
 };
 
-describe.sequential('real DBOS run details boundaries', () => {
-  it('projects root and nested parallel child workflows with their completed attempts', async () => {
-    const { executor, manager: runManager } = await startDetailsObservationManager();
-    try {
-      const runId = `nested-details-${randomUUID()}`;
-      const paths = [
-        'main/review/product',
-        'main/review/assurance/security',
-        'main/review/assurance/qa',
-      ];
-      await runManager.startRun({ runId, executionPlan: nestedParallelPlan(), input: null });
-      await Promise.all(paths.map((path) => executor.expectStarted(path)));
-      await Promise.all(
-        paths.map((path) => executor.complete(path, { kind: 'completed', outcome: 'completed' })),
-      );
-      await expect(runManager.waitForTerminal(runId, { timeoutMs: 5_000 })).resolves.toMatchObject({
-        status: 'succeeded',
-      });
+const startNestedRunObservationScenario = async () => {
+  const { executor, manager } = await startDetailsObservationManager();
+  const runId = `nested-details-${randomUUID()}`;
+  const paths = [
+    'main/review/product',
+    'main/review/assurance/security',
+    'main/review/assurance/qa',
+  ];
+  try {
+    await manager.startRun({ runId, executionPlan: nestedParallelPlan(), input: null });
+    await Promise.all(paths.map((path) => executor.expectStarted(path)));
+    await Promise.all(
+      paths.map((path) => executor.complete(path, { kind: 'completed', outcome: 'completed' })),
+    );
+    await manager.waitForTerminal(runId, { timeoutMs: 5_000 });
+    const rootScopeId = createRootScopeId({ runId, rootPipelineId: 'main' });
+    const rootSteps = await loadAllWorkflowSteps(scopeWorkflowId(rootScopeId));
+    const details = await manager.getRunDetails(runId);
+    if (details === undefined) {
+      throw new Error('Nested observation run details were not found.');
+    }
+    return { details, manager, paths, rootSteps };
+  } catch (error) {
+    await manager.stop();
+    throw error;
+  }
+};
 
-      const rootScopeId = createRootScopeId({ runId, rootPipelineId: 'main' });
-      const rootSteps = await loadAllWorkflowSteps(scopeWorkflowV2Id(rootScopeId));
-      const childStarts = rootSteps.filter(({ name }) => name === parallelBranchWorkflowV2Name);
+describe.sequential('real DBOS run details boundaries', () => {
+  describe('nested parallel observation scenario', () => {
+    let scenario: Awaited<ReturnType<typeof startNestedRunObservationScenario>>;
+
+    beforeAll(async () => {
+      scenario = await startNestedRunObservationScenario();
+    }, 15_000);
+
+    afterAll(async () => {
+      await scenario?.manager.stop();
+    });
+
+    it('records admission and start-fence acknowledgement before each child start', async () => {
+      const childStarts = scenario.rootSteps.filter(
+        ({ name }) => name === parallelBranchWorkflowName,
+      );
       expect(childStarts).toHaveLength(2);
       await Promise.all(
         childStarts.map(async (childStart) => {
-          const priorSteps = rootSteps.filter(
+          const priorSteps = scenario.rootSteps.filter(
             ({ functionID }) => functionID < childStart.functionID,
           );
           const acknowledgement = priorSteps.findLast(
@@ -110,8 +132,8 @@ describe.sequential('real DBOS run details boundaries', () => {
               name === 'DBOS.recv' &&
               output !== null &&
               typeof output === 'object' &&
-              'kind' in output &&
-              output.kind === 'continue',
+              'directive' in output &&
+              output.directive === 'start',
           );
           const registration = priorSteps.findLast(
             ({ functionID, name }) =>
@@ -119,7 +141,7 @@ describe.sequential('real DBOS run details boundaries', () => {
               (acknowledgement === undefined || functionID < acknowledgement.functionID),
           );
           expect(registration).toBeDefined();
-          expect(acknowledgement).toMatchObject({ output: { kind: 'continue' } });
+          expect(acknowledgement).toMatchObject({ output: { directive: 'start' } });
           expect(registration?.functionID).toBeLessThan(acknowledgement?.functionID ?? 0);
           expect(acknowledgement?.completedAtEpochMs).toBeLessThanOrEqual(
             childStart.startedAtEpochMs ?? 0,
@@ -129,33 +151,60 @@ describe.sequential('real DBOS run details boundaries', () => {
           ).not.toBeNull();
         }),
       );
+    });
 
-      const details = await runManager.getRunDetails(runId);
-
-      expect(details?.scopes.map(({ kind, displayPath }) => [kind, displayPath])).toEqual([
+    it('projects root and nested branch scopes in traversal order', () => {
+      expect(scenario.details.scopes.map(({ kind, displayPath }) => [kind, displayPath])).toEqual([
         ['root', 'main'],
         ['parallelBranch', 'main/review/product'],
         ['parallelBranch', 'main/review/assurance'],
         ['parallelBranch', 'main/review/assurance/security'],
         ['parallelBranch', 'main/review/assurance/qa'],
       ]);
-      expect(details?.nodeInstances.map(({ displayPath }) => displayPath)).toEqual(paths);
-      expect(details?.attempts.map(({ status }) => status)).toEqual([
+    });
+
+    it('projects one completed attempt for each executed task node', () => {
+      expect(scenario.details.nodeInstances.map(({ displayPath }) => displayPath)).toEqual(
+        scenario.paths,
+      );
+      expect(scenario.details.attempts.map(({ status }) => status)).toEqual([
         'completed',
         'completed',
         'completed',
       ]);
-    } finally {
-      await runManager.stop();
-    }
-  }, 15_000);
+    });
+
+    it('projects both successful drain joins with authored output eligibility', () => {
+      expect(scenario.details.parallelJoins).toHaveLength(2);
+      expect(scenario.details.parallelJoins).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            outcome: 'succeeded',
+            remaining: 'drain',
+            outputEligibleBranchKeys: ['product', 'assurance'],
+            skippedBranchKeys: [],
+          }),
+          expect.objectContaining({
+            outcome: 'succeeded',
+            remaining: 'drain',
+            outputEligibleBranchKeys: ['security', 'qa'],
+            skippedBranchKeys: [],
+          }),
+        ]),
+      );
+    });
+
+    it('does not report skipped branches for fully admitted drain joins', () => {
+      expect(scenario.details.skippedParallelBranches).toEqual([]);
+    });
+  });
 
   describe('paged run observation scenario', () => {
     let scenario: Awaited<ReturnType<typeof startPagedRunObservationScenario>>;
 
     beforeAll(async () => {
       scenario = await startPagedRunObservationScenario();
-    }, 30_000);
+    }, 120_000);
 
     afterAll(async () => {
       await scenario?.manager.stop();

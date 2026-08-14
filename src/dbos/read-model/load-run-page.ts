@@ -3,7 +3,7 @@ import type { GetWorkflowsInput, WorkflowStatus, WorkflowStatusString } from '@d
 
 import type { ListRunsInput, RunPage } from '../../contracts/run/list-runs.js';
 import type { RunStatus, RunSummary } from '../../contracts/run/run.js';
-import { runWorkflowName, runWorkflowV2Name } from '../dbos-names.js';
+import { runWorkflowName } from '../dbos-names.js';
 import { mapRunSummary, RunOwnershipError } from './map-run-snapshot.js';
 
 const defaultLimit = 50;
@@ -47,13 +47,7 @@ const matchesStatus = (summary: RunSummary, statuses: readonly RunStatus[] | und
   statuses === undefined || statuses.includes(summary.status);
 
 const knownRunWorkflowName = (workflowName: string): string | undefined => {
-  if (workflowName === runWorkflowName) {
-    return runWorkflowName;
-  }
-  if (workflowName === runWorkflowV2Name) {
-    return runWorkflowV2Name;
-  }
-  return undefined;
+  return workflowName === runWorkflowName ? runWorkflowName : undefined;
 };
 
 const ownedRunSummary = (row: WorkflowStatus): RunSummary | undefined => {
@@ -74,7 +68,7 @@ const ownedRunSummary = (row: WorkflowStatus): RunSummary | undefined => {
 const queryFrom = (input: ListRunsInput): GetWorkflowsInput => {
   const status = dbosStatuses(input.statuses);
   return {
-    workflow_id_prefix: 'rr:run:v1:',
+    workflow_id_prefix: 'rr:run:',
     ...(status === undefined ? {} : { status }),
     ...(input.createdFrom === undefined ? {} : { startTime: input.createdFrom.toISOString() }),
     ...(input.createdThrough === undefined ? {} : { endTime: input.createdThrough.toISOString() }),

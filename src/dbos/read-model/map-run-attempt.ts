@@ -84,6 +84,7 @@ const mapEffectDecisionAttempt = (
   runId: string,
   attemptOrdinal: number,
   timestamps: { readonly startedAt?: Date; readonly completedAt?: Date },
+  includeCancelled: boolean,
 ): RunAttempt | undefined => {
   const decision = parseRunNodeEffectDecision(step.output);
   if (decision.kind === 'mustReconcile') {
@@ -92,7 +93,15 @@ const mapEffectDecisionAttempt = (
   }
   if (decision.kind === 'runNodeCancelled') {
     assertStoredExecutionIdentity(decision.request, candidate, runId, attemptOrdinal);
-    return undefined;
+    return includeCancelled
+      ? {
+          id: createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal }),
+          nodeInstanceId: candidate.id,
+          ordinal: attemptOrdinal,
+          status: 'cancelled',
+          ...timestamps,
+        }
+      : undefined;
   }
   return mapExecution(decision, candidate, runId, attemptOrdinal, timestamps);
 };
@@ -166,6 +175,7 @@ export const mapRunAttempt = (
   candidate: ObservableNodeCandidate,
   runId: string,
   attemptOrdinal: number,
+  includeCancelled = false,
 ): RunAttempt | undefined => {
   const timestamps = attemptTimestamps(step);
   const attemptId = createAttemptId({ nodeInstanceId: candidate.id, attemptOrdinal });
@@ -174,7 +184,14 @@ export const mapRunAttempt = (
   }
 
   if (isNodeEffectDecisionStepName(step.name)) {
-    return mapEffectDecisionAttempt(step, candidate, runId, attemptOrdinal, timestamps);
+    return mapEffectDecisionAttempt(
+      step,
+      candidate,
+      runId,
+      attemptOrdinal,
+      timestamps,
+      includeCancelled,
+    );
   }
   if (isNodeReconciliationStepName(step.name)) {
     return mapReconciledAttempt(step, candidate, runId, attemptOrdinal, timestamps);

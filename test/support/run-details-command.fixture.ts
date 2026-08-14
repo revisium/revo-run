@@ -3,14 +3,12 @@ import type { WorkflowStatus } from '@dbos-inc/dbos-sdk';
 import {
   nodeReconciliationOutcomeStepName,
   parallelBranchWorkflowName,
-  parallelBranchWorkflowV2Name,
   runCommandDecisionStepName,
   runExecutionWorkflowName,
-  runExecutionWorkflowV2Name,
   unknownOutcomeReadyStepName,
   unknownOutcomeResolutionStepName,
 } from '../../src/dbos/dbos-names.js';
-import { runWorkflowId, scopeWorkflowV2Id } from '../../src/dbos/workflow-id.js';
+import { runWorkflowId, scopeWorkflowId } from '../../src/dbos/workflow-id.js';
 import type { RunSnapshot } from '../../src/index.js';
 import {
   rootScope,
@@ -24,26 +22,26 @@ import {
 
 const commandId = 'cmd_00000000-0000-4000-8000-000000000000' as const;
 
-const v2Statuses = (): Map<string, WorkflowStatus> => {
+const commandStatuses = (): Map<string, WorkflowStatus> => {
   const statuses = new Map<string, WorkflowStatus>();
   for (const [id, value] of runDetailsStatuses()) {
-    const workflowID = id.replace('rr:scope:v1:', 'rr:scope:v2:');
+    const workflowID = id.replace('rr:scope:', 'rr:scope:');
     const root = value.workflowName === runExecutionWorkflowName;
     if (!Array.isArray(value.input) || value.input.length !== 1) {
-      throw new Error('V1 scope fixture input is missing.');
+      throw new Error('Scope fixture input is missing.');
     }
     const branchInput = value.input[0];
     if (typeof branchInput !== 'object' || branchInput === null || Array.isArray(branchInput)) {
-      throw new Error('V1 branch fixture input is invalid.');
+      throw new Error('Branch fixture input is invalid.');
     }
     if (typeof value.output !== 'object' || value.output === null || Array.isArray(value.output)) {
-      throw new Error('V1 scope fixture output is invalid.');
+      throw new Error('Scope fixture output is invalid.');
     }
-    const parentWorkflowID = value.parentWorkflowID?.replace('rr:scope:v1:', 'rr:scope:v2:');
+    const parentWorkflowID = value.parentWorkflowID?.replace('rr:scope:', 'rr:scope:');
     statuses.set(workflowID, {
       ...value,
       workflowID,
-      workflowName: root ? runExecutionWorkflowV2Name : parallelBranchWorkflowV2Name,
+      workflowName: root ? runExecutionWorkflowName : parallelBranchWorkflowName,
       ...(parentWorkflowID === undefined ? {} : { parentWorkflowID }),
       input: root ? value.input : [{ ...branchInput, parentWorkflowId: parentWorkflowID }],
       output: root ? value.output : { status: 'completed', ...value.output },
@@ -52,21 +50,21 @@ const v2Statuses = (): Map<string, WorkflowStatus> => {
   return statuses;
 };
 
-const v2Steps = (): Map<string, readonly TestStepInfo[]> => {
+const commandSteps = (): Map<string, readonly TestStepInfo[]> => {
   const steps = new Map<string, readonly TestStepInfo[]>();
   for (const [id, values] of runDetailsSteps()) {
-    const workflowID = id.replace('rr:scope:v1:', 'rr:scope:v2:');
+    const workflowID = id.replace('rr:scope:', 'rr:scope:');
     steps.set(
       workflowID,
       values.map((value) => ({
         ...value,
         name:
           value.name === runExecutionWorkflowName
-            ? runExecutionWorkflowV2Name
+            ? runExecutionWorkflowName
             : value.name === parallelBranchWorkflowName
-              ? parallelBranchWorkflowV2Name
+              ? parallelBranchWorkflowName
               : value.name,
-        childWorkflowID: value.childWorkflowID?.replace('rr:scope:v1:', 'rr:scope:v2:') ?? null,
+        childWorkflowID: value.childWorkflowID?.replace('rr:scope:', 'rr:scope:') ?? null,
       })),
     );
   }
@@ -109,14 +107,14 @@ export const runDetailsHumanResolutionFixture = () => {
     },
   };
   const request = storedNodeExecution('main/root-work', 'completed').request;
-  const beforeReadySteps = v2Steps();
+  const beforeReadySteps = commandSteps();
   beforeReadySteps.set(runWorkflowId(snapshot.id), [
-    step(1, runExecutionWorkflowV2Name, {
-      childWorkflowID: scopeWorkflowV2Id(rootScope.id),
+    step(1, runExecutionWorkflowName, {
+      childWorkflowID: scopeWorkflowId(rootScope.id),
     }),
-    step(2, 'DBOS.getResult', { childWorkflowID: scopeWorkflowV2Id(rootScope.id) }),
+    step(2, 'DBOS.getResult', { childWorkflowID: scopeWorkflowId(rootScope.id) }),
   ]);
-  beforeReadySteps.set(scopeWorkflowV2Id(rootScope.id), [
+  beforeReadySteps.set(scopeWorkflowId(rootScope.id), [
     step(1, nodeReconciliationOutcomeStepName('main/root-work', 1, 1), {
       output: {
         kind: 'runNodeReconciliation',
@@ -129,8 +127,8 @@ export const runDetailsHumanResolutionFixture = () => {
 
   const acceptedAdoptionSteps = new Map(beforeReadySteps);
   acceptedAdoptionSteps.set(runWorkflowId(snapshot.id), [
-    step(1, runExecutionWorkflowV2Name, {
-      childWorkflowID: scopeWorkflowV2Id(rootScope.id),
+    step(1, runExecutionWorkflowName, {
+      childWorkflowID: scopeWorkflowId(rootScope.id),
     }),
     step(2, runCommandDecisionStepName(commandId), {
       output: {
@@ -143,9 +141,9 @@ export const runDetailsHumanResolutionFixture = () => {
         outcome: 'published',
       },
     }),
-    step(3, 'DBOS.getResult', { childWorkflowID: scopeWorkflowV2Id(rootScope.id) }),
+    step(3, 'DBOS.getResult', { childWorkflowID: scopeWorkflowId(rootScope.id) }),
   ]);
-  acceptedAdoptionSteps.set(scopeWorkflowV2Id(rootScope.id), [
+  acceptedAdoptionSteps.set(scopeWorkflowId(rootScope.id), [
     step(1, nodeReconciliationOutcomeStepName('main/root-work', 1, 1), {
       output: {
         kind: 'runNodeReconciliation',
@@ -163,7 +161,7 @@ export const runDetailsHumanResolutionFixture = () => {
         output: { release: { kind: 'json', value: 'ok' } },
       },
     }),
-    ...(beforeReadySteps.get(scopeWorkflowV2Id(rootScope.id)) ?? []).filter(
+    ...(beforeReadySteps.get(scopeWorkflowId(rootScope.id)) ?? []).filter(
       ({ functionID }) => functionID > 3,
     ),
   ]);
@@ -174,6 +172,6 @@ export const runDetailsHumanResolutionFixture = () => {
     commandId,
     request,
     snapshot: humanResolutionSnapshot,
-    statuses: v2Statuses(),
+    statuses: commandStatuses(),
   };
 };

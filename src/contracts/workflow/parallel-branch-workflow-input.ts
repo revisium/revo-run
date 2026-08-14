@@ -1,7 +1,7 @@
 import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
-import { ScopeIdSchema } from '../execution-identity.js';
+import { ScopeIdSchema, ScopeWorkflowIdSchema } from '../execution-identity.js';
 import { NodeOutputSchema } from '../pipeline/node-output.js';
 import { PipelineInputScopeSchema } from '../pipeline/pipeline-input.js';
 import { PipelineNodeSchema } from '../pipeline/pipeline-node.schema.js';
@@ -12,6 +12,12 @@ import {
   PipelineNodePathSchema,
   PositiveSafeIntegerSchema,
 } from '../schema-primitives.js';
+import { ScopeStartFenceReplySchema } from './run-coordinator-message.js';
+
+export const ParallelBranchDispositionSchema = Type.Union([
+  Type.Literal('execute'),
+  Type.Literal('settlementOnly'),
+]);
 
 export const ParallelBranchWorkflowInputSchema = Type.Object(
   {
@@ -30,6 +36,9 @@ export const ParallelBranchWorkflowInputSchema = Type.Object(
       ),
     ),
     maximumParallelism: PositiveSafeIntegerSchema,
+    parentWorkflowId: ScopeWorkflowIdSchema,
+    disposition: ParallelBranchDispositionSchema,
+    startFence: ScopeStartFenceReplySchema,
   },
   { additionalProperties: false },
 );

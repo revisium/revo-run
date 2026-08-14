@@ -22,7 +22,7 @@ const workflowStatus = (overrides: Partial<WorkflowStatus> = {}): WorkflowStatus
   status: 'SUCCESS',
   updatedAt: 2,
   workflowClassName: '',
-  workflowID: `rr:run:v1:${runId}`,
+  workflowID: `rr:run:${runId}`,
   workflowName: runWorkflowName,
   ...overrides,
 });
@@ -167,12 +167,11 @@ describe('run snapshot mapping', () => {
   });
 
   it.each([
-    ['unversioned', `rr:run:${runId}`],
-    ['retired v2', `rr:run:v2:${runId}`],
-    ['abandoned v3', `rr:run:v3:${runId}`],
-    ['wrong kind', `rr:other:v1:${runId}`],
-    ['cross-kind', `rr:scope:v1:${runId}`],
-    ['malformed', 'rr:run:v1:run:reserved'],
+    ['foreign namespace', `foreign:run:${runId}`],
+    ['another owned run', 'rr:run:Foreign_1'],
+    ['wrong kind', `rr:other:${runId}`],
+    ['cross-kind', `rr:scope:${runId}`],
+    ['malformed', 'not-a-workflow-id'],
   ])('rejects a %s root workflow ID', (_caseName, workflowID) => {
     expect(() => mapRunSnapshot(workflowStatus({ workflowID }), runWorkflowName, runId)).toThrow(
       'Workflow is not a Revo run.',

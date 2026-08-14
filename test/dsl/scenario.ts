@@ -243,5 +243,4 @@ export type ScenarioCommandRejectionReason =
   | 'unknown_outcome_not_pending'
   | 'unknown_outcome_already_resolved'
   | 'unknown_outcome_retry_not_permitted'
-  | 'unsupported_run_version'
   | 'command_not_supported';

@@ -1,12 +1,15 @@
 import { DBOS, type StepConfig } from '@dbos-inc/dbos-sdk';
 
+import { scopeReplyTopic } from '../../../src/dbos/dbos-names.js';
+import { DbosRunRuntime } from '../../../src/dbos/dbos-run-runtime.js';
 import {
   DbosRunEventStream,
   RunEventBudgetExceededError,
 } from '../../../src/dbos/streams/run-event-stream.js';
 import { runWorkflowId } from '../../../src/dbos/workflow-id.js';
+import { WorkflowRegistry } from '../../../src/dbos/workflow-registry.js';
 import type { NodeOutput } from '../../../src/index.js';
-import { createRunManager } from '../../../src/index.js';
+import { RunManager } from '../../../src/manager/run-manager.js';
 import { JsonValueValidator } from '../../../src/validation/json-value.validator.js';
 import { recoveryScenarios } from '../../acceptance/scenarios/recovery.scenarios.js';
 import { parseRecoveryInstructions } from './effect-recovery-scenario-program.js';
@@ -33,6 +36,8 @@ type WorkerCommand =
         | { readonly kind: 'retry' };
     }
   | { readonly kind: 'cancelRun'; readonly actorId: string }
+  | { readonly kind: 'releaseAdmission' }
+  | { readonly kind: 'releaseDecision' }
   | { readonly kind: 'releaseReadiness' };
 
 const environment = (name: string): string => {
@@ -83,7 +88,88 @@ const pauseBeforeFirstIntent = (): void => {
   });
 };
 
+let releaseDecision: (() => void) | undefined;
+
+const pauseAfterFirstParallelDecision = (): void => {
+  const runStep = DBOS.runStep.bind(DBOS);
+  let paused = false;
+  Object.defineProperty(DBOS, 'runStep', {
+    configurable: true,
+    value: async <Result>(
+      callback: () => Promise<Result>,
+      config?: StepConfig & { readonly name?: string },
+    ): Promise<Result> => {
+      const result = await runStep(callback, config);
+      if (!paused && config?.name?.startsWith('parallel-join-decision:') === true) {
+        paused = true;
+        send({ kind: 'afterDecision' });
+        await new Promise<void>((resolve) => {
+          releaseDecision = resolve;
+        });
+      }
+      return result;
+    },
+  });
+};
+
 let releaseReadiness: (() => void) | undefined;
+let releaseAdmission: (() => void) | undefined;
+
+const pauseBeforeScopeAdmission = (targetOrdinal: number): void => {
+  const sendMessage = DBOS.send.bind(DBOS);
+  let admissionOrdinal = 0;
+  Object.defineProperty(DBOS, 'send', {
+    configurable: true,
+    value: async (workflowId: string, message: unknown, topic?: string): Promise<void> => {
+      if (
+        typeof message === 'object' &&
+        message !== null &&
+        'kind' in message &&
+        message.kind === 'scopeAdmission'
+      ) {
+        admissionOrdinal += 1;
+        if (admissionOrdinal === targetOrdinal) {
+          send({ kind: 'beforeAdmission' });
+          await new Promise<void>((resolve) => {
+            releaseAdmission = resolve;
+          });
+        }
+      }
+      return sendMessage(workflowId, message, topic);
+    },
+  });
+};
+
+const reportScopeCancellationAcknowledgement = (): void => {
+  const sendMessage = DBOS.send.bind(DBOS);
+  const receive = DBOS.recv.bind(DBOS);
+  let awaitingAcknowledgement = false;
+  Object.defineProperty(DBOS, 'send', {
+    configurable: true,
+    value: async (workflowId: string, message: unknown, topic?: string): Promise<void> => {
+      await sendMessage(workflowId, message, topic);
+      if (
+        typeof message === 'object' &&
+        message !== null &&
+        'kind' in message &&
+        message.kind === 'scopeCancellation'
+      ) {
+        awaitingAcknowledgement = true;
+      }
+    },
+  });
+  Object.defineProperty(DBOS, 'recv', {
+    configurable: true,
+    value: async (topic: string, options?: { readonly timeoutSeconds?: number }) => {
+      const result = await receive(topic, options);
+      if (awaitingAcknowledgement && topic === scopeReplyTopic && result !== null) {
+        awaitingAcknowledgement = false;
+        send({ kind: 'scopeCancellationAcknowledged' });
+      }
+      return result;
+    },
+  });
+};
 
 const pauseBeforeScopeReadiness = (targetOrdinal: number): void => {
   const sendMessage = DBOS.send.bind(DBOS);
@@ -135,6 +221,13 @@ const mode = environment('REVO_RUN_TEST_MODE');
 if (process.env.REVO_RUN_TEST_PAUSE_BEFORE_INTENT === 'true' && mode === 'start') {
   pauseBeforeFirstIntent();
 }
+const admissionPauseOrdinal = optionalPositiveInteger('REVO_RUN_TEST_PAUSE_BEFORE_ADMISSION');
+if (admissionPauseOrdinal !== undefined && mode === 'start') {
+  pauseBeforeScopeAdmission(admissionPauseOrdinal);
+}
+if (process.env.REVO_RUN_TEST_PAUSE_AFTER_DECISION === 'true' && mode === 'start') {
+  pauseAfterFirstParallelDecision();
+}
 const readinessPauseOrdinal = optionalPositiveInteger('REVO_RUN_TEST_PAUSE_BEFORE_READINESS');
 if (readinessPauseOrdinal !== undefined && mode === 'start') {
   pauseBeforeScopeReadiness(readinessPauseOrdinal);
@@ -142,6 +235,7 @@ if (readinessPauseOrdinal !== undefined && mode === 'start') {
 if (process.env.REVO_RUN_TEST_FAIL_COMMAND_EVENT_BUDGET === 'true') {
   failCommandEventBudget();
 }
+reportScopeCancellationAcknowledgement();
 const unvalidatedInstructions = optionalJson('REVO_RUN_TEST_RECONCILIATIONS');
 const instructions =
   unvalidatedInstructions === undefined ? [] : parseRecoveryInstructions(unvalidatedInstructions);
@@ -157,14 +251,26 @@ const executor = new RecoveryProcessExecutor({
   ignoreAbort: process.env.REVO_RUN_TEST_IGNORE_ABORT === 'true',
   report: send,
 });
-const manager = createRunManager({
-  database: { url: environment('REVO_RUN_TEST_DATABASE_URL') },
-  executor,
-});
+const workflows = new WorkflowRegistry();
+const manager = new RunManager(
+  new DbosRunRuntime(environment('REVO_RUN_TEST_DATABASE_URL'), executor, workflows),
+);
 const runId = environment('REVO_RUN_TEST_RUN_ID');
 const checkpointed = new Set<string>();
+const observedAttemptStatuses = new Set<string>();
+const observedParallelJoins = new Set<string>();
 
 const handleCommand = async (message: WorkerCommand): Promise<void> => {
+  if (message.kind === 'releaseAdmission') {
+    releaseAdmission?.();
+    releaseAdmission = undefined;
+    return;
+  }
+  if (message.kind === 'releaseDecision') {
+    releaseDecision?.();
+    releaseDecision = undefined;
+    return;
+  }
   if (message.kind === 'releaseReadiness') {
     releaseReadiness?.();
     releaseReadiness = undefined;
@@ -216,6 +322,23 @@ const watchTerminalRun = async (): Promise<void> => {
     if (!checkpointed.has(path)) {
       checkpointed.add(path);
       send({ kind: 'checkpointed', path });
+    }
+    const observation = `${path}:${execution.status}`;
+    if (!observedAttemptStatuses.has(observation)) {
+      observedAttemptStatuses.add(observation);
+      send({ kind: 'attemptObserved', path, status: execution.status });
+    }
+  }
+  for (const join of details?.parallelJoins ?? []) {
+    const observation = `${join.scopeId}:${join.nodeInstanceId}`;
+    if (!observedParallelJoins.has(observation)) {
+      observedParallelJoins.add(observation);
+      send({
+        kind: 'parallelObserved',
+        remaining: join.remaining,
+        observedBranchKeys: join.observedBranchKeys,
+        skippedBranchKeys: join.skippedBranchKeys,
+      });
     }
   }
 

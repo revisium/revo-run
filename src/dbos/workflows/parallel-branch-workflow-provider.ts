@@ -7,7 +7,6 @@ export class ParallelBranchWorkflowProvider {
     if (this.workflow !== undefined) {
       throw new Error('Parallel branch workflow is already registered.');
     }
-
     this.workflow = workflow;
   }
 
@@ -15,7 +14,6 @@ export class ParallelBranchWorkflowProvider {
     if (this.workflow === undefined) {
       throw new Error('Parallel branch workflow is not registered.');
     }
-
     return this.workflow;
   }
 }

@@ -1,30 +1,35 @@
 import { PipelineInterpreter } from '../../pipeline/interpreter/pipeline-interpreter.js';
-import { rejectUnsupportedUnknownOutcomeResolution } from '../../pipeline/interpreter/unsupported-unknown-outcome-resolution.js';
 import { RunCoordinatorClient } from '../coordination/run-coordinator-client.js';
+import type { ScopeCancellationRegistry } from '../coordination/scope-cancellation-registry.js';
+import type { ProviderCallRegistry } from '../executor/provider-call-registry.js';
 import type { RunExecutorProvider } from '../executor/run-executor-provider.js';
 import { DbosParallelBranchRunner } from '../parallel/dbos-parallel-branch-runner.js';
 import { NodeExecutionStep } from '../steps/node-execution-step.js';
-import { waitForDurableRetryV1 } from '../wait/dbos-retry-wait.js';
 import type { ParallelBranchWorkflowProvider } from './parallel-branch-workflow-provider.js';
-
-export interface PipelineExecution {
-  readonly coordinator: RunCoordinatorClient;
-  readonly interpreter: PipelineInterpreter;
-}
 
 export const createPipelineExecution = (
   runId: string,
+  maximumParallelism: number,
   executor: RunExecutorProvider,
   parallelBranchWorkflows: ParallelBranchWorkflowProvider,
-): PipelineExecution => {
+  cancellation: ScopeCancellationRegistry,
+  providerCalls: ProviderCallRegistry,
+) => {
   const coordinator = new RunCoordinatorClient(runId);
+  const execution = new NodeExecutionStep(
+    executor,
+    cancellation,
+    providerCalls,
+    coordinator,
+    maximumParallelism,
+  );
   const interpreter = new PipelineInterpreter(
-    coordinator.executionStep(new NodeExecutionStep(executor)),
-    waitForDurableRetryV1,
+    execution.execute,
+    (request, delayMs) => coordinator.waitForRetry(request, delayMs),
     new DbosParallelBranchRunner(parallelBranchWorkflows, coordinator),
     coordinator,
-    rejectUnsupportedUnknownOutcomeResolution,
+    (request, recovery, retry, reconciliationRound) =>
+      coordinator.waitForUnknownOutcome(request, recovery, retry, reconciliationRound),
   );
-
   return { coordinator, interpreter };
 };

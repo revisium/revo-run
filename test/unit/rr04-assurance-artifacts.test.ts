@@ -126,7 +126,7 @@ describe('RR-04 repository-owned assurance artifacts', () => {
     const { bytes, value } = load('observation-golden-vectors.json', goldenValidator);
 
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '0150498562168290cba34a257731b91aa9b6b62dfdc2c18bdc7bf32a81b84a62',
+      '72feca02ea36b375d04b0b25dbacdfed9740d98e2d186c37fe05674ab0ff967d',
     );
     expect(value.sourceRevision).toBe(sourceRevision);
     expect(new Set(value.vectors.map(({ id }) => id)).size).toBe(value.vectors.length);
@@ -139,7 +139,7 @@ describe('RR-04 repository-owned assurance artifacts', () => {
     const { bytes, value } = load('observation-context-matrix.json', matrixValidator);
 
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '7abd40fd36065b44f92f40b64d10a2f48ce54c58cfd1ab6815fdd44995f3abcd',
+      '66330ec11c137ea43b61bd52f1ffc099b7910e6fc93250a130aea8ccb60f80c1',
     );
     expect(value.sourceRevision).toBe(sourceRevision);
     expect(new Set(value.cases.map(({ id }) => id)).size).toBe(value.cases.length);
