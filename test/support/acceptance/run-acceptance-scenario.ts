@@ -34,6 +34,7 @@ class AcceptanceScenarioRunner {
   private manager: RunManager;
   private observation: RunObservationAssertions;
   private eventIterator: AsyncIterator<RunEvent> | undefined;
+  private readonly bufferedEvents: RunEvent[] = [];
   private logicalTimeMs = 0;
   private startError: Error | undefined;
   private subscriptionError: Error | undefined;
@@ -149,6 +150,7 @@ class AcceptanceScenarioRunner {
           step.outputKey,
           step.pointer,
           step.value,
+          plan,
         );
         return;
       case 'expectEvent':
@@ -341,13 +343,35 @@ class AcceptanceScenarioRunner {
     expected: Extract<ScenarioStep, { readonly kind: 'expectEvent' }>['event'],
     plan: ExecutionPlan,
   ): Promise<void> {
-    this.eventIterator ??= this.manager.subscribeRunEvents(this.runId)[Symbol.asyncIterator]();
-    const next = await this.eventIterator.next();
-    assert(!next.done, `Run stream ended before ${expected.type}.`);
-    if (this.eventExpectations.captureIfExpected(next.value, plan, expected)) {
+    const dynamicNodeInstanceId =
+      expected.path?.includes('[') === true
+        ? await this.executor.nodeInstanceId(expected.path)
+        : undefined;
+    const bufferedIndex = this.bufferedEvents.findIndex((event) =>
+      this.eventExpectations.captureIfExpected(event, plan, expected, dynamicNodeInstanceId),
+    );
+    if (bufferedIndex >= 0) {
+      this.bufferedEvents.splice(bufferedIndex, 1);
       return;
     }
-    await this.expectEvent(expected, plan);
+    this.eventIterator ??= this.manager.subscribeRunEvents(this.runId)[Symbol.asyncIterator]();
+    await this.readExpectedEvent(expected, plan, dynamicNodeInstanceId);
+  }
+
+  private async readExpectedEvent(
+    expected: Extract<ScenarioStep, { readonly kind: 'expectEvent' }>['event'],
+    plan: ExecutionPlan,
+    dynamicNodeInstanceId: string | undefined,
+  ): Promise<void> {
+    const next = await this.eventIterator?.next();
+    assert(next !== undefined && !next.done, `Run stream ended before ${expected.type}.`);
+    if (
+      this.eventExpectations.captureIfExpected(next.value, plan, expected, dynamicNodeInstanceId)
+    ) {
+      return;
+    }
+    this.bufferedEvents.push(next.value);
+    await this.readExpectedEvent(expected, plan, dynamicNodeInstanceId);
   }
 
   private async captureCursorFromAnotherRun(name: string, plan: ExecutionPlan): Promise<void> {

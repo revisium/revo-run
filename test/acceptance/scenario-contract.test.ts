@@ -98,9 +98,9 @@ describe('acceptance scenario contract', () => {
     expect(executablePipelineScenarios.map(({ intentId }) => intentId)).toEqual(
       provenExecutableIntentIds,
     );
-    expect(executablePipelineScenarios).toHaveLength(80);
+    expect(executablePipelineScenarios).toHaveLength(88);
     expect(pendingPipelineScenarios).toHaveLength(maximumPendingScenarioCount);
-    expect(pendingPipelineScenarios).toHaveLength(23);
+    expect(pendingPipelineScenarios).toHaveLength(15);
     expect(pendingPipelineScenarios.map(({ intentId }) => intentId)).not.toContain('rr-034');
     expect(pendingPipelineScenarios.map(({ intentId }) => intentId)).not.toContain('rr-035');
     expect(pendingPipelineScenarios.map(({ intentId }) => intentId)).not.toContain('rr-078');

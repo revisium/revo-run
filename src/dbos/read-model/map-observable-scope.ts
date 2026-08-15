@@ -3,6 +3,8 @@ import { Equal } from 'typebox/value';
 
 import type { RunScope } from '../../contracts/run/run-details.js';
 import type { RunStatus } from '../../contracts/run/run.js';
+import { parseMapItemResult } from '../../validation/map-item-result.validator.js';
+import { parseMapItemWorkflowInput } from '../../validation/map-item-workflow-input.validator.js';
 import { parseParallelBranchResult } from '../../validation/parallel-branch-result.validator.js';
 import { parseParallelBranchWorkflowInput } from '../../validation/parallel-branch-workflow-input.validator.js';
 import { parseRunWorkflowResult } from '../../validation/parse-run-workflow-data.js';
@@ -11,6 +13,7 @@ import { parseRepeatIterationWorkflowInput } from '../../validation/repeat-itera
 import { parseRunExecutionWorkflowInput } from '../../validation/run-execution-workflow-input.validator.js';
 import {
   parallelBranchWorkflowName,
+  mapItemWorkflowName,
   repeatIterationWorkflowName,
   runExecutionWorkflowName,
 } from '../dbos-names.js';
@@ -37,6 +40,11 @@ type ProviderScope =
       readonly kind: 'repeatIteration';
       readonly scopeId: string;
       readonly input: ReturnType<typeof parseRepeatIterationWorkflowInput>;
+    }
+  | {
+      readonly kind: 'mapItem';
+      readonly scopeId: string;
+      readonly input: ReturnType<typeof parseMapItemWorkflowInput>;
     };
 
 const epoch = (value: number | undefined, fallback?: number): number => {
@@ -60,6 +68,19 @@ const successfulScopeStatus = (
       throw new Error('Repeat iteration workflow output identity is invalid.');
     }
     return result.kind === 'terminal' ? result.result.status : 'succeeded';
+  }
+  if (candidate.kind === 'mapItem') {
+    const result = parseMapItemResult(status.output);
+    if (
+      result.sourceIndex !== candidate.mapIdentity.sourceIndex ||
+      result.itemKey !== candidate.mapIdentity.itemKey
+    ) {
+      throw new Error('Map item workflow output identity is invalid.');
+    }
+    if (result.kind === 'terminal') {
+      return result.result.status;
+    }
+    return result.kind === 'settlementOnly' ? 'cancelled' : 'succeeded';
   }
   const result = parseParallelBranchResult(status.output);
   if (result.key !== candidate.parallelIdentity.branchKey) {
@@ -126,6 +147,13 @@ const providerScopeFromStatus = (status: WorkflowStatus, runId: string): Provide
     }
     return { kind: 'repeatIteration', scopeId: input.scopeId, input };
   }
+  if (status.workflowName === mapItemWorkflowName) {
+    const input = parseMapItemWorkflowInput(oneInput(status));
+    if (input.runId !== runId) {
+      throw new Error('Map item scope belongs to a different run.');
+    }
+    return { kind: 'mapItem', scopeId: input.scopeId, input };
+  }
   throw new Error('Run contains an unsupported child workflow.');
 };
 
@@ -137,6 +165,9 @@ export const scopeCandidateFromStatus = (
   const providerScope = providerScopeFromStatus(status, runId);
   if (providerScope.kind === 'repeatIteration') {
     plan.addRepeatIteration(providerScope.input);
+  }
+  if (providerScope.kind === 'mapItem') {
+    plan.addMapItem(providerScope.input);
   }
   const candidate = plan.scopes.get(providerScope.scopeId);
   if (candidate === undefined || candidate.kind === 'inlineSubpipeline') {
@@ -171,6 +202,28 @@ export const scopeCandidateFromStatus = (
       !Equal(input.node, candidate.repeatIdentity.node.body)
     ) {
       throw new Error('Repeat iteration scope durable identity is invalid.');
+    }
+    return candidate;
+  }
+
+  if (providerScope.kind === 'mapItem') {
+    if (candidate.kind !== 'mapItem') {
+      throw new Error('DBOS scope workflow kind is invalid.');
+    }
+    const input = providerScope.input;
+    const expected = candidate.mapIdentity;
+    if (
+      input.parentScopeId !== candidate.parentScopeId ||
+      input.mapNodeInstanceId !== expected.mapNodeInstanceId ||
+      input.sourceIndex !== expected.sourceIndex ||
+      input.itemKey !== expected.itemKey ||
+      input.disposition !== expected.disposition ||
+      input.pipelineId !== candidate.pipelineId ||
+      input.runtimePath !== candidate.displayPath ||
+      input.parentPath !== expected.nodePath ||
+      !Equal(input.node, expected.node.body)
+    ) {
+      throw new Error('Map item scope durable identity is invalid.');
     }
     return candidate;
   }
@@ -215,6 +268,20 @@ export const mapObservableScope = (
       pipelineId: candidate.pipelineId,
       displayPath: candidate.displayPath,
       ordinal: candidate.repeatIdentity.ordinal,
+      ...dates,
+    };
+  }
+  if (candidate.kind === 'mapItem') {
+    return {
+      kind: 'mapItem',
+      id: candidate.id,
+      parentScopeId: candidate.parentScopeId,
+      pipelineId: candidate.pipelineId,
+      displayPath: candidate.displayPath,
+      mapNodeInstanceId: candidate.mapIdentity.mapNodeInstanceId,
+      sourceIndex: candidate.mapIdentity.sourceIndex,
+      itemKey: candidate.mapIdentity.itemKey,
+      disposition: candidate.mapIdentity.disposition,
       ...dates,
     };
   }

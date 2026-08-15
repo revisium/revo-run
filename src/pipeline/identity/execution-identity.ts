@@ -67,6 +67,13 @@ export const createParallelBranchScopeId = (input: {
     input.branchKey,
   ]);
 
+export const createMapItemScopeId = (input: {
+  readonly parentScopeId: string;
+  readonly authoredNodeId: string;
+  readonly itemKey: string;
+}): string =>
+  identity('sc1', 'scope', ['map', input.parentScopeId, input.authoredNodeId, input.itemKey]);
+
 export const createRepeatIterationScopeId = (input: {
   readonly parentScopeId: string;
   readonly authoredNodeId: string;

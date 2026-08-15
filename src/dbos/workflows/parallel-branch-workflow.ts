@@ -11,6 +11,7 @@ import type { ProviderCallRegistry } from '../executor/provider-call-registry.js
 import type { RunExecutorProvider } from '../executor/run-executor-provider.js';
 import { createPipelineExecution } from './create-pipeline-execution.js';
 import { loadRunWorkflowInput } from './load-run-workflow-input.js';
+import type { MapItemWorkflowProvider } from './map-item-workflow-provider.js';
 import type { ParallelBranchWorkflowProvider } from './parallel-branch-workflow-provider.js';
 import type { RepeatIterationWorkflowProvider } from './repeat-iteration-workflow-provider.js';
 
@@ -20,6 +21,7 @@ export type ParallelBranchWorkflow = (
 
 export const createParallelBranchWorkflow = (
   executor: RunExecutorProvider,
+  mapWorkflows: MapItemWorkflowProvider,
   workflows: ParallelBranchWorkflowProvider,
   repeatWorkflows: RepeatIterationWorkflowProvider,
   cancellation: ScopeCancellationRegistry,
@@ -31,6 +33,7 @@ export const createParallelBranchWorkflow = (
       input.runId,
       input.maximumParallelism,
       executor,
+      mapWorkflows,
       workflows,
       repeatWorkflows,
       cancellation,
@@ -59,6 +62,7 @@ export const createParallelBranchWorkflow = (
         maximumParallelism: input.maximumParallelism,
         ...(input.nodePathPrefix === undefined ? {} : { nodePathPrefix: input.nodePathPrefix }),
         ...(input.iterationInput === undefined ? {} : { iterationInput: input.iterationInput }),
+        ...(input.mapItem === undefined ? {} : { mapItem: input.mapItem }),
       };
       const result = await interpreter.executeBranchScope(
         input.node,

@@ -289,6 +289,7 @@ export class DbosParallelBranchRunner implements ParallelBranchRunner {
         ? {}
         : { nodePathPrefix: context.nodePathPrefix }),
       ...(context.iterationInput === undefined ? {} : { iterationInput: context.iterationInput }),
+      ...(context.mapItem === undefined ? {} : { mapItem: context.mapItem }),
       inheritedOutputs: [...context.outputs].map(([path, output]) => ({ path, output })),
       maximumParallelism: context.maximumParallelism,
       parentWorkflowId,

@@ -1,6 +1,7 @@
 export const runWorkflowName = 'revo-run.run';
 export const runExecutionWorkflowName = 'revo-run.execution';
 export const parallelBranchWorkflowName = 'revo-run.parallel-branch';
+export const mapItemWorkflowName = 'revo-run.map-item';
 export const repeatIterationWorkflowName = 'revo-run.repeat-iteration';
 export const commandDispatchWorkflowName = 'revo-run.command-dispatch';
 export const runEventStreamName = 'revo-run.events';
@@ -20,6 +21,7 @@ const unknownOutcomeResolutionStepPrefix = 'unknown-outcome-resolution:';
 const unknownOutcomeReadyStepPrefix = 'unknown-outcome-ready:';
 const retryBackoffStepPrefix = 'retry-backoff:';
 const parallelJoinDecisionStepPrefix = 'parallel-join-decision:';
+const mapControlDecisionStepPrefix = 'map-control-decision:';
 
 export const runCommandDecisionStepName = (commandId: string): string =>
   `${runCommandDecisionStepPrefix}${commandId}`;
@@ -66,6 +68,19 @@ export const parallelJoinDecisionDisplayPath = (name: string): string => {
     throw new Error('DBOS step is not a parallel join decision.');
   }
   return name.slice(parallelJoinDecisionStepPrefix.length);
+};
+
+export const mapControlDecisionStepName = (displayPath: string): string =>
+  `${mapControlDecisionStepPrefix}${displayPath}`;
+
+export const isMapControlDecisionStepName = (name: string): boolean =>
+  name.startsWith(mapControlDecisionStepPrefix);
+
+export const mapControlDecisionDisplayPath = (name: string): string => {
+  if (!isMapControlDecisionStepName(name)) {
+    throw new Error('DBOS step is not a map control decision.');
+  }
+  return name.slice(mapControlDecisionStepPrefix.length);
 };
 
 export const isRetryBackoffStepName = (name: string): boolean =>

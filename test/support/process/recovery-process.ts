@@ -40,6 +40,7 @@ export interface RecoveryProcessOptions {
   readonly pauseBeforeIntent?: boolean;
   readonly pauseBeforeAdmission?: boolean | number;
   readonly pauseAfterDecision?: boolean;
+  readonly pauseAfterMapDecision?: boolean;
   readonly pauseAfterTerminalBranchResult?: boolean;
   readonly pauseBeforeReadiness?: boolean | number;
   readonly failCommandEventBudget?: boolean;
@@ -138,6 +139,9 @@ export class RecoveryProcess {
             }),
         ...(options.pauseAfterDecision === true
           ? { REVO_RUN_TEST_PAUSE_AFTER_DECISION: 'true' }
+          : {}),
+        ...(options.pauseAfterMapDecision === true
+          ? { REVO_RUN_TEST_PAUSE_AFTER_MAP_DECISION: 'true' }
           : {}),
         ...(options.pauseAfterTerminalBranchResult === true
           ? { REVO_RUN_TEST_PAUSE_AFTER_TERMINAL_BRANCH_RESULT: 'true' }

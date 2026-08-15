@@ -1,6 +1,7 @@
 import { childNodePath, pipelineNodePath } from '../../contracts/pipeline/node-path.js';
 import type { PipelineNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
+import type { MapItemWorkflowInput } from '../../contracts/workflow/map-item-workflow-input.js';
 import type { RepeatIterationWorkflowInput } from '../../contracts/workflow/repeat-iteration-workflow-input.js';
 import {
   createAuthoredNodeId,
@@ -10,8 +11,10 @@ import {
   createSubpipelineScopeId,
 } from '../../pipeline/identity/execution-identity.js';
 import { runWorkflowId, scopeWorkflowId } from '../workflow-id.js';
+import { ObservableMapItems } from './observable-map-items.js';
 import {
   type ObservableNodeCandidate,
+  type ObservableMapCandidate,
   type ObservableParallelCandidate,
   type ObservablePlan,
   type ObservableScopeCandidate,
@@ -27,6 +30,8 @@ export type {
   ObservableScopeCandidate,
   ParallelScopeIdentity,
   RepeatScopeIdentity,
+  MapScopeIdentity,
+  ObservableMapCandidate,
 } from './observable-plan-model.js';
 
 class ObservablePlanBuilder {
@@ -35,10 +40,13 @@ class ObservablePlanBuilder {
   private readonly nodeCandidates = new Map<string, ObservableNodeCandidate>();
   private readonly parallelCandidates = new Map<string, ObservableParallelCandidate>();
   private readonly repeatIterations: ObservableRepeatIterations;
+  private readonly mapItems: ObservableMapItems;
+  private readonly mapCandidates = new Map<string, ObservableMapCandidate>();
 
   constructor(plan: ExecutionPlan, runId: string) {
     this.plan = plan;
     this.repeatIterations = new ObservableRepeatIterations(plan);
+    this.mapItems = new ObservableMapItems(plan);
     const rootScopeId = createRootScopeId({ runId, rootPipelineId: plan.rootPipelineId });
     this.addScope({
       id: rootScopeId,
@@ -66,7 +74,9 @@ class ObservablePlanBuilder {
       scopes: this.scopeCandidates,
       nodesByDisplayPath: this.nodeCandidates,
       parallelNodesByDisplayPath: this.parallelCandidates,
+      mapNodesByDisplayPath: this.mapCandidates,
       addRepeatIteration: (input) => this.addRepeatIteration(input),
+      addMapItem: (input) => this.addMapItem(input),
     };
   }
 
@@ -119,11 +129,13 @@ class ObservablePlanBuilder {
       case 'repeat':
         this.addRepeatTemplate(node, nodePath, context);
         return;
+      case 'map':
+        this.addMapTemplate(node, nodePath, context);
+        return;
       case 'consensus':
       case 'delay':
       case 'end':
       case 'humanGate':
-      case 'map':
         return;
     }
     node satisfies never;
@@ -270,6 +282,35 @@ class ObservablePlanBuilder {
     input: RepeatIterationWorkflowInput,
   ): Extract<ObservableScopeCandidate, { readonly kind: 'repeatIteration' }> {
     return this.repeatIterations.add(input, {
+      getScope: (scopeId) => this.scopeCandidates.get(scopeId),
+      addScope: (candidate) => this.addScope(candidate),
+      walkBody: (node, parentPath, context) => this.walkNode(node, parentPath, context),
+    });
+  }
+
+  private addMapTemplate(
+    node: Extract<PipelineNode, { readonly kind: 'map' }>,
+    nodePath: string,
+    context: ObservableTraversalContext,
+  ): void {
+    const displayPath = observableDisplayPath(context, nodePath);
+    const candidate = this.mapItems.register(node, nodePath, {
+      parentScopeId: context.logicalScopeId,
+      physicalScopeId: context.physicalScopeId,
+      pipelineId: context.pipelineId,
+      displayPath,
+    });
+    const existing = this.mapCandidates.get(displayPath);
+    if (existing !== undefined && existing.nodeInstanceId !== candidate.nodeInstanceId) {
+      throw new Error('Observable plan contains duplicate map display paths.');
+    }
+    this.mapCandidates.set(displayPath, candidate);
+  }
+
+  private addMapItem(
+    input: MapItemWorkflowInput,
+  ): Extract<ObservableScopeCandidate, { readonly kind: 'mapItem' }> {
+    return this.mapItems.add(input, {
       getScope: (scopeId) => this.scopeCandidates.get(scopeId),
       addScope: (candidate) => this.addScope(candidate),
       walkBody: (node, parentPath, context) => this.walkNode(node, parentPath, context),

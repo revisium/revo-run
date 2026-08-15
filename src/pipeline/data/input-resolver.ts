@@ -15,6 +15,7 @@ export interface InputResolutionContext {
   readonly outputs: ReadonlyMap<string, NodeOutput>;
   readonly iterationInput?: ExecutorInput;
   readonly iterationOutput?: NodeOutput;
+  readonly mapItem?: JsonValue;
 }
 
 export type InputResolutionErrorCode =
@@ -132,7 +133,9 @@ export class InputResolver {
       case 'secret':
         return { resolved: true, value: source };
       case 'mapItem':
-        return { resolved: false, errorCode: 'input_source_unavailable' };
+        return this.context.mapItem === undefined
+          ? { resolved: false, errorCode: 'input_source_unavailable' }
+          : selectJson({ kind: 'json', value: this.context.mapItem }, source.path);
     }
 
     source satisfies never;

@@ -9,8 +9,13 @@ import {
   type NodeInstanceId,
   type ScopeId,
 } from '../execution-identity.js';
+import { MapSummarySchema } from '../pipeline/map-output.js';
 import type { NodeOutput } from '../pipeline/node-output.js';
-import { IdentifierSchema } from '../schema-primitives.js';
+import {
+  IdentifierSchema,
+  NonEmptyStringSchema,
+  NonNegativeIntegerSchema,
+} from '../schema-primitives.js';
 import type { CommandId, RunCommandRejectionReason } from './run-command.js';
 import type { RunSnapshot } from './run.js';
 
@@ -53,6 +58,47 @@ export const SkippedParallelBranchSchema = Type.Object(
 
 export type SkippedParallelBranch = DeepReadonly<Type.Static<typeof SkippedParallelBranchSchema>>;
 
+const MapExecutionIdentitySchema = {
+  scopeId: ScopeIdSchema,
+  nodeInstanceId: NodeInstanceIdSchema,
+  summary: MapSummarySchema,
+};
+
+export const MapExecutionObservationSchema = Type.Union([
+  Type.Object(
+    {
+      ...MapExecutionIdentitySchema,
+      outcome: Type.Union([Type.Literal('completed'), Type.Literal('completedWithErrors')]),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      ...MapExecutionIdentitySchema,
+      outcome: Type.Literal('failed'),
+      remaining: Type.Union([Type.Literal('cancel'), Type.Literal('drain')]),
+      decisiveItemKey: NonEmptyStringSchema,
+    },
+    { additionalProperties: false },
+  ),
+]);
+
+export type MapExecutionObservation = DeepReadonly<
+  Type.Static<typeof MapExecutionObservationSchema>
+>;
+
+export const SkippedMapItemSchema = Type.Object(
+  {
+    mapNodeInstanceId: NodeInstanceIdSchema,
+    sourceIndex: NonNegativeIntegerSchema,
+    itemKey: NonEmptyStringSchema,
+    scopeId: ScopeIdSchema,
+  },
+  { additionalProperties: false },
+);
+
+export type SkippedMapItem = DeepReadonly<Type.Static<typeof SkippedMapItemSchema>>;
+
 interface RunWorkflowScopeBase {
   readonly id: ScopeId;
   readonly pipelineId: string;
@@ -73,6 +119,14 @@ export type RunScope =
       readonly kind: 'repeatIteration';
       readonly parentScopeId: ScopeId;
       readonly ordinal: number;
+    })
+  | (RunWorkflowScopeBase & {
+      readonly kind: 'mapItem';
+      readonly parentScopeId: ScopeId;
+      readonly mapNodeInstanceId: NodeInstanceId;
+      readonly sourceIndex: number;
+      readonly itemKey: string;
+      readonly disposition: 'execute' | 'settlementOnly';
     })
   | {
       readonly kind: 'inlineSubpipeline';
@@ -128,6 +182,8 @@ export interface RunDetails {
   readonly commands: readonly RunCommandDetails[];
   readonly parallelJoins: readonly ParallelJoinObservation[];
   readonly skippedParallelBranches: readonly SkippedParallelBranch[];
+  readonly mapExecutions: readonly MapExecutionObservation[];
+  readonly skippedMapItems: readonly SkippedMapItem[];
 }
 
 interface RunCommandDetailsBase {

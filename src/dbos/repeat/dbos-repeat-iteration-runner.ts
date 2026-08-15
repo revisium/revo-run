@@ -50,6 +50,7 @@ export class DbosRepeatIterationRunner implements RepeatIterationRunner {
       pipelineId: input.context.pipelineId,
       pipelineInput: input.context.pipelineInput,
       iterationInput: input.input,
+      ...(input.context.mapItem === undefined ? {} : { mapItem: input.context.mapItem }),
       runtimePath: `${runtimePath(input.context, input.nodePath)}[${input.ordinal}]`,
       parentPath: input.nodePath,
       inheritedOutputs: [...input.context.outputs].map(([path, output]) => ({ path, output })),

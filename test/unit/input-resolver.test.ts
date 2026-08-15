@@ -45,6 +45,39 @@ describe('pipeline input resolution', () => {
     ).toEqual({ resolved: true, value: { kind: 'json', value: 2 } });
   });
 
+  it('resolves the nearest raw map item and distinguishes absence from pointer failure', () => {
+    const context = {
+      runInput: null,
+      pipelineInput: { kind: 'value' as const, value: { kind: 'json' as const, value: null } },
+      outputs: new Map(),
+    };
+    expect(
+      new InputResolver({ ...context, mapItem: { key: 'raw', nested: [1] } }).resolve({
+        kind: 'mapItem',
+        path: '',
+      }),
+    ).toEqual({
+      resolved: true,
+      value: { kind: 'json', value: { key: 'raw', nested: [1] } },
+    });
+    expect(
+      new InputResolver({ ...context, mapItem: { key: 'raw', nested: [1] } }).resolve({
+        kind: 'mapItem',
+        path: '/nested/0',
+      }),
+    ).toEqual({ resolved: true, value: { kind: 'json', value: 1 } });
+    expect(new InputResolver(context).resolve({ kind: 'mapItem', path: '' })).toEqual({
+      resolved: false,
+      errorCode: 'input_source_unavailable',
+    });
+    expect(
+      new InputResolver({ ...context, mapItem: { key: 'raw' } }).resolve({
+        kind: 'mapItem',
+        path: '/missing',
+      }),
+    ).toEqual({ resolved: false, errorCode: 'json_pointer_not_found' });
+  });
+
   it('classifies absent output, missing keys, and invalid JSON traversal distinctly', () => {
     const context = {
       runInput: null,

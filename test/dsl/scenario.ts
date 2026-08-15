@@ -24,6 +24,7 @@ export interface RunScenario {
 export interface ExpectedRunEvent {
   readonly type: string;
   readonly path?: string;
+  readonly errorCode?: string;
   readonly captureCursorAs?: string;
 }
 

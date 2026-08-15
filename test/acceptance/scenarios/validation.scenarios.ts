@@ -180,7 +180,10 @@ export const validationScenarios: readonly RunScenario[] = [
     ),
     steps: [
       startRun({ repositories: [{ id: 'same' }, { id: 'same' }] }),
-      expectEvent('pipeline.invalidState', { path: 'main/repositories' }),
+      expectEvent('pipeline.invalidState', {
+        path: 'main/repositories',
+        errorCode: 'duplicate_map_item_key',
+      }),
       { kind: 'expectNoNodeExecution', path: 'main/repositories[*]/review' },
       expectRunStatus('failed'),
     ],

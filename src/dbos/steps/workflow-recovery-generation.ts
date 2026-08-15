@@ -3,6 +3,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import { parseDbosWorkflowStatus } from '../../validation/dbos-workflow-status.validator.js';
 import {
   parallelBranchWorkflowName,
+  mapItemWorkflowName,
   repeatIterationWorkflowName,
   runExecutionWorkflowName,
 } from '../dbos-names.js';
@@ -10,6 +11,7 @@ import {
 const supportedWorkflowNames = new Set([
   runExecutionWorkflowName,
   parallelBranchWorkflowName,
+  mapItemWorkflowName,
   repeatIterationWorkflowName,
 ]);
 

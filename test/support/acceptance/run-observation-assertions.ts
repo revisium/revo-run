@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 
 import { vi } from 'vitest';
 
-import type { RunDetails, RunEvent, RunManager, RunStatus } from '../../../src/index.js';
+import type {
+  ExecutionPlan,
+  RunDetails,
+  RunEvent,
+  RunManager,
+  RunStatus,
+} from '../../../src/index.js';
 import type { ScenarioStep } from '../../dsl/scenario.js';
 import type { RunEventExpectations } from './run-event-expectations.js';
 
@@ -39,10 +45,23 @@ export class RunObservationAssertions {
     key: string,
     pointer: string | undefined,
     value: unknown,
+    plan: ExecutionPlan,
   ): Promise<void> {
     await vi.waitFor(async () => {
-      const attempt = this.attemptForPath(await this.details(), path);
-      assert(attempt?.status === 'completed');
+      const details = await this.details();
+      const attempt = this.attemptForPath(details, path);
+      if (attempt === undefined) {
+        assert.equal(key, 'summary');
+        assert.equal(pointer, undefined);
+        const nodeInstanceId = this.events.nodeInstanceId(plan, path);
+        const map = details.mapExecutions.find(
+          (candidate) => candidate.nodeInstanceId === nodeInstanceId,
+        );
+        assert(map !== undefined);
+        assert.deepStrictEqual(map.summary, value);
+        return;
+      }
+      assert(attempt.status === 'completed');
       const output = attempt.output?.[key];
       assert(output?.kind === 'json');
       assert.equal(pointer, undefined);

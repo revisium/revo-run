@@ -52,6 +52,28 @@ export class RecoveryDbosFaultInjectors {
     });
   }
 
+  pauseAfterFirstMapDecision(): void {
+    const runStep = DBOS.runStep.bind(DBOS);
+    let paused = false;
+    Object.defineProperty(DBOS, 'runStep', {
+      configurable: true,
+      value: async <Result>(
+        callback: () => Promise<Result>,
+        config?: StepConfig & { readonly name?: string },
+      ): Promise<Result> => {
+        const result = await runStep(callback, config);
+        if (!paused && config?.name?.startsWith('map-control-decision:') === true) {
+          paused = true;
+          this.report({ kind: 'afterDecision' });
+          await new Promise<void>((resolve) => {
+            this.releaseDecisionCallback = resolve;
+          });
+        }
+        return result;
+      },
+    });
+  }
+
   pauseAfterTerminalBranchResult(): void {
     const waitFirst = DBOS.waitFirst.bind(DBOS);
     let paused = false;

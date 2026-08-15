@@ -50,6 +50,7 @@ const executePlan = async (plan: ExecutionPlan, response?: TaskResponse) => {
     async () => undefined,
     { execute: async () => Promise.reject(new Error('Unexpected parallel execution.')) },
     { execute: async () => Promise.reject(new Error('Unexpected repeat execution.')) },
+    { execute: async () => Promise.reject(new Error('Unexpected map execution.')) },
     { registerInlineScopeOwnership: async () => undefined },
     { write: async (event) => void events.push(event) },
     async () => 'elapsed',
