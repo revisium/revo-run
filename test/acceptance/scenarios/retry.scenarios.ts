@@ -18,7 +18,9 @@ import {
   type RunScenario,
 } from '../../dsl/run-scenario.js';
 
-const retryTransientErrors = retryPolicy();
+const retryTransientErrors = retryPolicy({
+  backoff: { kind: 'exponential', initialDelayMs: 50, maximumDelayMs: 400 },
+});
 
 export const retryScenarios: readonly RunScenario[] = [
   scenario({
@@ -40,7 +42,7 @@ export const retryScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       failNode('main/review', 'rate_limited', 1),
-      advanceTime(1_000),
+      advanceTime(50),
       expectNodeExecutions('main/review'),
       completeNode('main/review', 'completed', { verdict: 'approved' }, 2),
       { kind: 'expectExecutionCount', path: 'main/review', count: 2 },
@@ -76,9 +78,9 @@ export const retryScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       failNode('main/publish', 'provider_unavailable', 1),
-      advanceTime(1_000),
+      advanceTime(50),
       failNode('main/publish', 'provider_unavailable', 2),
-      advanceTime(2_000),
+      advanceTime(100),
       failNode('main/publish', 'provider_unavailable', 3),
       { kind: 'expectExecutionCount', path: 'main/publish', count: 3 },
       expectRunStatus('failed'),
@@ -129,10 +131,10 @@ export const retryScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       failNode('main/review', 'rate_limited'),
-      advanceTime(400),
+      advanceTime(20),
       { kind: 'crashManager', moment: 'whileWaiting' },
       { kind: 'restartManager' },
-      advanceTime(600),
+      advanceTime(30),
       expectNodeExecutions('main/review'),
       completeNode('main/review', 'completed', undefined, 2),
       { kind: 'expectExecutionCount', path: 'main/review', count: 2 },

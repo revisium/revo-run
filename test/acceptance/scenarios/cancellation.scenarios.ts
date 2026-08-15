@@ -55,7 +55,7 @@ export const cancellationScenarios: readonly RunScenario[] = [
       failNode('main/review', 'rate_limited'),
       { kind: 'cancelRun', actorId: 'operator' },
       expectCommandAccepted('retry-cancel'),
-      advanceTime(60_000),
+      advanceTime(1_000),
       { kind: 'expectExecutionCount', path: 'main/review', count: 1 },
       expectRunStatus('cancelled'),
     ],
