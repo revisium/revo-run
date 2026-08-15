@@ -26,14 +26,14 @@ export const lifecycleScenarios: readonly RunScenario[] = [
       'dbosSafeTimeAdvancement',
     ],
     plan: executionPlan(
-      sequence({ kind: 'delay', key: 'cooldown', durationMs: 4_000 }, end('succeeded')),
+      sequence({ kind: 'delay', key: 'cooldown', durationMs: 400 }, end('succeeded')),
     ),
     steps: [
       startRun(),
-      advanceTime(3_000),
+      advanceTime(300),
       { kind: 'crashManager', moment: 'whileWaiting' },
       { kind: 'restartManager' },
-      advanceTime(1_000),
+      advanceTime(100),
       expectRunStatus('succeeded', 1_500),
     ],
   }),

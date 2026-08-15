@@ -80,7 +80,7 @@ export const executorScenarios: readonly RunScenario[] = [
     name: 'times out a bounded agent execution and routes the timeout',
     requiredCapabilities: ['agentTaskExecution', 'taskTimeoutRouting', 'dbosSafeTimeAdvancement'],
     plan: executionPlan(
-      routeOutcomes(task('review', { timeoutMs: 60_000 }), {
+      routeOutcomes(task('review', { timeoutMs: 300 }), {
         completed: end('succeeded'),
         timedOut: end('failed'),
       }),
@@ -89,7 +89,7 @@ export const executorScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       expectNodeExecutions('main/review'),
-      advanceTime(60_000),
+      advanceTime(300),
       expectEvent('nodeExecution.timedOut', { path: 'main/review' }),
       expectRunStatus('failed'),
     ],
@@ -142,7 +142,7 @@ export const executorScenarios: readonly RunScenario[] = [
       'dbosSafeTimeAdvancement',
     ],
     plan: executionPlan(
-      routeOutcomes(task('deploy', { timeoutMs: 120_000 }), {
+      routeOutcomes(task('deploy', { timeoutMs: 300 }), {
         completed: end('succeeded'),
         timedOut: end('failed'),
       }),
@@ -150,7 +150,7 @@ export const executorScenarios: readonly RunScenario[] = [
     ),
     steps: [
       startRun(),
-      advanceTime(120_000),
+      advanceTime(300),
       expectEvent('nodeExecution.timedOut', { path: 'main/deploy' }),
       expectRunStatus('failed'),
     ],

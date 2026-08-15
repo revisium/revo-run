@@ -58,9 +58,9 @@ describe('acceptance scenario DSL', () => {
       }
     }
 
-    expect(elapsedAtRestart).toEqual([3_000]);
-    expect(elapsedTimeMs).toBe(4_000);
-    expect(scenarioTimeoutMs(restartDelayScenario.steps)).toBe(34_000);
+    expect(elapsedAtRestart).toEqual([300]);
+    expect(elapsedTimeMs).toBe(400);
+    expect(scenarioTimeoutMs(restartDelayScenario.steps)).toBe(30_400);
   });
 
   it('binds command-result expectations bidirectionally to command rejection', () => {
