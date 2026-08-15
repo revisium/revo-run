@@ -109,6 +109,39 @@ const retryPlan = (delayMs: number): ExecutionPlan => ({
   policies: recoveryPolicies,
 });
 
+const mapRecoveryPlan: ExecutionPlan = {
+  schemaVersion: 1,
+  rootPipelineId: 'main',
+  pipelines: {
+    main: {
+      root: {
+        kind: 'sequence',
+        children: [
+          {
+            kind: 'map',
+            key: 'repositories',
+            items: { kind: 'runInput', path: '/repositories' },
+            itemKeyPath: '/id',
+            maximumItems: 4,
+            concurrency: 2,
+            failure: { kind: 'collect' },
+            body: { kind: 'task', key: 'work', recovery: recoverAbsentEffect },
+          },
+          { kind: 'end', status: 'succeeded', outcome: 'completed' },
+        ],
+      },
+    },
+  },
+  bindings: [
+    {
+      kind: 'script',
+      target: { pipelineId: 'main', nodePath: 'repositories/work' },
+      script: { id: 'test.map-work', revision: 1 },
+    },
+  ],
+  policies: { ...recoveryPolicies, maximumTotalNodeExecutions: 8 },
+};
+
 export const recoveryExecutionPlan = (scenario: string, retryDelayMs = 5_000): ExecutionPlan => {
   if (scenario === 'timeout') {
     return timeoutPlan;
@@ -130,6 +163,9 @@ export const recoveryExecutionPlan = (scenario: string, retryDelayMs = 5_000): E
   }
   if (scenario === 'repeat') {
     return repeatRecoveryPlan;
+  }
+  if (scenario === 'map') {
+    return mapRecoveryPlan;
   }
   if (scenario === 'nested-cancel') {
     return nestedCancelRecoveryPlan;

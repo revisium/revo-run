@@ -54,36 +54,36 @@ export const enterpriseDataScenarioAudit = [
   {
     intentId: 'rr-068',
     requiredCapabilities: ['boundedMapExecution'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['boundedMapExecution'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-068' },
   },
   {
     intentId: 'rr-069',
     requiredCapabilities: ['emptyMapCompletion'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['emptyMapCompletion'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-069' },
   },
   {
     intentId: 'rr-070',
     requiredCapabilities: ['mapPathEncoding'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['mapPathEncoding'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-070' },
   },
   {
     intentId: 'rr-071',
     requiredCapabilities: ['mapItemBound'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['mapItemBound'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-071' },
   },
   {
     intentId: 'rr-072',
     requiredCapabilities: ['mapFailFast'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['mapFailFast'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-072' },
   },
   {
     intentId: 'rr-073',
     requiredCapabilities: ['mapConcurrencyLimit'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['mapConcurrencyLimit'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-073' },
   },
   {
     intentId: 'rr-074',
     requiredCapabilities: ['mapFailureAggregation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['mapFailureAggregation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-074' },
   },
 ] as const satisfies readonly ScenarioAuditEntry[];

@@ -80,6 +80,9 @@ if (admissionPauseOrdinal !== undefined && mode === 'start') {
 if (process.env.REVO_RUN_TEST_PAUSE_AFTER_DECISION === 'true' && mode === 'start') {
   dbosFaults.pauseAfterFirstParallelDecision();
 }
+if (process.env.REVO_RUN_TEST_PAUSE_AFTER_MAP_DECISION === 'true' && mode === 'start') {
+  dbosFaults.pauseAfterFirstMapDecision();
+}
 if (process.env.REVO_RUN_TEST_PAUSE_AFTER_TERMINAL_BRANCH_RESULT === 'true' && mode === 'start') {
   dbosFaults.pauseAfterTerminalBranchResult();
 }

@@ -1,6 +1,7 @@
 import { DBOS } from '@dbos-inc/dbos-sdk';
 
 import type { RunExecutor } from '../contracts/executor/run-executor.js';
+import { MapItemWorkflowArgumentsParser } from '../validation/map-item-workflow-input.validator.js';
 import { ParallelBranchWorkflowArgumentsParser } from '../validation/parallel-branch-workflow-input.validator.js';
 import { RepeatIterationWorkflowArgumentsParser } from '../validation/repeat-iteration-workflow-input.validator.js';
 import { CommandDispatchWorkflowArgumentsParser } from '../validation/run-command-workflow.validator.js';
@@ -9,6 +10,7 @@ import { RunWorkflowArgumentsParser } from '../validation/run-workflow.validator
 import { ScopeCancellationRegistry } from './coordination/scope-cancellation-registry.js';
 import {
   commandDispatchWorkflowName,
+  mapItemWorkflowName,
   parallelBranchWorkflowName,
   repeatIterationWorkflowName,
   runExecutionWorkflowName,
@@ -20,6 +22,8 @@ import {
   createCommandDispatchWorkflow,
   type CommandDispatchWorkflow,
 } from './workflows/command-dispatch-workflow.js';
+import { MapItemWorkflowProvider } from './workflows/map-item-workflow-provider.js';
+import { createMapItemWorkflow } from './workflows/map-item-workflow.js';
 import { ParallelBranchWorkflowProvider } from './workflows/parallel-branch-workflow-provider.js';
 import { createParallelBranchWorkflow } from './workflows/parallel-branch-workflow.js';
 import { RepeatIterationWorkflowProvider } from './workflows/repeat-iteration-workflow-provider.js';
@@ -39,11 +43,29 @@ export class WorkflowRegistry {
     const cancellation = new ScopeCancellationRegistry();
     const providerCalls = new ProviderCallRegistry();
     const parallelBranchWorkflows = new ParallelBranchWorkflowProvider();
+    const mapItemWorkflows = new MapItemWorkflowProvider();
     const repeatIterationWorkflows = new RepeatIterationWorkflowProvider();
+    mapItemWorkflows.register(
+      DBOS.registerWorkflow(
+        createMapItemWorkflow(
+          this.executor,
+          mapItemWorkflows,
+          parallelBranchWorkflows,
+          repeatIterationWorkflows,
+          cancellation,
+          providerCalls,
+        ),
+        {
+          name: mapItemWorkflowName,
+          inputSchema: MapItemWorkflowArgumentsParser,
+        },
+      ),
+    );
     parallelBranchWorkflows.register(
       DBOS.registerWorkflow(
         createParallelBranchWorkflow(
           this.executor,
+          mapItemWorkflows,
           parallelBranchWorkflows,
           repeatIterationWorkflows,
           cancellation,
@@ -59,6 +81,7 @@ export class WorkflowRegistry {
       DBOS.registerWorkflow(
         createRepeatIterationWorkflow(
           this.executor,
+          mapItemWorkflows,
           parallelBranchWorkflows,
           repeatIterationWorkflows,
           cancellation,
@@ -73,6 +96,7 @@ export class WorkflowRegistry {
     const runExecutionWorkflow: RunExecutionWorkflow = DBOS.registerWorkflow(
       createRunExecutionWorkflow(
         this.executor,
+        mapItemWorkflows,
         parallelBranchWorkflows,
         repeatIterationWorkflows,
         cancellation,

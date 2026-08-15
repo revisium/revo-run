@@ -1,4 +1,5 @@
 import type { PipelineNode } from '../../contracts/pipeline/pipeline-node.js';
+import type { MapItemWorkflowInput } from '../../contracts/workflow/map-item-workflow-input.js';
 import type { RepeatIterationWorkflowInput } from '../../contracts/workflow/repeat-iteration-workflow-input.js';
 
 export interface ParallelScopeIdentity {
@@ -14,6 +15,15 @@ export interface RepeatScopeIdentity {
   readonly node: Extract<PipelineNode, { readonly kind: 'repeat' }>;
   readonly nodePath: string;
   readonly ordinal: number;
+}
+
+export interface MapScopeIdentity {
+  readonly node: Extract<PipelineNode, { readonly kind: 'map' }>;
+  readonly nodePath: string;
+  readonly mapNodeInstanceId: string;
+  readonly sourceIndex: number;
+  readonly itemKey: string;
+  readonly disposition: MapItemWorkflowInput['disposition'];
 }
 
 interface ObservableScopeCandidateBase {
@@ -43,6 +53,12 @@ export type ObservableScopeCandidate =
       readonly parentScopeId: string;
       readonly parentWorkflowId: string;
       readonly repeatIdentity: RepeatScopeIdentity;
+    })
+  | (ObservableScopeCandidateBase & {
+      readonly kind: 'mapItem';
+      readonly parentScopeId: string;
+      readonly parentWorkflowId: string;
+      readonly mapIdentity: MapScopeIdentity;
     });
 
 export interface ObservableNodeCandidate {
@@ -64,14 +80,29 @@ export interface ObservableParallelCandidate {
   readonly branchScopeIds: ReadonlyMap<string, string>;
 }
 
+export interface ObservableMapCandidate {
+  readonly node: Extract<PipelineNode, { readonly kind: 'map' }>;
+  readonly authoredNodeId: string;
+  readonly pipelineId: string;
+  readonly nodePath: string;
+  readonly nodeInstanceId: string;
+  readonly scopeId: string;
+  readonly physicalScopeId: string;
+  readonly itemScopeIds: ReadonlyMap<string, string>;
+}
+
 export interface ObservablePlan {
   readonly rootScopeId: string;
   readonly scopes: ReadonlyMap<string, ObservableScopeCandidate>;
   readonly nodesByDisplayPath: ReadonlyMap<string, ObservableNodeCandidate>;
   readonly parallelNodesByDisplayPath: ReadonlyMap<string, ObservableParallelCandidate>;
+  readonly mapNodesByDisplayPath: ReadonlyMap<string, ObservableMapCandidate>;
   addRepeatIteration(
     input: RepeatIterationWorkflowInput,
   ): Extract<ObservableScopeCandidate, { readonly kind: 'repeatIteration' }>;
+  addMapItem(
+    input: MapItemWorkflowInput,
+  ): Extract<ObservableScopeCandidate, { readonly kind: 'mapItem' }>;
 }
 
 export interface ObservableTraversalContext {

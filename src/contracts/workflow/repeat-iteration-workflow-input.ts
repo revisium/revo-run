@@ -3,6 +3,7 @@ import Type from 'typebox';
 import type { DeepReadonly } from '../deep-readonly.js';
 import { ScopeIdSchema, ScopeWorkflowIdSchema } from '../execution-identity.js';
 import { ExecutorInputSchema } from '../executor/executor-input.js';
+import { JsonValueSchema } from '../json-value.js';
 import { NodeOutputSchema } from '../pipeline/node-output.js';
 import { PipelineInputScopeSchema } from '../pipeline/pipeline-input.js';
 import { RepeatBodyNodeSchema } from '../pipeline/pipeline-node.schema.js';
@@ -25,6 +26,7 @@ export const RepeatIterationWorkflowInputSchema = Type.Object(
     pipelineId: IdentifierSchema,
     pipelineInput: PipelineInputScopeSchema,
     iterationInput: ExecutorInputSchema,
+    mapItem: Type.Optional(JsonValueSchema),
     runtimePath: NonEmptyStringSchema,
     parentPath: PipelineNodePathSchema,
     inheritedOutputs: Type.Array(

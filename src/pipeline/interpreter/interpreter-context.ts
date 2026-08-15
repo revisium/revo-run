@@ -20,6 +20,7 @@ export interface PipelineExecutionContext {
   readonly nodePathPrefix?: string;
   readonly iterationInput?: ExecutorInput;
   readonly iterationOutput?: NodeOutput;
+  readonly mapItem?: JsonValue;
 }
 
 export type DelayWaitResult = 'cancelled' | 'elapsed' | 'failed';

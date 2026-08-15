@@ -168,6 +168,10 @@ export class ControlledRunExecutor implements RunExecutor {
     return request.attemptId;
   }
 
+  async nodeInstanceId(path: string): Promise<string> {
+    return (await this.requestAt(path)).nodeInstanceId;
+  }
+
   async complete(
     path: string,
     result: Extract<RunExecutorResult, { readonly kind: 'completed' }>,
@@ -264,6 +268,10 @@ export class ControlledRunExecutor implements RunExecutor {
       () =>
         `Expected ${String(count)} active execution(s), observed ${String(this.activeExecutions())}`,
     );
+    this.expectPeakActiveExecutions(count);
+  }
+
+  expectPeakActiveExecutions(count: number): void {
     assert.equal(this.maximumActiveExecutions, count);
   }
 

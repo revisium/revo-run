@@ -64,7 +64,7 @@ export const validationScenarioAudit = [
   {
     intentId: 'rr-097',
     requiredCapabilities: ['uniqueMapItemKeyValidation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['uniqueMapItemKeyValidation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-097' },
   },
   {
     intentId: 'rr-098',

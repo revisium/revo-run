@@ -10,6 +10,7 @@ import type { ProviderCallRegistry } from '../executor/provider-call-registry.js
 import type { RunExecutorProvider } from '../executor/run-executor-provider.js';
 import { createPipelineExecution } from './create-pipeline-execution.js';
 import { loadRunWorkflowInput } from './load-run-workflow-input.js';
+import type { MapItemWorkflowProvider } from './map-item-workflow-provider.js';
 import type { ParallelBranchWorkflowProvider } from './parallel-branch-workflow-provider.js';
 import type { RepeatIterationWorkflowProvider } from './repeat-iteration-workflow-provider.js';
 
@@ -17,6 +18,7 @@ export type RunExecutionWorkflow = (input: RunExecutionWorkflowInput) => Promise
 
 export const createRunExecutionWorkflow = (
   executor: RunExecutorProvider,
+  mapItemWorkflows: MapItemWorkflowProvider,
   parallelBranchWorkflows: ParallelBranchWorkflowProvider,
   repeatIterationWorkflows: RepeatIterationWorkflowProvider,
   cancellation: ScopeCancellationRegistry,
@@ -28,11 +30,14 @@ export const createRunExecutionWorkflow = (
     const { coordinator, interpreter } = createPipelineExecution(
       runId,
       executionPlan.policies.maximumActiveNodeExecutions,
-      executor,
-      parallelBranchWorkflows,
-      repeatIterationWorkflows,
-      cancellation,
-      providerCalls,
+      {
+        executor,
+        mapItemWorkflows,
+        parallelBranchWorkflows,
+        repeatIterationWorkflows,
+        cancellation,
+        providerCalls,
+      },
     );
     try {
       await coordinator.ready(`rr:run:${runId}`);

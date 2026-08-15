@@ -4,6 +4,7 @@ import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
 import type { ParallelBranchResult } from '../../contracts/workflow/parallel-branch-result.js';
 import { InputResolver } from '../data/input-resolver.js';
 import { createAuthoredNodeId, createSubpipelineScopeId } from '../identity/execution-identity.js';
+import type { MapItemBodyResult, MapItemRunner } from '../map/map-item-runner.js';
 import type { ParallelBranchRunner } from '../parallel/parallel-branch-runner.js';
 import type {
   RepeatIterationBodyResult,
@@ -19,6 +20,7 @@ import type {
   WaitForRetry,
   WaitForUnknownOutcome,
 } from './interpreter-context.js';
+import { MapNodeExecutor } from './map-node-executor.js';
 import { runtimePath } from './node-path.js';
 import { pipelineNodeEventIdentity, type PipelineEventSink } from './pipeline-event-sink.js';
 import { PipelineFailureReporter } from './pipeline-failure-reporter.js';
@@ -34,6 +36,7 @@ import { TaskNodeExecutor } from './task-node-executor.js';
 export class PipelineInterpreter {
   private readonly failures: PipelineFailureReporter;
   private readonly delays: DelayNodeExecutor;
+  private readonly maps: MapNodeExecutor;
   private readonly repeats: RepeatNodeExecutor;
   private readonly tasks: TaskNodeExecutor;
 
@@ -42,6 +45,7 @@ export class PipelineInterpreter {
     waitForRetry: WaitForRetry,
     private readonly parallel: ParallelBranchRunner,
     repeatIterations: RepeatIterationRunner,
+    mapItems: MapItemRunner,
     private readonly inlineScopes: InlineScopeOwnershipRegistrar,
     private readonly events: PipelineEventSink,
     waitForDelay: WaitForDelay,
@@ -49,6 +53,7 @@ export class PipelineInterpreter {
   ) {
     this.failures = new PipelineFailureReporter(events);
     this.delays = new DelayNodeExecutor(waitForDelay, events);
+    this.maps = new MapNodeExecutor(mapItems, events);
     this.repeats = new RepeatNodeExecutor(repeatIterations, events);
     this.tasks = new TaskNodeExecutor(
       withCancellationEvent(executeEffect, events),
@@ -116,6 +121,24 @@ export class PipelineInterpreter {
     return { kind: 'terminal', result: result.result };
   }
 
+  async executeMapItemScope(
+    node: PipelineNode,
+    context: PipelineExecutionContext,
+    parentPath: string,
+  ): Promise<MapItemBodyResult> {
+    const result = await this.executeNode(node, context, parentPath);
+    if (result.kind === 'continued') {
+      return {
+        kind: 'continued',
+        outcome: result.outcome,
+        ...(result.output === undefined ? {} : { output: result.output }),
+      };
+    }
+    return result.provenance === 'authoredEnd'
+      ? { kind: 'authoredEnd', result: result.result }
+      : { kind: 'terminal', result: result.result };
+  }
+
   private async executePipeline(
     context: PipelineExecutionContext,
   ): Promise<FinishedNodeExecutionResult> {
@@ -160,11 +183,12 @@ export class PipelineInterpreter {
         return this.delays.execute(node, context, nodePath);
       case 'repeat':
         return this.repeats.execute(node, context, nodePath);
+      case 'map':
+        return this.maps.execute(node, context, nodePath);
       case 'end':
         return this.executeEnd(node, context, nodePath);
       case 'consensus':
       case 'humanGate':
-      case 'map':
         return this.failures.invalidNode(node, context, nodePath, 'node_kind_not_implemented');
     }
     node satisfies never;

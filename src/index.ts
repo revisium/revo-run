@@ -14,6 +14,8 @@ export { RunEventSchema } from './contracts/run/run-event.js';
 export {
   ParallelJoinObservationSchema,
   SkippedParallelBranchSchema,
+  MapExecutionObservationSchema,
+  SkippedMapItemSchema,
 } from './contracts/run/run-details.js';
 export { RunIdSchema } from './contracts/run/run-id.js';
 export {
@@ -98,6 +100,8 @@ export type {
   RunCommandDetails,
   ParallelJoinObservation,
   SkippedParallelBranch,
+  MapExecutionObservation,
+  SkippedMapItem,
 } from './contracts/run/run-details.js';
 export type { RunEvent } from './contracts/run/run-event.js';
 export type {

@@ -34,8 +34,13 @@ export class RunEventExpectations {
     this.captureExpected(event, expected);
   }
 
-  captureIfExpected(event: RunEvent, plan: ExecutionPlan, expected: ExpectedRunEvent): boolean {
-    if (!this.matches(event, plan, expected)) {
+  captureIfExpected(
+    event: RunEvent,
+    plan: ExecutionPlan,
+    expected: ExpectedRunEvent,
+    dynamicNodeInstanceId?: string,
+  ): boolean {
+    if (!this.matches(event, plan, expected, dynamicNodeInstanceId)) {
       return false;
     }
     this.captureExpected(event, expected);
@@ -58,7 +63,7 @@ export class RunEventExpectations {
     path: string,
     errorCode: string,
   ): void {
-    const nodeInstanceId = this.nodeInstanceIdFor(plan, path);
+    const nodeInstanceId = this.nodeInstanceId(plan, path);
     assert(
       events.some(
         (event) =>
@@ -85,7 +90,7 @@ export class RunEventExpectations {
     }
   }
 
-  private nodeInstanceIdFor(plan: ExecutionPlan, path: string): string | undefined {
+  nodeInstanceId(plan: ExecutionPlan, path: string): string | undefined {
     const root = Object.hasOwn(plan.pipelines, plan.rootPipelineId)
       ? plan.pipelines[plan.rootPipelineId]?.root
       : undefined;
@@ -103,13 +108,22 @@ export class RunEventExpectations {
     );
   }
 
-  private matches(event: RunEvent, plan: ExecutionPlan, expected: ExpectedRunEvent): boolean {
+  private matches(
+    event: RunEvent,
+    plan: ExecutionPlan,
+    expected: ExpectedRunEvent,
+    dynamicNodeInstanceId?: string,
+  ): boolean {
     const expectedNodeInstanceId =
-      expected.path === undefined ? undefined : this.nodeInstanceIdFor(plan, expected.path);
+      expected.path === undefined
+        ? undefined
+        : (dynamicNodeInstanceId ?? this.nodeInstanceId(plan, expected.path));
     return (
       event.type === expected.type &&
       (expected.path === undefined ||
-        ('nodeInstanceId' in event.data && event.data.nodeInstanceId === expectedNodeInstanceId))
+        ('nodeInstanceId' in event.data && event.data.nodeInstanceId === expectedNodeInstanceId)) &&
+      (expected.errorCode === undefined ||
+        ('errorCode' in event.data && event.data.errorCode === expected.errorCode))
     );
   }
 

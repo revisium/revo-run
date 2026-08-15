@@ -11,6 +11,7 @@ import type {
   ExecutionBinding,
   ExecutionPlan,
   ListRunsInput,
+  MapExecutionObservation,
   RunAttempt,
   RunCommandReceipt,
   RunCommandDetails,
@@ -35,6 +36,7 @@ import type {
   RunStatus,
   RunSummary,
   ScriptExecutorBinding,
+  SkippedMapItem,
   StartRunInput,
   StartRunResult,
   WaitForTerminalInput,
@@ -48,6 +50,7 @@ describe('root-only public API', () => {
       'CommandIdSchema',
       'ExecutionBindingSchema',
       'ExecutionPlanSchema',
+      'MapExecutionObservationSchema',
       'ParallelJoinObservationSchema',
       'ResolveUnknownOutcomeInputSchema',
       'RunCommandReceiptSchema',
@@ -66,6 +69,7 @@ describe('root-only public API', () => {
       'RunResultSchema',
       'RunStatusSchema',
       'ScriptExecutorBindingSchema',
+      'SkippedMapItemSchema',
       'SkippedParallelBranchSchema',
       'StartRunInputSchema',
       'StartRunResultSchema',
@@ -111,6 +115,8 @@ describe('root-only public API', () => {
     expectTypeOf<RunSummary>().toBeObject();
     expectTypeOf<RunSnapshot>().toBeObject();
     expectTypeOf<RunDetails>().toBeObject();
+    expectTypeOf<MapExecutionObservation>().toMatchTypeOf<{ readonly outcome: string }>();
+    expectTypeOf<SkippedMapItem>().toBeObject();
     expectTypeOf<RunScope>().toBeObject();
     expectTypeOf<RunNodeInstance>().toBeObject();
     expectTypeOf<RunAttempt>().toBeObject();

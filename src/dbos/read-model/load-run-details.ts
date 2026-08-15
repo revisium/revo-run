@@ -19,13 +19,13 @@ import {
   isUnknownOutcomeResolutionStepName,
   nodeAttemptStepIdentity,
   parallelBranchWorkflowName,
+  mapItemWorkflowName,
   repeatIterationWorkflowName,
   runCommandDecisionCommandId,
   runExecutionWorkflowName,
 } from '../dbos-names.js';
 import { runWorkflowId } from '../workflow-id.js';
 import { loadAllWorkflowSteps, type DbosStepRecord } from './dbos-step-pages.js';
-import { scopeCandidateFromStatus } from './map-observable-scope.js';
 import { mapRunAttempt } from './map-run-attempt.js';
 import { mapRunCommandDecision } from './map-run-command-decision.js';
 import {
@@ -33,8 +33,10 @@ import {
   type ObservablePlan,
   type ObservableScopeCandidate,
 } from './observable-plan.js';
+import { RunMapObservationProjector } from './run-map-observation-projector.js';
 import { RunParallelObservationProjector } from './run-parallel-observation-projector.js';
 import { RunScopeObservationProjector } from './run-scope-observation-projector.js';
+import { scopeCandidateFromStatus } from './scope-candidate-from-status.js';
 
 type DurableScopeCandidate = Exclude<
   ObservableScopeCandidate,
@@ -49,9 +51,12 @@ const introducedScopeWorkflow = (
     return undefined;
   }
   if (
-    [runExecutionWorkflowName, parallelBranchWorkflowName, repeatIterationWorkflowName].includes(
-      step.name,
-    )
+    [
+      runExecutionWorkflowName,
+      parallelBranchWorkflowName,
+      mapItemWorkflowName,
+      repeatIterationWorkflowName,
+    ].includes(step.name)
   ) {
     return step.childWorkflowID;
   }
@@ -69,6 +74,7 @@ class RunDetailsLoader {
   private readonly attempts: RunAttempt[] = [];
   private readonly commands: RunCommandDetails[] = [];
   private readonly parallel: RunParallelObservationProjector;
+  private readonly maps: RunMapObservationProjector;
   private readonly nodeIndexes = new Map<string, number>();
   private readonly includedAttempts = new Set<string>();
   private readonly visitedWorkflows = new Set<string>();
@@ -77,10 +83,9 @@ class RunDetailsLoader {
   constructor(run: RunSnapshot) {
     this.run = run;
     this.plan = buildObservablePlan(run.executionPlan, run.id);
-    this.parallel = new RunParallelObservationProjector(
-      this.plan,
-      run.status !== 'pending' && run.status !== 'running',
-    );
+    const authoritativeTerminal = run.status !== 'pending' && run.status !== 'running';
+    this.parallel = new RunParallelObservationProjector(this.plan, authoritativeTerminal);
+    this.maps = new RunMapObservationProjector(this.plan, authoritativeTerminal);
     this.scopeProjection = new RunScopeObservationProjector(this.plan);
   }
 
@@ -89,6 +94,7 @@ class RunDetailsLoader {
     this.includeCommandDecisions(wrapperSteps);
     await this.visitIntroducedScopes(wrapperSteps);
     this.parallel.finish();
+    this.maps.finish();
     return {
       run: this.run,
       scopes: this.scopeProjection.scopes,
@@ -97,6 +103,8 @@ class RunDetailsLoader {
       commands: this.commands,
       parallelJoins: this.parallel.observations,
       skippedParallelBranches: this.parallel.skippedBranches,
+      mapExecutions: this.maps.observations,
+      skippedMapItems: this.maps.skippedItems,
     };
   }
 
@@ -110,6 +118,7 @@ class RunDetailsLoader {
       const status = await this.loadWorkflowStatus(workflowId);
       const candidate = scopeCandidateFromStatus(status, this.run.id, this.plan);
       this.scopeProjection.includeDurable(status, candidate);
+      this.maps.includeScopeStatus(status, candidate);
 
       const steps = await loadAllWorkflowSteps(workflowId);
       await this.visitScopeSteps(steps, candidate);
@@ -136,6 +145,7 @@ class RunDetailsLoader {
   ): Promise<void> {
     const introduced = new Set<string>();
     this.parallel.includeScopeSteps(steps, candidate);
+    this.maps.includeScopeSteps(steps, candidate);
     await steps.reduce<Promise<void>>(async (previous, step) => {
       await previous;
       if (isNodeAttemptOutcomeStepName(step.name)) {
