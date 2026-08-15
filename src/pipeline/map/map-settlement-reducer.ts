@@ -201,6 +201,19 @@ export const reduceMapSettlement = (
   return failureTransition(context, snapshot, nextState, settled.item);
 };
 
+const completedOutcome = (
+  control: DurableMapControlDecision['control'],
+  failedItems: number,
+): 'completed' | 'completedWithErrors' | 'failed' => {
+  if (control === 'failureDecided') {
+    return 'failed';
+  }
+  if (failedItems === 0) {
+    return 'completed';
+  }
+  return 'completedWithErrors';
+};
+
 const completedResult = (
   context: MapSettlementContext,
   state: MapSettlementState & { readonly decision: DurableMapControlDecision },
@@ -213,12 +226,7 @@ const completedResult = (
     state.decision.summaryEligibleItemKeys,
     state.eligibleResults,
   );
-  const outcome =
-    state.decision.control === 'failureDecided'
-      ? 'failed'
-      : summary.failedItems === 0
-        ? 'completed'
-        : 'completedWithErrors';
+  const outcome = completedOutcome(state.decision.control, summary.failedItems);
   return { kind: 'continued', outcome, output: mapNodeOutput(summary) };
 };
 

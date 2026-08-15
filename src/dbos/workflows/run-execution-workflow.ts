@@ -30,12 +30,14 @@ export const createRunExecutionWorkflow = (
     const { coordinator, interpreter } = createPipelineExecution(
       runId,
       executionPlan.policies.maximumActiveNodeExecutions,
-      executor,
-      mapItemWorkflows,
-      parallelBranchWorkflows,
-      repeatIterationWorkflows,
-      cancellation,
-      providerCalls,
+      {
+        executor,
+        mapItemWorkflows,
+        parallelBranchWorkflows,
+        repeatIterationWorkflows,
+        cancellation,
+        providerCalls,
+      },
     );
     try {
       await coordinator.ready(`rr:run:${runId}`);

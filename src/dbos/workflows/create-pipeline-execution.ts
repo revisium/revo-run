@@ -11,16 +11,28 @@ import type { MapItemWorkflowProvider } from './map-item-workflow-provider.js';
 import type { ParallelBranchWorkflowProvider } from './parallel-branch-workflow-provider.js';
 import type { RepeatIterationWorkflowProvider } from './repeat-iteration-workflow-provider.js';
 
+interface PipelineExecutionDependencies {
+  readonly executor: RunExecutorProvider;
+  readonly mapItemWorkflows: MapItemWorkflowProvider;
+  readonly parallelBranchWorkflows: ParallelBranchWorkflowProvider;
+  readonly repeatIterationWorkflows: RepeatIterationWorkflowProvider;
+  readonly cancellation: ScopeCancellationRegistry;
+  readonly providerCalls: ProviderCallRegistry;
+}
+
 export const createPipelineExecution = (
   runId: string,
   maximumParallelism: number,
-  executor: RunExecutorProvider,
-  mapItemWorkflows: MapItemWorkflowProvider,
-  parallelBranchWorkflows: ParallelBranchWorkflowProvider,
-  repeatIterationWorkflows: RepeatIterationWorkflowProvider,
-  cancellation: ScopeCancellationRegistry,
-  providerCalls: ProviderCallRegistry,
+  dependencies: PipelineExecutionDependencies,
 ) => {
+  const {
+    executor,
+    mapItemWorkflows,
+    parallelBranchWorkflows,
+    repeatIterationWorkflows,
+    cancellation,
+    providerCalls,
+  } = dependencies;
   const coordinator = new RunCoordinatorClient(runId);
   const execution = new NodeExecutionStep(
     executor,

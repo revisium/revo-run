@@ -30,12 +30,14 @@ export const createMapItemWorkflow = (
     const { coordinator, interpreter } = createPipelineExecution(
       input.runId,
       input.maximumParallelism,
-      executor,
-      mapWorkflows,
-      parallelWorkflows,
-      repeatWorkflows,
-      cancellation,
-      providerCalls,
+      {
+        executor,
+        mapItemWorkflows: mapWorkflows,
+        parallelBranchWorkflows: parallelWorkflows,
+        repeatIterationWorkflows: repeatWorkflows,
+        cancellation,
+        providerCalls,
+      },
     );
     try {
       await coordinator.ready(input.parentWorkflowId, input.startFence);

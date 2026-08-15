@@ -14,29 +14,27 @@ const encodeScalar = (value: string): string => {
 const isolatedSurrogate = (codeUnit: number): string =>
   `%u${codeUnit.toString(16).toUpperCase().padStart(4, '0')}`;
 
+const encodeCodePoint = (codePoint: number): string => {
+  if (codePoint >= 0xd800 && codePoint <= 0xdfff) {
+    return isolatedSurrogate(codePoint);
+  }
+  const scalar = String.fromCodePoint(codePoint);
+  if (unreservedAscii.test(scalar)) {
+    return scalar;
+  }
+  return encodeScalar(scalar);
+};
+
 export const encodeMapItemPathSegment = (value: string): string => {
   let encoded = '';
-  for (let index = 0; index < value.length; index += 1) {
-    const codeUnit = value.charCodeAt(index);
-    const nextCodeUnit = value.charCodeAt(index + 1);
-    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
-      if (nextCodeUnit >= 0xdc00 && nextCodeUnit <= 0xdfff) {
-        encoded += encodeScalar(value.slice(index, index + 2));
-        index += 1;
-      } else {
-        encoded += isolatedSurrogate(codeUnit);
-      }
-      continue;
-    }
-    if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-      encoded += isolatedSurrogate(codeUnit);
-      continue;
-    }
-    const scalar = value[index];
-    if (scalar === undefined) {
+  let index = 0;
+  while (index < value.length) {
+    const codePoint = value.codePointAt(index);
+    if (codePoint === undefined) {
       throw new Error('Map item path encoding lost a UTF-16 code unit.');
     }
-    encoded += unreservedAscii.test(scalar) ? scalar : encodeScalar(scalar);
+    encoded += encodeCodePoint(codePoint);
+    index += codePoint > 0xffff ? 2 : 1;
   }
   return encoded;
 };

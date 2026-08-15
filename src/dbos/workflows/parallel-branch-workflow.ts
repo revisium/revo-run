@@ -32,12 +32,14 @@ export const createParallelBranchWorkflow = (
     const { coordinator, interpreter } = createPipelineExecution(
       input.runId,
       input.maximumParallelism,
-      executor,
-      mapWorkflows,
-      workflows,
-      repeatWorkflows,
-      cancellation,
-      providerCalls,
+      {
+        executor,
+        mapItemWorkflows: mapWorkflows,
+        parallelBranchWorkflows: workflows,
+        repeatIterationWorkflows: repeatWorkflows,
+        cancellation,
+        providerCalls,
+      },
     );
     try {
       await coordinator.ready(input.parentWorkflowId, input.startFence);

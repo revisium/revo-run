@@ -26,7 +26,6 @@ import {
 } from '../dbos-names.js';
 import { runWorkflowId } from '../workflow-id.js';
 import { loadAllWorkflowSteps, type DbosStepRecord } from './dbos-step-pages.js';
-import { scopeCandidateFromStatus } from './map-observable-scope.js';
 import { mapRunAttempt } from './map-run-attempt.js';
 import { mapRunCommandDecision } from './map-run-command-decision.js';
 import {
@@ -37,6 +36,7 @@ import {
 import { RunMapObservationProjector } from './run-map-observation-projector.js';
 import { RunParallelObservationProjector } from './run-parallel-observation-projector.js';
 import { RunScopeObservationProjector } from './run-scope-observation-projector.js';
+import { scopeCandidateFromStatus } from './scope-candidate-from-status.js';
 
 type DurableScopeCandidate = Exclude<
   ObservableScopeCandidate,
