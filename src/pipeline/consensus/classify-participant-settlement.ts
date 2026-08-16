@@ -11,7 +11,10 @@ export const classifyNodeExecutionSettlement = (
   vote: ConsensusVote | undefined,
   provenance?: ParticipantEffectProvenance,
 ): ParticipantSettlement => {
-  if (provenance === 'cancelled' || (result.kind === 'finished' && result.result.status === 'cancelled')) {
+  if (
+    provenance === 'cancelled' ||
+    (result.kind === 'finished' && result.result.status === 'cancelled')
+  ) {
     return { kind: 'cancelled' };
   }
   if (provenance === 'timedOut' || (result.kind === 'continued' && result.outcome === 'timedOut')) {
