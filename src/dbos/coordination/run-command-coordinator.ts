@@ -18,6 +18,7 @@ import {
   unknownResolutionTopic,
 } from '../dbos-names.js';
 import { commandWorkflowId } from '../workflow-id.js';
+import { HumanGateResolutions } from './human-gate-resolutions.js';
 import {
   createRunCommandDecision,
   createRunCommandEvent,
@@ -40,6 +41,7 @@ export interface RunCommandContext {
 export class RunCommandCoordinator {
   private readonly decisions = new Map<string, RunCommandReceipt | 'dispatchFailed'>();
   private readonly unknownOutcomes = new UnknownOutcomeRegistry();
+  private readonly humanGates = new HumanGateResolutions();
 
   registerUnknownOutcome(
     message: Extract<RunCoordinatorMessage, { readonly kind: 'unknownOutcomeWaiting' }>,
@@ -50,6 +52,35 @@ export class RunCommandCoordinator {
       message.reconciliationRound,
       message.retry,
     );
+  }
+
+  registerHumanGate(
+    message: Extract<RunCoordinatorMessage, { readonly kind: 'humanGateWaiting' }>,
+    fenceDirective: 'cancel' | 'fail' | undefined,
+  ): Promise<void> {
+    return this.humanGates.register(message, fenceDirective);
+  }
+
+  resolveGateDeadline(
+    gateInstanceId: string,
+    ownerWorkflowId: string,
+    appendEvent: (event: RunEventDraft) => Promise<boolean>,
+  ): Promise<void> {
+    return this.humanGates.resolveDeadline(gateInstanceId, ownerWorkflowId, appendEvent);
+  }
+
+  sendAllGateResolutions(
+    directive: 'cancel' | 'fail',
+    appendEvent: (event: RunEventDraft) => Promise<boolean>,
+  ): Promise<void> {
+    return this.humanGates.sendAll(directive, appendEvent);
+  }
+
+  sendGateResolutionsForWorkflows(
+    workflowIds: readonly string[],
+    appendEvent: (event: RunEventDraft) => Promise<boolean>,
+  ): Promise<void> {
+    return this.humanGates.sendForWorkflows(workflowIds, appendEvent);
   }
 
   consumeRetryPermit(commandId: string, attemptId: string): boolean {
@@ -86,11 +117,16 @@ export class RunCommandCoordinator {
       input.command.kind === 'resolveUnknownOutcome'
         ? this.unknownOutcomes.get(input.command.input.attemptId)
         : undefined;
+    const gate =
+      input.command.kind === 'answerGate'
+        ? this.humanGates.openGateDecisionInput(input.command.input.gateInstanceId)
+        : undefined;
     const receipt = prospectiveRunCommandReceipt(input, {
       cancellationRequested: context.cancellationRequested,
       executions: context.executions,
       maximumExecutions: context.maximumExecutions,
       waiting,
+      gate,
     });
     if (!(await context.appendEvent(createRunCommandEvent(input, receipt)))) {
       this.decisions.set(input.commandId, 'dispatchFailed');
@@ -124,6 +160,16 @@ export class RunCommandCoordinator {
       if (!context.cancellationRequested) {
         await context.cancelRun(input.commandId);
       }
+      return;
+    }
+    if (input.command.kind === 'answerGate') {
+      await this.humanGates.applyAcceptedAnswer(
+        input.commandId,
+        input.command.input.gateInstanceId,
+        input.command.input.actorId,
+        input.command.input.answer,
+        (event) => context.appendEvent(event),
+      );
       return;
     }
     if (input.command.kind !== 'resolveUnknownOutcome') {

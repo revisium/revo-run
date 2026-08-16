@@ -9,8 +9,12 @@ type PipelineGraphErrorCode =
   | 'node_depth_exceeded'
   | 'overlapping_repeat_outcome_sets'
   | 'pipeline_not_found'
+  | 'reserved_gate_answer'
   | 'unreachable_consensus_threshold'
-  | 'unreachable_parallel_threshold';
+  | 'unreachable_parallel_threshold'
+  | 'unsupported_gate_conflict_policy';
+
+const reservedGateAnswers: ReadonlySet<string> = new Set(['conflict', 'timedOut', 'cancelled']);
 
 export type PipelineGraphInspection =
   | {
@@ -61,6 +65,16 @@ const nodeValidationError = (
     node.continueOn.some((outcome) => node.completeOn.includes(outcome))
   ) {
     return 'overlapping_repeat_outcome_sets';
+  }
+  if (
+    node.kind === 'humanGate' &&
+    node.decision.kind === 'matchingAnswers' &&
+    node.decision.onConflict === 'wait'
+  ) {
+    return 'unsupported_gate_conflict_policy';
+  }
+  if (node.kind === 'humanGate' && node.answers.some((answer) => reservedGateAnswers.has(answer))) {
+    return 'reserved_gate_answer';
   }
   return undefined;
 };

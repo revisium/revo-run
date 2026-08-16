@@ -79,12 +79,11 @@ describe.sequential('RR-10 map recovery', () => {
     let recovered: RecoveryProcess | undefined;
 
     try {
-      await first.waitFor({ kind: 'dispatched', path: 'main/repositories[a]/work' });
-      first.complete('main/repositories[a]/work');
-      await first.waitFor({ kind: 'dispatched', path: 'main/repositories[b]/work' });
-      first.complete('main/repositories[b]/work');
-      await first.waitFor({ kind: 'dispatched', path: 'main/repositories[c]/work' });
-      first.complete('main/repositories[c]/work');
+      await first.completeDispatchedWork([
+        'main/repositories[a]/work',
+        'main/repositories[b]/work',
+        'main/repositories[c]/work',
+      ]);
       await first.waitFor({ kind: 'afterDecision' });
       await first.kill();
 

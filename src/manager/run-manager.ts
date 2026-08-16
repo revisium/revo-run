@@ -1,5 +1,6 @@
 import type { ListRunsInput, RunPage } from '../contracts/run/list-runs.js';
 import type {
+  AnswerGateInput,
   CancelRunInput,
   ResolveUnknownOutcomeInput,
   RunCommandReceipt,
@@ -42,6 +43,7 @@ type RunRuntime = Pick<
   | 'stop'
   | 'subscribeRunEvents'
   | 'resolveUnknownOutcome'
+  | 'answerGate'
   | 'waitForTerminal'
 >;
 
@@ -96,6 +98,11 @@ export class RunManager {
   async resolveUnknownOutcome(input: ResolveUnknownOutcomeInput): Promise<RunCommandReceipt> {
     this.assertStarted();
     return this.lifecycle.track(() => this.commands.resolveUnknownOutcome(input));
+  }
+
+  async answerGate(input: AnswerGateInput): Promise<RunCommandReceipt> {
+    this.assertStarted();
+    return this.lifecycle.track(() => this.commands.answerGate(input));
   }
 
   async getRun(runId: string): Promise<RunSnapshot | undefined> {

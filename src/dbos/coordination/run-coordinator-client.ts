@@ -11,7 +11,11 @@ import type {
   InlineScopeOwnershipRegistrar,
   InlineScopeOwnershipRegistration,
 } from '../../pipeline/interpreter/inline-scope-ownership-registrar.js';
-import type { DelayWaitResult } from '../../pipeline/interpreter/interpreter-context.js';
+import type {
+  DelayWaitResult,
+  HumanGateResolution,
+  HumanGateWaitRequest,
+} from '../../pipeline/interpreter/interpreter-context.js';
 import type {
   PipelineEventDraft,
   PipelineEventSink,
@@ -19,7 +23,6 @@ import type {
 import {
   parseScopeDirective,
   parseScopeSettlementAcknowledgement,
-  parseUnknownResolutionDirective,
 } from '../../validation/run-command-workflow.validator.js';
 import {
   parseExecutionReservation,
@@ -28,30 +31,36 @@ import {
 import {
   runCoordinatorReplyTopic,
   runCoordinatorTopic,
-  retryBackoffStepName,
   scopeAdmissionReplyTopic,
   scopeDirectiveTopic,
   scopeReplyTopic,
   scopeSettlementTopic,
-  unknownOutcomeReadyStepName,
-  unknownOutcomeResolutionStepName,
-  unknownResolutionTopic,
 } from '../dbos-names.js';
 import { runWorkflowId } from '../workflow-id.js';
 import { isActiveWorkflowStatus } from '../workflow-status.js';
 import { durableOperationLoop } from './durable-operation-loop.js';
 import { orphanHealthCheckSeconds } from './orphan-health-check.js';
+import { ScopeCancellationError, ScopeFailureFenceError } from './scope-fence-errors.js';
+import { ScopeWaitOperations } from './scope-wait-operations.js';
 
-export class ScopeCancellationError extends Error {}
-
-export class ScopeFailureFenceError extends Error {}
+export { ScopeCancellationError, ScopeFailureFenceError };
 
 export class RunCoordinatorClient implements PipelineEventSink, InlineScopeOwnershipRegistrar {
   private readonly rootWorkflowId: string;
+  private readonly waitOperations: ScopeWaitOperations;
   private boundarySequence = 0;
 
   constructor(private readonly runId: string) {
     this.rootWorkflowId = runWorkflowId(runId);
+    this.waitOperations = new ScopeWaitOperations({
+      workflowId: () => this.workflowId(),
+      boundary: () => this.boundary(),
+      receive: (topic) => this.receive(topic),
+      receiveReply: () => this.receiveReply(),
+      send: (message) => this.send(message),
+      assertContinue: (value) => this.assertContinue(value),
+      assertCoordinatorLive: () => this.assertCoordinatorLive(),
+    });
   }
 
   async ready(parentWorkflowId: string, startFence?: ScopeStartFenceReply): Promise<void> {
@@ -125,65 +134,25 @@ export class RunCoordinatorClient implements PipelineEventSink, InlineScopeOwner
     });
   }
 
-  async waitForRetry(request: RunExecutorRequest, delayMs: number): Promise<void> {
-    await DBOS.runStep(async () => ({ attemptId: request.attemptId, delayMs }), {
-      name: retryBackoffStepName(request.attemptId),
-    });
-    const response = await DBOS.recv(scopeDirectiveTopic, { timeoutSeconds: delayMs / 1_000 });
-    if (response !== null) {
-      this.assertContinue(response);
-    }
-    await this.boundary();
+  waitForRetry(request: RunExecutorRequest, delayMs: number): Promise<void> {
+    return this.waitOperations.waitForRetry(request, delayMs);
   }
 
-  async waitForDelay(durationMs: number): Promise<DelayWaitResult> {
-    const response = await DBOS.recv(scopeDirectiveTopic, {
-      timeoutSeconds: durationMs / 1_000,
-    });
-    if (response !== null) {
-      return this.delayWaitResult(response);
-    }
-    try {
-      await this.boundary();
-      return 'elapsed';
-    } catch (error) {
-      if (error instanceof ScopeCancellationError) {
-        return 'cancelled';
-      }
-      if (error instanceof ScopeFailureFenceError) {
-        return 'failed';
-      }
-      throw error;
-    }
+  waitForDelay(durationMs: number): Promise<DelayWaitResult> {
+    return this.waitOperations.waitForDelay(durationMs);
   }
 
-  async waitForUnknownOutcome(
+  waitForUnknownOutcome(
     request: RunExecutorRequest,
     recovery: RecoveryPolicy,
     retry: RetryPolicy | undefined,
     reconciliationRound: number,
   ): Promise<UnknownResolutionDirective> {
-    await this.send({
-      kind: 'unknownOutcomeWaiting',
-      workflowId: this.workflowId(),
-      request,
-      attemptOrdinal: request.attemptOrdinal,
-      reconciliationRound,
-      recovery,
-      ...(retry === undefined ? {} : { retry }),
-    });
-    await this.receiveReply();
-    await DBOS.runStep(async () => request.attemptId, {
-      name: unknownOutcomeReadyStepName(request.attemptId),
-    });
-    const resolution = parseUnknownResolutionDirective(
-      await this.receive(unknownResolutionTopic(request.attemptId)),
-    );
-    return parseUnknownResolutionDirective(
-      await DBOS.runStep(async () => resolution, {
-        name: unknownOutcomeResolutionStepName(request.attemptId),
-      }),
-    );
+    return this.waitOperations.waitForUnknownOutcome(request, recovery, retry, reconciliationRound);
+  }
+
+  waitForHumanGate(request: HumanGateWaitRequest): Promise<HumanGateResolution> {
+    return this.waitOperations.waitForHumanGate(request);
   }
 
   async finish(): Promise<void> {
@@ -240,18 +209,11 @@ export class RunCoordinatorClient implements PipelineEventSink, InlineScopeOwner
     }
   }
 
-  private delayWaitResult(value: unknown): DelayWaitResult {
-    const directive = parseScopeDirective(value);
-    switch (directive.kind) {
-      case 'continue':
-        return 'elapsed';
-      case 'cancel':
-        return 'cancelled';
-      case 'fail':
-        return 'failed';
+  private async assertCoordinatorLive(): Promise<void> {
+    const rootStatus = await DBOS.getWorkflowStatus(this.rootWorkflowId);
+    if (rootStatus === null || !isActiveWorkflowStatus(rootStatus.status)) {
+      throw new ScopeCancellationError('Run coordinator terminated before replying to its scope.');
     }
-    directive satisfies never;
-    return directive;
   }
 
   private async receiveReply(): Promise<void> {
@@ -275,12 +237,7 @@ export class RunCoordinatorClient implements PipelineEventSink, InlineScopeOwner
       if (response !== null) {
         return { received: true, value: response };
       }
-      const rootStatus = await DBOS.getWorkflowStatus(this.rootWorkflowId);
-      if (rootStatus === null || !isActiveWorkflowStatus(rootStatus.status)) {
-        throw new ScopeCancellationError(
-          'Run coordinator terminated before replying to its scope.',
-        );
-      }
+      await this.assertCoordinatorLive();
       return { received: false };
     };
     for await (const response of durableOperationLoop(poll)) {

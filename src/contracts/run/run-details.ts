@@ -11,6 +11,7 @@ import {
 } from '../execution-identity.js';
 import { MapSummarySchema } from '../pipeline/map-output.js';
 import type { NodeOutput } from '../pipeline/node-output.js';
+import type { HumanGateNode } from '../pipeline/pipeline-node.js';
 import {
   IdentifierSchema,
   NonEmptyStringSchema,
@@ -174,12 +175,50 @@ export type RunAttempt =
   | (RunAttemptBase & { readonly status: 'timedOut' })
   | (RunAttemptBase & { readonly status: 'cancelled' });
 
+export type RunGateResolution =
+  | { readonly kind: 'answered'; readonly answer: string }
+  | { readonly kind: 'conflict' }
+  | { readonly kind: 'timedOut' }
+  | { readonly kind: 'cancelled' }
+  | { readonly kind: 'failed' };
+
+export interface RunGateAcceptedAnswer {
+  readonly actorId: string;
+  readonly answer: string;
+  readonly commandId: CommandId;
+}
+
+interface RunGateBase {
+  readonly id: NodeInstanceId;
+  readonly scopeId: ScopeId;
+  readonly authoredNodeId: AuthoredNodeId;
+  readonly pipelineId: string;
+  readonly nodePath: string;
+  readonly displayPath: string;
+  readonly answers: readonly string[];
+  readonly decision: HumanGateNode['decision'];
+  readonly eligibleGroup?: string;
+  readonly openedAt?: Date;
+  readonly acceptedAnswers: readonly RunGateAcceptedAnswer[];
+}
+
+export type RunGate = RunGateBase &
+  (
+    | { readonly status: 'pending' }
+    | {
+        readonly status: 'resolved';
+        readonly resolution: RunGateResolution;
+        readonly resolvedAt?: Date;
+      }
+  );
+
 export interface RunDetails {
   readonly run: RunSnapshot;
   readonly scopes: readonly RunScope[];
   readonly nodeInstances: readonly RunNodeInstance[];
   readonly attempts: readonly RunAttempt[];
   readonly commands: readonly RunCommandDetails[];
+  readonly gates: readonly RunGate[];
   readonly parallelJoins: readonly ParallelJoinObservation[];
   readonly skippedParallelBranches: readonly SkippedParallelBranch[];
   readonly mapExecutions: readonly MapExecutionObservation[];
@@ -191,6 +230,8 @@ interface RunCommandDetailsBase {
   readonly commandKind: 'cancelRun' | 'resolveUnknownOutcome' | 'answerGate';
   readonly actorId?: string;
   readonly targetAttemptId?: AttemptId;
+  readonly gateInstanceId?: NodeInstanceId;
+  readonly answer?: string;
 }
 
 export type RunCommandDetails = RunCommandDetailsBase &

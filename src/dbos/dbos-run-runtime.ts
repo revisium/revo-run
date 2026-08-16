@@ -8,6 +8,7 @@ import type { JsonValue } from '../contracts/json-value.js';
 import type { ExecutionPlan } from '../contracts/run/execution-plan.js';
 import type { ListRunsInput, RunPage } from '../contracts/run/list-runs.js';
 import type {
+  AnswerGateInput,
   CancelRunInput,
   CommandId,
   ResolveUnknownOutcomeInput,
@@ -151,7 +152,18 @@ export class DbosRunRuntime {
     return this.dispatchCommand({ kind: 'resolveUnknownOutcome', input }, `cmd_${randomUUID()}`);
   }
 
-  /** Internal replay seam; public commands always receive a manager-generated UUID. */
+  async answerGate(input: AnswerGateInput): Promise<RunCommandReceipt> {
+    await this.assertRunExistsBeforeCommandId(input.runId);
+    const { commandId, ...commandInput } = input;
+    return this.dispatchCommand({ kind: 'answerGate', input: commandInput }, commandId);
+  }
+
+  /**
+   * Internal replay seam. cancelRun and resolveUnknownOutcome always receive a manager-generated
+   * UUID; answerGate is the one command whose commandId is caller-supplied (ADR: caller-supplied
+   * commandId + ni1_ addressing), so its idempotency depends on the stored-input equality check
+   * in dispatchDurableCommand below rather than on this method minting the id.
+   */
   async dispatchCommand(
     command: DurableRunCommand,
     commandId: CommandId,
@@ -261,9 +273,6 @@ export class DbosRunRuntime {
     command: DurableRunCommand,
     commandId: CommandId,
   ): Promise<RunCommandReceipt> {
-    if (!('input' in command)) {
-      throw new RunManagerError('run_command_failed');
-    }
     const durableInput: CommandDispatchWorkflowInput = { commandId, command };
     try {
       const workflowId = commandWorkflowId(commandId);

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type {
+  AnswerGateInput,
   ExecutionPlan,
   CancelRunInput,
   JsonValue,
@@ -36,6 +37,9 @@ const observationRuntime = () => ({
       throw new Error('not used');
     },
   ),
+  answerGate: vi.fn<(input: AnswerGateInput) => Promise<RunCommandReceipt>>(async () => {
+    throw new Error('not used');
+  }),
   stop: vi.fn<() => Promise<void>>(async () => undefined),
   subscribeRunEvents: vi.fn<
     (runId: string, input: RunEventSubscriptionInput) => AsyncGenerator<RunEvent>

@@ -53,7 +53,6 @@ export const PipelineActionSchema = Type.Union([
       reason: Type.Union([
         Type.Literal('consensus'),
         Type.Literal('delay'),
-        Type.Literal('humanGate'),
         Type.Literal('join'),
         Type.Literal('nodeExecution'),
         Type.Literal('subpipeline'),

@@ -19,6 +19,7 @@ export {
 } from './contracts/run/run-details.js';
 export { RunIdSchema } from './contracts/run/run-id.js';
 export {
+  AnswerGateInputSchema,
   CancelRunInputSchema,
   CommandIdSchema,
   ResolveUnknownOutcomeInputSchema,
@@ -94,6 +95,9 @@ export type { ListRunsInput, RunPage } from './contracts/run/list-runs.js';
 export type {
   RunAttempt,
   RunDetails,
+  RunGate,
+  RunGateAcceptedAnswer,
+  RunGateResolution,
   RunNodeExecutionStatus,
   RunNodeInstance,
   RunScope,
@@ -119,6 +123,7 @@ export type {
 } from './contracts/run/run.js';
 export type { RunId } from './contracts/run/run-id.js';
 export type {
+  AnswerGateInput,
   CancelRunInput,
   CommandId,
   ResolveUnknownOutcomeInput,

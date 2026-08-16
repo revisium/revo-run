@@ -9,7 +9,14 @@ const decisionResult = (decision: RunCommandDecision) =>
 export const mapRunCommandDecision = (decision: RunCommandDecision): RunCommandDetails => {
   const result = decisionResult(decision);
   if (decision.commandKind === 'answerGate') {
-    return { commandId: decision.commandId, commandKind: 'answerGate', ...result };
+    return {
+      commandId: decision.commandId,
+      commandKind: 'answerGate',
+      gateInstanceId: decision.gateInstanceId,
+      actorId: decision.actorId,
+      answer: decision.answer,
+      ...result,
+    };
   }
   if (decision.commandKind === 'cancelRun') {
     return {

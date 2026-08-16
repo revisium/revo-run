@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import { vi } from 'vitest';
@@ -19,6 +20,7 @@ export class RunCommandAcceptance {
   private readonly commandIds = new Map<string, string>();
   private readonly attemptIds = new Map<string, string>();
   private readonly runStates = new Map<string, string>();
+  private readonly gateCommandIds = new Map<string, string>();
 
   constructor(manager: ManagerAccessor, executor: ControlledRunExecutor, runId: string) {
     this.manager = manager;
@@ -55,6 +57,58 @@ export class RunCommandAcceptance {
     if (expected.captureCommandIdAs !== undefined) {
       this.commandIds.set(expected.captureCommandIdAs, this.result.commandId);
     }
+  }
+
+  /**
+   * Resolves the DSL's opaque command-id label to a real cmd_ uuid, minting one on the label's
+   * first use and reusing it thereafter (decision D-07). rr-044's repeated-id intent and rr-045's
+   * distinct-id intent differ only in whether two answerHumanGate steps share a label.
+   */
+  private gateCommandId(label: string): string {
+    const existing = this.gateCommandIds.get(label);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const commandId = `cmd_${randomUUID()}`;
+    this.gateCommandIds.set(label, commandId);
+    return commandId;
+  }
+
+  async answerHumanGate(
+    step: Extract<ScenarioStep, { readonly kind: 'answerHumanGate' }>,
+  ): Promise<void> {
+    const gateInstanceId = await this.waitForGateInstanceId(step.path);
+    this.result = await this.manager().answerGate({
+      runId: this.runId,
+      gateInstanceId,
+      answer: step.answer,
+      actorId: step.actorId,
+      actorGroups: step.actorGroups,
+      commandId: this.gateCommandId(step.commandId),
+    });
+  }
+
+  async expectHumanGateWaiting(
+    step: Extract<ScenarioStep, { readonly kind: 'expectHumanGateWaiting' }>,
+  ): Promise<void> {
+    await vi.waitFor(async () => {
+      const details = await this.manager().getRunDetails(this.runId);
+      const gate = details?.gates.find(({ displayPath }) => displayPath === step.path);
+      assert.equal(gate?.status, 'pending');
+    });
+  }
+
+  /** A gate's opaque id is discoverable only once it exists in details.gates, in any status. */
+  private async waitForGateInstanceId(path: string): Promise<string> {
+    let gateInstanceId: string | undefined;
+    await vi.waitFor(async () => {
+      const details = await this.manager().getRunDetails(this.runId);
+      const gate = details?.gates.find(({ displayPath }) => displayPath === path);
+      assert(gate !== undefined, `Gate ${path} does not exist yet.`);
+      gateInstanceId = gate.id;
+    });
+    assert(gateInstanceId !== undefined);
+    return gateInstanceId;
   }
 
   async captureAttemptId(path: string, captureAs: string): Promise<void> {

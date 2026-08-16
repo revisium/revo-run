@@ -4,60 +4,42 @@ export const coordinationHumanScenarioAudit = [
   {
     intentId: 'rr-043',
     requiredCapabilities: ['humanGateRecovery', 'managerRestartRecovery'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['humanGateRecovery'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-043' },
   },
   {
     intentId: 'rr-044',
     requiredCapabilities: ['humanGateCommandIdempotency', 'commandRejection'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['humanGateCommandIdempotency'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-044' },
   },
   {
     intentId: 'rr-045',
     requiredCapabilities: ['separationOfDuties', 'commandRejection'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['separationOfDuties'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-045' },
   },
   {
     intentId: 'rr-046',
     requiredCapabilities: ['humanGateAuthorization', 'commandRejection'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['humanGateAuthorization'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-046' },
   },
   {
     intentId: 'rr-047',
     requiredCapabilities: ['humanGateConflictPolicy'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['humanGateConflictPolicy'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-047' },
   },
   {
     intentId: 'rr-048',
     requiredCapabilities: ['humanGateAnswerValidation', 'commandRejection'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['humanGateAnswerValidation'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-048' },
   },
   {
     intentId: 'rr-049',
     requiredCapabilities: ['humanGateDeadlineRouting', 'dbosSafeTimeAdvancement'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['humanGateDeadlineRouting'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-049' },
   },
   {
     intentId: 'rr-050',
     requiredCapabilities: ['humanGateCancellation'],
-    evidence: { kind: 'pendingCapabilities', missingCapabilities: ['humanGateCancellation'] },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-050' },
   },
   {
     intentId: 'rr-051',

@@ -52,6 +52,7 @@ export const createPipelineExecution = (
     (durationMs) => coordinator.waitForDelay(durationMs),
     (request, recovery, retry, reconciliationRound) =>
       coordinator.waitForUnknownOutcome(request, recovery, retry, reconciliationRound),
+    (request) => coordinator.waitForHumanGate(request),
   );
   return { coordinator, interpreter };
 };

@@ -5,6 +5,7 @@ import { parseRunCommandDecision } from '../../src/validation/run-command-workfl
 
 const commandId = 'cmd_00000000-0000-4000-8000-000000000000';
 const attemptId = `at1_${'A'.repeat(43)}`;
+const gateInstanceId = `ni1_${'A'.repeat(43)}`;
 
 describe('RR-07 RunDetails command decision mapping', () => {
   it('maps accepted adopted resolution without duplicating adopted output', () => {
@@ -27,6 +28,28 @@ describe('RR-07 RunDetails command decision mapping', () => {
       resolution: { kind: 'adoptSuccess', outcome: 'published' },
     });
     expect(JSON.stringify(mapRunCommandDecision(decision))).not.toContain('output');
+  });
+
+  it('maps an accepted answerGate decision with actor identity', () => {
+    expect(
+      mapRunCommandDecision(
+        parseRunCommandDecision({
+          commandId,
+          commandKind: 'answerGate',
+          gateInstanceId,
+          actorId: 'alice',
+          answer: 'approved',
+          decision: 'accepted',
+        }),
+      ),
+    ).toEqual({
+      commandId,
+      commandKind: 'answerGate',
+      gateInstanceId,
+      actorId: 'alice',
+      answer: 'approved',
+      decision: 'accepted',
+    });
   });
 
   it('maps safe rejected command details', () => {

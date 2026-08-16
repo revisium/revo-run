@@ -80,17 +80,7 @@ const isOwnedRoot = async (rootWorkflowId: string, runId: string): Promise<boole
 export const createCommandDispatchWorkflow =
   (): CommandDispatchWorkflow => async (durableInput) => {
     const input = parseCommandDispatchInput(durableInput);
-    const runId = 'input' in input.command ? input.command.input.runId : undefined;
-    if (runId === undefined) {
-      return {
-        status: 'receipt',
-        receipt: {
-          status: 'rejected',
-          commandId: input.commandId,
-          reason: 'command_not_supported',
-        },
-      };
-    }
+    const runId = input.command.input.runId;
     const rootWorkflowId = runWorkflowId(runId);
     const root = await DBOS.getWorkflowStatus(rootWorkflowId);
     if (root?.workflowName !== runWorkflowName) {

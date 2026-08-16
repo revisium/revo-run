@@ -19,6 +19,18 @@ const TerminalOutputMappingSchema = Type.Record(IdentifierSchema, TerminalOutput
 
 const RemainingBranchPolicySchema = Type.Union([Type.Literal('cancel'), Type.Literal('drain')]);
 
+export const HumanGateDecisionSchema = Type.Union([
+  Type.Object({ kind: Type.Literal('firstAnswer') }, { additionalProperties: false }),
+  Type.Object(
+    {
+      kind: Type.Literal('matchingAnswers'),
+      count: PositiveSafeIntegerSchema,
+      onConflict: Type.Union([Type.Literal('conflict'), Type.Literal('wait')]),
+    },
+    { additionalProperties: false },
+  ),
+]);
+
 const SuccessfulOutcomesSchema = Type.Array(IdentifierSchema, {
   minItems: 1,
   uniqueItems: true,
@@ -140,17 +152,7 @@ const PipelineNodeType = Type.Cyclic(
         kind: Type.Literal('humanGate'),
         key: IdentifierSchema,
         answers: Type.Array(IdentifierSchema, { minItems: 1, uniqueItems: true }),
-        decision: Type.Union([
-          Type.Object({ kind: Type.Literal('firstAnswer') }, { additionalProperties: false }),
-          Type.Object(
-            {
-              kind: Type.Literal('matchingAnswers'),
-              count: PositiveSafeIntegerSchema,
-              onConflict: Type.Union([Type.Literal('conflict'), Type.Literal('wait')]),
-            },
-            { additionalProperties: false },
-          ),
-        ]),
+        decision: HumanGateDecisionSchema,
         eligibleGroup: Type.Optional(IdentifierSchema),
         timeoutMs: Type.Optional(PositiveSafeIntegerSchema),
       },

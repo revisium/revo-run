@@ -15,6 +15,7 @@ import {
 } from '../../src/contracts/workflow/run-command-workflow.js';
 import { RunCoordinatorMessageSchema } from '../../src/contracts/workflow/run-coordinator-message.js';
 import {
+  AnswerGateInputSchema,
   CancelRunInputSchema,
   CommandIdSchema,
   ResolveUnknownOutcomeInputSchema,
@@ -71,8 +72,8 @@ const matrix: MatrixFixture = matrixJson;
 const metadata: Metadata = {
   contract: 'rr-07-commands-cancellation',
   artifactVersion: 1,
-  sourceRevision: 'ff351219cd0bedfcba848aa429b00221190ca188',
-  cloudRevision: 'Xx-qwSEgx953UpLTLlTjo',
+  sourceRevision: '69e321c540cf3aaf7cd6d39b7797bc6ef1fcea5b',
+  cloudRevision: 'R2x6tCvlAf6saYkSIS9U9',
 };
 
 const checkVectors = (
@@ -87,10 +88,10 @@ const checkVectors = (
 describe('RR-07 assurance artifacts', () => {
   it('pins exact checked-in fixture bytes and contract metadata', () => {
     expect(digest(goldenName)).toBe(
-      '313db13ee17d495bec1b0c8cc67f9e14498b320baa513f8a012c8e925fb42452',
+      '8b83ce04714df2f32fe78d82f5d41ac9f6dd45b993b7098d430e18f953e726ad',
     );
     expect(digest(matrixName)).toBe(
-      'b093ed38891f6b50ef69a45de726e10c3badb40f9e4293db165c6473b525d621',
+      'b8e6c23591e85c13dc0271f39c0f08b531abe9f4206c648dfbab207a6a305f7d',
     );
     expect(golden.metadata).toStrictEqual(metadata);
     expect(matrix.metadata).toStrictEqual(metadata);
@@ -99,9 +100,16 @@ describe('RR-07 assurance artifacts', () => {
   it('validates public, durable, observation, and redaction vectors', () => {
     const cancel = Schema.Compile(CancelRunInputSchema);
     const resolve = Schema.Compile(ResolveUnknownOutcomeInputSchema);
+    const answerGate = Schema.Compile(AnswerGateInputSchema);
     for (const vector of golden.publicInputs) {
       const validator =
-        vector.schema === 'cancel' ? cancel : vector.schema === 'resolve' ? resolve : undefined;
+        vector.schema === 'cancel'
+          ? cancel
+          : vector.schema === 'resolve'
+            ? resolve
+            : vector.schema === 'answerGate'
+              ? answerGate
+              : undefined;
       if (validator === undefined) {
         throw new Error(`Unknown assurance schema ${vector.schema}.`);
       }
@@ -131,11 +139,12 @@ describe('RR-07 assurance artifacts', () => {
       'unknown_outcome_not_pending',
       'unknown_outcome_already_resolved',
       'unknown_outcome_retry_not_permitted',
-      'command_not_supported',
+      'gate_already_resolved',
     ]);
     expect(golden.managerErrors).toStrictEqual([
       'invalid_cancel_run_input',
       'invalid_resolve_unknown_outcome_input',
+      'invalid_answer_gate_input',
       'run_command_failed',
       'manager_not_started',
       'run_not_found',
@@ -184,7 +193,7 @@ describe('RR-07 assurance artifacts', () => {
         attemptId: `at1_${'a'.repeat(43)}`,
         resolutionKind: 'markFailed',
         decision: 'rejected',
-        reason: 'command_not_supported',
+        reason: 'gate_already_resolved',
       }),
     ).toBe(false);
     expect(
@@ -218,7 +227,7 @@ describe('RR-07 assurance artifacts', () => {
         actorId: 'operator',
         attemptId: `at1_${'a'.repeat(43)}`,
         resolutionKind: 'markFailed',
-        reason: 'command_not_supported',
+        reason: 'gate_already_resolved',
       },
       {
         commandId: cancelMetadata.commandId,
@@ -251,7 +260,11 @@ describe('RR-07 assurance artifacts', () => {
         'resolve.adoptSuccess',
         'resolve.markFailed',
         'resolve.retry',
-        'answerGate.reserved',
+        'answerGate.accepted',
+        'answerGate.actorNotEligible',
+        'answerGate.actorAlreadyAnswered',
+        'answerGate.gateAlreadyResolved',
+        'answerGate.invalidAnswer',
       ],
       managerState: ['notStarted', 'started', 'stopping', 'stopped', 'restarted'],
       runState: [

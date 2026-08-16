@@ -244,5 +244,4 @@ export type ScenarioCommandRejectionReason =
   | 'run_cancellation_requested'
   | 'unknown_outcome_not_pending'
   | 'unknown_outcome_already_resolved'
-  | 'unknown_outcome_retry_not_permitted'
-  | 'command_not_supported';
+  | 'unknown_outcome_retry_not_permitted';

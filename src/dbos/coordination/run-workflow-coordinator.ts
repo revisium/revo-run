@@ -5,7 +5,7 @@ import type { ScopeDirective } from '../../contracts/workflow/run-command-workfl
 import type { RunCoordinatorMessage } from '../../contracts/workflow/run-coordinator-message.js';
 import type { RunWorkflowResult } from '../../contracts/workflow/run-workflow-result.js';
 import { parseRunCoordinatorMessage } from '../../validation/run-coordinator-message.validator.js';
-import { runCoordinatorReplyTopic, runCoordinatorTopic } from '../dbos-names.js';
+import { runCoordinatorTopic } from '../dbos-names.js';
 import type { ProviderCallRegistry } from '../executor/provider-call-registry.js';
 import {
   type DbosRunEventStream,
@@ -15,8 +15,10 @@ import {
 import { runWorkflowId } from '../workflow-id.js';
 import { DelayCancellationEventAdmission } from './delay-cancellation-event-admission.js';
 import { durableOperationLoop } from './durable-operation-loop.js';
+import { waitingGateFenceDirective } from './human-gate-resolutions.js';
 import { orphanHealthCheckSeconds } from './orphan-health-check.js';
 import { RunCommandCoordinator, type RunCommandContext } from './run-command-coordinator.js';
+import { RunExecutionReservations } from './run-execution-reservations.js';
 import { RunScopeAdmission } from './run-scope-admission.js';
 import { RunScopeRegistry } from './run-scope-registry.js';
 import type { ScopeCancellationRegistry } from './scope-cancellation-registry.js';
@@ -26,23 +28,17 @@ interface RunExecutionHandle {
   getResult(): Promise<RunWorkflowResult>;
 }
 
-interface RetainedReservation {
-  readonly granted: boolean;
-  readonly permitCommandId?: string;
-}
-
 export class RunWorkflowCoordinator {
   private readonly scopes = new RunScopeRegistry();
   private readonly commands = new RunCommandCoordinator();
   private readonly admissions: RunScopeAdmission;
-  private readonly reservations = new Map<string, RetainedReservation>();
+  private readonly reservations: RunExecutionReservations;
   private readonly delayCancellationEvents = new DelayCancellationEventAdmission();
   private eventBudgetFailure: RunEventBudgetFailure | undefined;
   private rootScopeWorkflowId: string | undefined;
   private rootCompletionFenced = false;
   private cancellationRequested = false;
   private cancellationCommandId: string | undefined;
-  private executions = 0;
 
   constructor(
     private readonly runId: string,
@@ -52,6 +48,7 @@ export class RunWorkflowCoordinator {
     private readonly providerCalls: ProviderCallRegistry,
   ) {
     this.admissions = new RunScopeAdmission(runId, this.scopes, cancellation);
+    this.reservations = new RunExecutionReservations(maximumExecutions);
   }
 
   get eventBudgetExceeded(): boolean {
@@ -147,6 +144,26 @@ export class RunWorkflowCoordinator {
         this.commands.registerUnknownOutcome(message);
         await this.replyScope(message.workflowId);
         return;
+      case 'humanGateWaiting':
+        this.scopes.assertRegistered(message.workflowId);
+        await this.commands.registerHumanGate(
+          message,
+          waitingGateFenceDirective(
+            this.eventBudgetFailure !== undefined,
+            this.cancellationRequested,
+            this.scopes.cancellationFence(message.workflowId) !== undefined,
+          ),
+        );
+        await this.replyScope(message.workflowId);
+        return;
+      case 'humanGateDeadlineReached':
+        this.scopes.assertRegistered(message.workflowId);
+        await this.commands.resolveGateDeadline(
+          message.gateInstanceId,
+          message.workflowId,
+          (event) => this.appendEvent(event),
+        );
+        return;
     }
   }
 
@@ -171,10 +188,11 @@ export class RunWorkflowCoordinator {
       source: 'joinDecision',
       id: joinNodeInstanceId,
     });
-    for (const workflowId of cancelled) {
-      this.cancellation.cancelScope(this.scopeId(workflowId));
-    }
+    cancelled.forEach((workflowId) => this.cancellation.cancelScope(this.scopeId(workflowId)));
     await this.scopes.directMany(cancelled, { kind: 'cancel' });
+    await this.commands.sendGateResolutionsForWorkflows(cancelled, (event) =>
+      this.appendEvent(event),
+    );
     await this.replyScope(parentWorkflowId);
   }
 
@@ -183,9 +201,7 @@ export class RunWorkflowCoordinator {
     const directive = this.scopeDirective(workflowId);
     if (directive.kind === 'continue') {
       this.scopes.finish(workflowId);
-      if (workflowId === this.rootScopeWorkflowId) {
-        this.rootCompletionFenced = true;
-      }
+      this.rootCompletionFenced ||= workflowId === this.rootScopeWorkflowId;
     }
     await this.scopes.reply(workflowId, directive);
   }
@@ -194,41 +210,12 @@ export class RunWorkflowCoordinator {
     message: Extract<RunCoordinatorMessage, { readonly kind: 'reserveExecution' }>,
   ): Promise<void> {
     this.scopes.assertRegistered(message.replyWorkflowId);
-    const retained = this.reservations.get(message.attemptId);
-    if (retained !== undefined) {
-      if (retained.permitCommandId !== message.permitCommandId) {
-        throw new Error('Execution reservation was replayed with a different permit.');
-      }
-      await this.replyReservation(message, retained.granted);
-      return;
-    }
-
-    let granted = false;
-    const scopeCancelled = this.scopes.cancellationFence(message.replyWorkflowId) !== undefined;
-    if (!this.fenced && !scopeCancelled && message.permitCommandId !== undefined) {
-      granted = this.commands.consumeRetryPermit(message.permitCommandId, message.attemptId);
-    } else if (!this.fenced && !scopeCancelled && this.executions < this.maximumExecutions) {
-      this.executions += 1;
-      granted = true;
-    }
-    this.reservations.set(message.attemptId, {
-      granted,
-      ...(message.permitCommandId === undefined
-        ? {}
-        : { permitCommandId: message.permitCommandId }),
+    await this.reservations.reserve(message, {
+      fenced: this.fenced,
+      scopeCancelled: this.scopes.cancellationFence(message.replyWorkflowId) !== undefined,
+      consumeRetryPermit: (commandId, attemptId) =>
+        this.commands.consumeRetryPermit(commandId, attemptId),
     });
-    await this.replyReservation(message, granted);
-  }
-
-  private replyReservation(
-    message: Extract<RunCoordinatorMessage, { readonly kind: 'reserveExecution' }>,
-    granted: boolean,
-  ): Promise<void> {
-    return DBOS.send(
-      message.replyWorkflowId,
-      { attemptId: message.attemptId, granted },
-      runCoordinatorReplyTopic,
-    );
   }
 
   private async appendEvent(event: RunEventDraft): Promise<boolean> {
@@ -245,6 +232,9 @@ export class RunWorkflowCoordinator {
       this.eventBudgetFailure = error.outcome;
       await this.scopes.directAll({ kind: 'fail' });
       await this.commands.sendAllUnknownResolutions({ kind: 'fail' });
+      await this.commands.sendAllGateResolutions('fail', (failEvent) =>
+        this.appendEvent(failEvent),
+      );
       this.cancellation.cancelRun(this.runId);
       return false;
     }
@@ -254,14 +244,12 @@ export class RunWorkflowCoordinator {
     return {
       cancellationRequested: this.cancellationRequested,
       eventBudgetExceeded: this.eventBudgetFailure !== undefined,
-      executions: this.executions,
+      executions: this.reservations.executions,
       maximumExecutions: this.maximumExecutions,
       rootCompletionFenced: this.rootCompletionFenced,
       appendEvent: (event) => this.appendEvent(event),
       cancelRun: (commandId) => this.cancelRun(commandId),
-      consumeExecution: () => {
-        this.executions += 1;
-      },
+      consumeExecution: () => this.reservations.consumeExecution(),
     };
   }
 
@@ -291,6 +279,7 @@ export class RunWorkflowCoordinator {
     this.scopes.cancelAll({ source: 'run', id: commandId });
     await this.scopes.directAll({ kind: 'cancel' });
     await this.commands.sendAllUnknownResolutions({ kind: 'cancel' });
+    await this.commands.sendAllGateResolutions('cancel', (event) => this.appendEvent(event));
     this.cancellation.cancelRun(this.runId);
     this.commands.cancelRetryPermits();
   }

@@ -128,6 +128,9 @@ const pipelineBranchDefaulted = eventVariant('pipeline.branchDefaulted', NodeIde
 const parallelJoinFailed = eventVariant('parallel.joinFailed', NodeIdentitySchema);
 const subpipelineFailed = eventVariant('subpipeline.failed', NodeIdentitySchema);
 const delayCancelled = eventVariant('delay.cancelled', NodeIdentitySchema);
+const humanGateConflict = eventVariant('humanGate.conflict', NodeIdentitySchema);
+const humanGateTimedOut = eventVariant('humanGate.timedOut', NodeIdentitySchema);
+const humanGateCancelled = eventVariant('humanGate.cancelled', NodeIdentitySchema);
 const repeatExhausted = eventVariant('repeat.exhausted', NodeIdentitySchema);
 const mapLimitExceeded = eventVariant('map.limitExceeded', NodeIdentitySchema);
 const runCompleted = eventVariant(
@@ -171,6 +174,9 @@ export const RunEventDraftSchema = Type.Union([
   parallelJoinFailed.draft,
   subpipelineFailed.draft,
   delayCancelled.draft,
+  humanGateConflict.draft,
+  humanGateTimedOut.draft,
+  humanGateCancelled.draft,
   repeatExhausted.draft,
   mapLimitExceeded.draft,
   runCompleted.draft,
@@ -192,6 +198,9 @@ export const RunEventSchema = Type.Union([
   parallelJoinFailed.stored,
   subpipelineFailed.stored,
   delayCancelled.stored,
+  humanGateConflict.stored,
+  humanGateTimedOut.stored,
+  humanGateCancelled.stored,
   repeatExhausted.stored,
   mapLimitExceeded.stored,
   runCompleted.stored,
