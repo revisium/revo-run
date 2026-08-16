@@ -69,10 +69,7 @@ export const coordinationCoreScenarioAudit = [
   {
     intentId: 'rr-036',
     requiredCapabilities: ['consensusExecution', 'normalizedConsensusVote', 'unanimousConsensus'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['consensusExecution', 'normalizedConsensusVote', 'unanimousConsensus'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-036' },
   },
   {
     intentId: 'rr-037',
@@ -81,22 +78,12 @@ export const coordinationCoreScenarioAudit = [
       'normalizedConsensusVote',
       'earlyConsensusRejection',
     ],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: [
-        'consensusExecution',
-        'normalizedConsensusVote',
-        'earlyConsensusRejection',
-      ],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-037' },
   },
   {
     intentId: 'rr-038',
     requiredCapabilities: ['consensusExecution', 'normalizedConsensusVote', 'consensusQuorum'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['consensusExecution', 'normalizedConsensusVote', 'consensusQuorum'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-038' },
   },
   {
     intentId: 'rr-039',
@@ -105,14 +92,7 @@ export const coordinationCoreScenarioAudit = [
       'normalizedConsensusVote',
       'independentConsensusThresholds',
     ],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: [
-        'consensusExecution',
-        'normalizedConsensusVote',
-        'independentConsensusThresholds',
-      ],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-039' },
   },
   {
     intentId: 'rr-040',
@@ -121,22 +101,12 @@ export const coordinationCoreScenarioAudit = [
       'normalizedConsensusVote',
       'consensusVoteValidation',
     ],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: [
-        'consensusExecution',
-        'normalizedConsensusVote',
-        'consensusVoteValidation',
-      ],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-040' },
   },
   {
     intentId: 'rr-041',
     requiredCapabilities: ['consensusExecution', 'consensusParticipantFailureWithoutVote'],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['consensusExecution', 'consensusParticipantFailureWithoutVote'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-041' },
   },
   {
     intentId: 'rr-042',
@@ -145,9 +115,6 @@ export const coordinationCoreScenarioAudit = [
       'consensusTimeoutRouting',
       'dbosSafeTimeAdvancement',
     ],
-    evidence: {
-      kind: 'pendingCapabilities',
-      missingCapabilities: ['consensusExecution', 'consensusTimeoutRouting'],
-    },
+    evidence: { kind: 'executableScenario', proofIntentId: 'rr-042' },
   },
 ] as const satisfies readonly ScenarioAuditEntry[];

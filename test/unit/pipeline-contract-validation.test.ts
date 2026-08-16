@@ -1,66 +1,27 @@
 import Schema from 'typebox/schema';
 import { describe, expect, it } from 'vitest';
 
+import { ConsensusVoteSchema } from '../../src/contracts/pipeline/consensus-vote.js';
 import { MapNodeOutputSchema } from '../../src/contracts/pipeline/map-output.js';
-import {
-  PipelineActionSchema,
-  PipelineDecisionInputSchema,
-} from '../../src/contracts/pipeline/pipeline-action.js';
-import { PipelineProgressSchema } from '../../src/contracts/pipeline/pipeline-progress.js';
 import { StartRunInputSchema } from '../../src/contracts/run/start-run.js';
 import { terminalExecutionPlan } from '../support/execution-plan.fixture.js';
 
-const pipelineProgressValidator = Schema.Compile(PipelineProgressSchema);
-const pipelineActionValidator = Schema.Compile(PipelineActionSchema);
-const pipelineDecisionInputValidator = Schema.Compile(PipelineDecisionInputSchema);
+const consensusVoteValidator = Schema.Compile(ConsensusVoteSchema);
 const mapNodeOutputValidator = Schema.Compile(MapNodeOutputSchema);
 const startRunInputValidator = Schema.Compile(StartRunInputSchema);
 
-const emptyProgress = {
-  nodes: [],
-  consensusVotes: [],
-  reachedDeadlines: [],
-};
-
 describe('pipeline runtime contract validation', () => {
-  it('validates durable pipeline progress', () => {
-    expect(pipelineProgressValidator.Check(emptyProgress)).toBe(true);
-    expect(
-      pipelineProgressValidator.Check({
-        ...emptyProgress,
-        nodes: [{ nodePath: 'main/work', status: 'active', unexpected: true }],
-      }),
-    ).toBe(false);
-  });
+  it('validates the executor-facing consensus vote payload', () => {
+    const vote = {
+      nodePath: 'main/review',
+      participantId: 'architecture',
+      vote: 'approve',
+      executionId: 'execution-architecture-1',
+    };
 
-  it('validates pipeline decisions and their inputs', () => {
-    const plan = terminalExecutionPlan();
-
-    expect(
-      pipelineDecisionInputValidator.Check({
-        pipelines: plan.pipelines,
-        pipelineId: plan.rootPipelineId,
-        pipelineInstancePath: 'main',
-        runInput: {},
-        pipelineInput: {},
-        progress: emptyProgress,
-      }),
-    ).toBe(true);
-    expect(
-      pipelineActionValidator.Check({
-        kind: 'activateNodes',
-        source: 'entry',
-        nodePaths: ['main/work'],
-      }),
-    ).toBe(true);
-    expect(
-      pipelineActionValidator.Check({
-        kind: 'activateNodes',
-        source: 'entry',
-        nodePaths: ['main/work'],
-        unexpected: true,
-      }),
-    ).toBe(false);
+    expect(consensusVoteValidator.Check(vote)).toBe(true);
+    expect(consensusVoteValidator.Check({ ...vote, unexpected: true })).toBe(false);
+    expect(consensusVoteValidator.Check({ ...vote, vote: 'tie' })).toBe(false);
   });
 
   it('validates bounded map summaries without arbitrary properties', () => {

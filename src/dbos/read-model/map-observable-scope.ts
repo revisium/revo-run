@@ -5,6 +5,7 @@ import type { RunStatus } from '../../contracts/run/run.js';
 import { parseMapItemResult } from '../../validation/map-item-result.validator.js';
 import { parseParallelBranchResult } from '../../validation/parallel-branch-result.validator.js';
 import { parseRunWorkflowResult } from '../../validation/parse-run-workflow-data.js';
+import { parseParticipantSettlement } from '../../validation/participant-settlement.validator.js';
 import { parseRepeatIterationResult } from '../../validation/repeat-iteration-result.validator.js';
 import { mapRunStatus } from './map-run-snapshot.js';
 import type { DurableScopeCandidate } from './scope-candidate-from-status.js';
@@ -30,6 +31,16 @@ const successfulScopeStatus = (
       throw new Error('Repeat iteration workflow output identity is invalid.');
     }
     return result.kind === 'terminal' ? result.result.status : 'succeeded';
+  }
+  if (candidate.kind === 'consensusParticipant') {
+    const settlement = parseParticipantSettlement(status.output);
+    if (settlement.kind === 'cancelled') {
+      return 'cancelled';
+    }
+    if (settlement.kind === 'executionFailed' || settlement.kind === 'timedOut') {
+      return 'failed';
+    }
+    return 'succeeded';
   }
   if (candidate.kind === 'mapItem') {
     const result = parseMapItemResult(status.output);
@@ -102,6 +113,18 @@ export const mapObservableScope = (
       pipelineId: candidate.pipelineId,
       displayPath: candidate.displayPath,
       ordinal: candidate.repeatIdentity.ordinal,
+      ...dates,
+    };
+  }
+  if (candidate.kind === 'consensusParticipant') {
+    return {
+      kind: 'consensusParticipant',
+      id: candidate.id,
+      parentScopeId: candidate.parentScopeId,
+      pipelineId: candidate.pipelineId,
+      displayPath: candidate.displayPath,
+      participantId: candidate.consensusIdentity.participantId,
+      consensusNodeInstanceId: candidate.consensusIdentity.consensusNodeInstanceId,
       ...dates,
     };
   }

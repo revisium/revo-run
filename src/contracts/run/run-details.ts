@@ -11,7 +11,7 @@ import {
 } from '../execution-identity.js';
 import { MapSummarySchema } from '../pipeline/map-output.js';
 import type { NodeOutput } from '../pipeline/node-output.js';
-import type { HumanGateNode } from '../pipeline/pipeline-node.js';
+import type { ConsensusPolicy, HumanGateNode } from '../pipeline/pipeline-node.js';
 import {
   IdentifierSchema,
   NonEmptyStringSchema,
@@ -129,6 +129,12 @@ export type RunScope =
       readonly itemKey: string;
       readonly disposition: 'execute' | 'settlementOnly';
     })
+  | (RunWorkflowScopeBase & {
+      readonly kind: 'consensusParticipant';
+      readonly parentScopeId: ScopeId;
+      readonly participantId: string;
+      readonly consensusNodeInstanceId: NodeInstanceId;
+    })
   | {
       readonly kind: 'inlineSubpipeline';
       readonly id: ScopeId;
@@ -212,6 +218,38 @@ export type RunGate = RunGateBase &
       }
   );
 
+export interface RunConsensusAcceptedVote {
+  readonly participantId: string;
+  readonly vote: 'abstain' | 'approve' | 'reject';
+  readonly executionId: string;
+}
+
+interface RunConsensusBase {
+  readonly scopeId: ScopeId;
+  readonly nodeInstanceId: NodeInstanceId;
+  readonly authoredNodeId: AuthoredNodeId;
+  readonly pipelineId: string;
+  readonly nodePath: string;
+  readonly displayPath: string;
+  readonly policy: ConsensusPolicy;
+  readonly remaining: 'cancel' | 'drain';
+  readonly timeoutMs?: number;
+  readonly acceptedVotes: readonly RunConsensusAcceptedVote[];
+  readonly failedParticipantIds: readonly string[];
+  readonly invalidParticipantIds: readonly string[];
+  readonly remainingParticipantIds: readonly string[];
+}
+
+export type RunConsensus = RunConsensusBase &
+  (
+    | { readonly status: 'pending' }
+    | {
+        readonly status: 'resolved';
+        readonly verdict: 'approved' | 'rejected' | 'insufficientQuorum' | 'timedOut' | 'failed';
+        readonly resolvedAt?: Date;
+      }
+  );
+
 export interface RunDetails {
   readonly run: RunSnapshot;
   readonly scopes: readonly RunScope[];
@@ -219,6 +257,7 @@ export interface RunDetails {
   readonly attempts: readonly RunAttempt[];
   readonly commands: readonly RunCommandDetails[];
   readonly gates: readonly RunGate[];
+  readonly consensuses: readonly RunConsensus[];
   readonly parallelJoins: readonly ParallelJoinObservation[];
   readonly skippedParallelBranches: readonly SkippedParallelBranch[];
   readonly mapExecutions: readonly MapExecutionObservation[];

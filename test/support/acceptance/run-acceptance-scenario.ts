@@ -21,6 +21,7 @@ import { runParallelRecoveryScenario } from '../process/run-parallel-recovery-sc
 import { runRetryRecoveryScenario } from '../process/run-retry-recovery-scenario.js';
 import { runSubscriptionRecoveryScenario } from '../process/run-subscription-recovery-scenario.js';
 import { testDatabaseUrl } from '../test-environment.js';
+import { completeConsensusParticipant } from './complete-consensus-participant.js';
 import { RunCommandAcceptance } from './run-command-acceptance.js';
 import { RunEventExpectations } from './run-event-expectations.js';
 import { RunObservationAssertions } from './run-observation-assertions.js';
@@ -264,7 +265,14 @@ class AcceptanceScenarioRunner {
         await this.runCommands.expectHumanGateWaiting(step);
         return;
       case 'completeConsensusParticipant':
-        throw new Error(`Scenario step ${step.kind} is not implemented.`);
+        await completeConsensusParticipant(
+          this.manager,
+          this.executor,
+          this.runId,
+          plan,
+          step.vote,
+        );
+        return;
     }
 
     step satisfies never;

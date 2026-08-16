@@ -2,6 +2,8 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 
 import type { RunExecutorRequest } from '../../contracts/executor/run-executor.js';
 import type { RecoveryPolicy, RetryPolicy } from '../../contracts/pipeline/task-policy.js';
+import type { ConsensusResolutionDirective } from '../../contracts/workflow/consensus-resolution.js';
+import type { ParticipantSettlement } from '../../contracts/workflow/participant-settlement.js';
 import type { UnknownResolutionDirective } from '../../contracts/workflow/run-command-workflow.js';
 import type {
   RunCoordinatorMessage,
@@ -12,6 +14,7 @@ import type {
   InlineScopeOwnershipRegistration,
 } from '../../pipeline/interpreter/inline-scope-ownership-registrar.js';
 import type {
+  ConsensusWaitRequest,
   DelayWaitResult,
   HumanGateResolution,
   HumanGateWaitRequest,
@@ -153,6 +156,29 @@ export class RunCoordinatorClient implements PipelineEventSink, InlineScopeOwner
 
   waitForHumanGate(request: HumanGateWaitRequest): Promise<HumanGateResolution> {
     return this.waitOperations.waitForHumanGate(request);
+  }
+
+  registerConsensusWaiting(request: ConsensusWaitRequest): Promise<void> {
+    return this.waitOperations.registerConsensusWaiting(request);
+  }
+
+  waitForConsensusResolution(request: ConsensusWaitRequest): Promise<ConsensusResolutionDirective> {
+    return this.waitOperations.waitForConsensusResolution(request);
+  }
+
+  reportConsensusSettlement(
+    parentWorkflowId: string,
+    consensusNodeInstanceId: string,
+    participantId: string,
+    settlement: ParticipantSettlement,
+  ): Promise<void> {
+    return this.send({
+      kind: 'consensusParticipantSettled',
+      workflowId: parentWorkflowId,
+      consensusNodeInstanceId,
+      participantId,
+      settlement,
+    });
   }
 
   async finish(): Promise<void> {

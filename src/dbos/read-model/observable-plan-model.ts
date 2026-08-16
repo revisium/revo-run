@@ -1,6 +1,7 @@
 import type { PipelineNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { MapItemWorkflowInput } from '../../contracts/workflow/map-item-workflow-input.js';
 import type { RepeatIterationWorkflowInput } from '../../contracts/workflow/repeat-iteration-workflow-input.js';
+import type { ObservableConsensusCandidate } from './observable-consensus-participants.js';
 import type { ObservableGateCandidate } from './observable-gate-candidates.js';
 
 export interface ParallelScopeIdentity {
@@ -25,6 +26,16 @@ export interface MapScopeIdentity {
   readonly sourceIndex: number;
   readonly itemKey: string;
   readonly disposition: MapItemWorkflowInput['disposition'];
+}
+
+export interface ConsensusScopeIdentity {
+  readonly participantId: string;
+  readonly consensusNodeInstanceId: string;
+  readonly node: Extract<PipelineNode, { readonly kind: 'task' }>;
+  readonly pipelineId: string;
+  readonly runtimePath: string;
+  readonly parentPath: string;
+  readonly nodePathPrefix?: string;
 }
 
 interface ObservableScopeCandidateBase {
@@ -60,6 +71,12 @@ export type ObservableScopeCandidate =
       readonly parentScopeId: string;
       readonly parentWorkflowId: string;
       readonly mapIdentity: MapScopeIdentity;
+    })
+  | (ObservableScopeCandidateBase & {
+      readonly kind: 'consensusParticipant';
+      readonly parentScopeId: string;
+      readonly parentWorkflowId: string;
+      readonly consensusIdentity: ConsensusScopeIdentity;
     });
 
 export interface ObservableNodeCandidate {
@@ -99,6 +116,7 @@ export interface ObservablePlan {
   readonly parallelNodesByDisplayPath: ReadonlyMap<string, ObservableParallelCandidate>;
   readonly mapNodesByDisplayPath: ReadonlyMap<string, ObservableMapCandidate>;
   readonly gatesByNodeInstanceId: ReadonlyMap<string, ObservableGateCandidate>;
+  readonly consensusesByNodeInstanceId: ReadonlyMap<string, ObservableConsensusCandidate>;
   addRepeatIteration(
     input: RepeatIterationWorkflowInput,
   ): Extract<ObservableScopeCandidate, { readonly kind: 'repeatIteration' }>;

@@ -17,7 +17,26 @@ const TerminalOutputMappingSchema = Type.Record(IdentifierSchema, TerminalOutput
   additionalProperties: false,
 });
 
-const RemainingBranchPolicySchema = Type.Union([Type.Literal('cancel'), Type.Literal('drain')]);
+export const RemainingBranchPolicySchema = Type.Union([
+  Type.Literal('cancel'),
+  Type.Literal('drain'),
+]);
+
+export const ConsensusPolicySchema = Type.Union([
+  Type.Object({ kind: Type.Literal('unanimous') }, { additionalProperties: false }),
+  Type.Object(
+    { kind: Type.Literal('quorum'), count: PositiveSafeIntegerSchema },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal('threshold'),
+      approve: PositiveSafeIntegerSchema,
+      reject: PositiveSafeIntegerSchema,
+    },
+    { additionalProperties: false },
+  ),
+]);
 
 export const HumanGateDecisionSchema = Type.Union([
   Type.Object({ kind: Type.Literal('firstAnswer') }, { additionalProperties: false }),
@@ -127,21 +146,7 @@ const PipelineNodeType = Type.Cyclic(
           additionalProperties: false,
           minProperties: 1,
         }),
-        policy: Type.Union([
-          Type.Object({ kind: Type.Literal('unanimous') }, { additionalProperties: false }),
-          Type.Object(
-            { kind: Type.Literal('quorum'), count: PositiveSafeIntegerSchema },
-            { additionalProperties: false },
-          ),
-          Type.Object(
-            {
-              kind: Type.Literal('threshold'),
-              approve: PositiveSafeIntegerSchema,
-              reject: PositiveSafeIntegerSchema,
-            },
-            { additionalProperties: false },
-          ),
-        ]),
+        policy: ConsensusPolicySchema,
         remaining: RemainingBranchPolicySchema,
         timeoutMs: Type.Optional(PositiveSafeIntegerSchema),
       },

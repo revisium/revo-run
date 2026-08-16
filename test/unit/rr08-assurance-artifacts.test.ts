@@ -107,7 +107,7 @@ describe('RR-08 assurance artifacts', () => {
       '24a8b905c5e1f6a7f32803a930a024a7b9811a63737a6df6b1ac8a4eb2ea2944',
     );
     expect(digest(matrixName)).toBe(
-      '93be7c62032c38bb06d4b516b0feae0ff30f966b1237ad3824c1a84ba9010a86',
+      '2783270715ddd52f2b7fe186cba6deccea85b31283136b0c21bb6280bf7a38af',
     );
     expect(goldenJson.metadata).toStrictEqual(metadata);
     expect(matrixJson.metadata).toStrictEqual(metadata);

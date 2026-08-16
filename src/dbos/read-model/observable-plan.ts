@@ -9,6 +9,7 @@ import {
   createSubpipelineScopeId,
 } from '../../pipeline/identity/execution-identity.js';
 import { runWorkflowId } from '../workflow-id.js';
+import { ObservableConsensusParticipants } from './observable-consensus-participants.js';
 import {
   mintNodeInstanceIdentity,
   ObservableGateCandidates,
@@ -35,6 +36,7 @@ export type {
   MapScopeIdentity,
   ObservableMapCandidate,
 } from './observable-plan-model.js';
+export type { ObservableConsensusCandidate } from './observable-consensus-participants.js';
 export type { ObservableGateCandidate } from './observable-gate-candidates.js';
 
 class ObservablePlanBuilder {
@@ -46,6 +48,7 @@ class ObservablePlanBuilder {
   private readonly mapItems: ObservableMapItems;
   private readonly mapCandidates = new Map<string, ObservableMapCandidate>();
   private readonly gates = new ObservableGateCandidates();
+  private readonly consensuses = new ObservableConsensusParticipants();
 
   constructor(plan: ExecutionPlan, runId: string) {
     this.plan = plan;
@@ -83,6 +86,7 @@ class ObservablePlanBuilder {
       parallelNodesByDisplayPath: this.parallels.byDisplayPath,
       mapNodesByDisplayPath: this.mapCandidates,
       gatesByNodeInstanceId: this.gates.byNodeInstanceId,
+      consensusesByNodeInstanceId: this.consensuses.byNodeInstanceId,
       addRepeatIteration: (input) => this.addRepeatIteration(input),
       addMapItem: (input) => this.addMapItem(input),
     };
@@ -144,6 +148,12 @@ class ObservablePlanBuilder {
         this.gates.register(node, nodePath, context, this.plan.schemaVersion);
         return;
       case 'consensus':
+        this.consensuses.register(node, nodePath, context, this.plan.schemaVersion, {
+          addScope: (candidate) => this.addScope(candidate),
+          walkBody: (child, childParentPath, childContext) =>
+            this.walkNode(child, childParentPath, childContext),
+        });
+        return;
       case 'delay':
       case 'end':
         return;

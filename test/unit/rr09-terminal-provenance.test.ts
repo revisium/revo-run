@@ -56,6 +56,10 @@ const executePlan = async (plan: ExecutionPlan, response?: TaskResponse) => {
     async () => 'elapsed',
     async () => ({ kind: 'fail' }),
     async () => ({ kind: 'fail' }),
+    {
+      runner: { execute: async () => Promise.reject(new Error('Unexpected consensus execution.')) },
+      wait: async () => Promise.reject(new Error('Unexpected consensus wait.')),
+    },
   );
   const result = await interpreter.execute(plan, 'run-1', null, `sc1_${'a'.repeat(43)}`);
   return { events, result };

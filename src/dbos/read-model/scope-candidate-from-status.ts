@@ -1,10 +1,12 @@
 import type { WorkflowStatus } from '@dbos-inc/dbos-sdk';
 import { Equal } from 'typebox/value';
 
+import { parseConsensusParticipantWorkflowInput } from '../../validation/consensus-participant-workflow-input.validator.js';
 import { parseMapItemWorkflowInput } from '../../validation/map-item-workflow-input.validator.js';
 import { parseParallelBranchWorkflowInput } from '../../validation/parallel-branch-workflow-input.validator.js';
 import { parseRepeatIterationWorkflowInput } from '../../validation/repeat-iteration-workflow-input.validator.js';
 import { parseRunExecutionWorkflowInput } from '../../validation/run-execution-workflow-input.validator.js';
+import { consensusParticipantWorkflowName } from '../consensus/consensus-names.js';
 import {
   mapItemWorkflowName,
   parallelBranchWorkflowName,
@@ -35,6 +37,11 @@ type ProviderScope =
       readonly kind: 'mapItem';
       readonly scopeId: string;
       readonly input: ReturnType<typeof parseMapItemWorkflowInput>;
+    }
+  | {
+      readonly kind: 'consensusParticipant';
+      readonly scopeId: string;
+      readonly input: ReturnType<typeof parseConsensusParticipantWorkflowInput>;
     };
 
 const oneInput = (status: WorkflowStatus): unknown => {
@@ -72,6 +79,13 @@ const providerScopeFromStatus = (status: WorkflowStatus, runId: string): Provide
       throw new Error('Map item scope belongs to a different run.');
     }
     return { kind: 'mapItem', scopeId: input.scopeId, input };
+  }
+  if (status.workflowName === consensusParticipantWorkflowName) {
+    const input = parseConsensusParticipantWorkflowInput(oneInput(status));
+    if (input.runId !== runId) {
+      throw new Error('Consensus participant scope belongs to a different run.');
+    }
+    return { kind: 'consensusParticipant', scopeId: input.scopeId, input };
   }
   throw new Error('Run contains an unsupported child workflow.');
 };
@@ -160,6 +174,30 @@ const mapCandidate = (
   return candidate;
 };
 
+const consensusCandidate = (
+  providerScope: Extract<ProviderScope, { readonly kind: 'consensusParticipant' }>,
+  candidate: DurableScopeCandidate,
+): Extract<DurableScopeCandidate, { readonly kind: 'consensusParticipant' }> => {
+  if (candidate.kind !== 'consensusParticipant') {
+    throw new Error('DBOS scope workflow kind is invalid.');
+  }
+  const expected = candidate.consensusIdentity;
+  const input = providerScope.input;
+  if (
+    input.parentScopeId !== candidate.parentScopeId ||
+    input.participantId !== expected.participantId ||
+    input.consensusNodeInstanceId !== expected.consensusNodeInstanceId ||
+    input.pipelineId !== expected.pipelineId ||
+    input.runtimePath !== expected.runtimePath ||
+    input.parentPath !== expected.parentPath ||
+    input.nodePathPrefix !== expected.nodePathPrefix ||
+    !Equal(input.node, expected.node)
+  ) {
+    throw new Error('Consensus participant scope durable identity is invalid.');
+  }
+  return candidate;
+};
+
 const parallelCandidate = (
   providerScope: Extract<ProviderScope, { readonly kind: 'parallelBranch' }>,
   candidate: DurableScopeCandidate,
@@ -201,6 +239,8 @@ export const scopeCandidateFromStatus = (
       return repeatCandidate(providerScope, candidate);
     case 'mapItem':
       return mapCandidate(providerScope, candidate);
+    case 'consensusParticipant':
+      return consensusCandidate(providerScope, candidate);
   }
   providerScope satisfies never;
   throw new Error('DBOS provider scope kind is unsupported.');

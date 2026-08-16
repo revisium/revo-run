@@ -1,4 +1,4 @@
-import type { ConsensusVote } from '../../src/contracts/pipeline/pipeline-progress.js';
+import type { ConsensusVote } from '../../src/contracts/pipeline/consensus-vote.js';
 import type { JsonValue, NodeOutput, OutputValue } from '../../src/index.js';
 import { advanceLogicalTime } from './scenario-time.js';
 import type { ExpectedRunEvent, ScenarioCommandRejectionReason, ScenarioStep } from './scenario.js';

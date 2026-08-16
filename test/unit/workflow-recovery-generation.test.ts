@@ -1,6 +1,7 @@
 import { DBOS, type WorkflowStatus } from '@dbos-inc/dbos-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { consensusParticipantWorkflowName } from '../../src/dbos/consensus/consensus-names.js';
 import {
   parallelBranchWorkflowName,
   repeatIterationWorkflowName,
@@ -28,15 +29,17 @@ afterEach(() => {
 });
 
 describe('workflow recovery generation', () => {
-  it.each([runExecutionWorkflowName, parallelBranchWorkflowName, repeatIterationWorkflowName])(
-    'accepts node effects in %s',
-    async (workflowName) => {
-      vi.spyOn(DBOS, 'workflowID', 'get').mockReturnValue(workflowId);
-      vi.spyOn(DBOS, 'getWorkflowStatus').mockResolvedValue(status({ workflowName }));
+  it.each([
+    runExecutionWorkflowName,
+    parallelBranchWorkflowName,
+    repeatIterationWorkflowName,
+    consensusParticipantWorkflowName,
+  ])('accepts node effects in %s', async (workflowName) => {
+    vi.spyOn(DBOS, 'workflowID', 'get').mockReturnValue(workflowId);
+    vi.spyOn(DBOS, 'getWorkflowStatus').mockResolvedValue(status({ workflowName }));
 
-      await expect(currentRecoveryGeneration()).resolves.toBe(1);
-    },
-  );
+    await expect(currentRecoveryGeneration()).resolves.toBe(1);
+  });
 
   it('rejects a missing workflow identity without reading status', async () => {
     vi.spyOn(DBOS, 'workflowID', 'get').mockReturnValue(undefined);

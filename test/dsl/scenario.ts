@@ -1,4 +1,4 @@
-import type { ConsensusVote } from '../../src/contracts/pipeline/pipeline-progress.js';
+import type { ConsensusVote } from '../../src/contracts/pipeline/consensus-vote.js';
 import type {
   ExecutionPlan,
   JsonValue,
