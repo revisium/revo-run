@@ -260,6 +260,10 @@ export class RecoveryProcess {
     return this.pollFor(expected, deadline);
   }
 
+  async completeDispatchedWork(paths: readonly string[]): Promise<void> {
+    return this.completeNextDispatched(new Set(paths), Date.now() + 10_000);
+  }
+
   dispatched(path: string, attemptOrdinal?: number): number {
     return this.messages.filter(
       (message) =>
@@ -368,5 +372,24 @@ export class RecoveryProcess {
 
     await new Promise((resolve) => setTimeout(resolve, 20));
     return this.pollFor(expected, deadline);
+  }
+
+  private async completeNextDispatched(remaining: Set<string>, deadline: number): Promise<void> {
+    if (remaining.size === 0) {
+      return;
+    }
+    const path = [...remaining].find((entry) => this.dispatched(entry) > 0);
+    if (path !== undefined) {
+      this.complete(path);
+      remaining.delete(path);
+      return this.completeNextDispatched(remaining, deadline);
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Recovery worker did not dispatch remaining items: ${[...remaining].join(', ')}.`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return this.completeNextDispatched(remaining, deadline);
   }
 }
