@@ -18,6 +18,56 @@ const epoch = (value: number | undefined, fallback?: number): number => {
   return resolved;
 };
 
+const repeatIterationStatus = (
+  output: WorkflowStatus['output'],
+  candidate: Extract<DurableScopeCandidate, { readonly kind: 'repeatIteration' }>,
+): RunStatus => {
+  const result = parseRepeatIterationResult(output);
+  if (result.ordinal !== candidate.repeatIdentity.ordinal) {
+    throw new Error('Repeat iteration workflow output identity is invalid.');
+  }
+  return result.kind === 'terminal' ? result.result.status : 'succeeded';
+};
+
+const consensusParticipantStatus = (output: WorkflowStatus['output']): RunStatus => {
+  const settlement = parseParticipantSettlement(output);
+  if (settlement.kind === 'cancelled') {
+    return 'cancelled';
+  }
+  if (settlement.kind === 'executionFailed' || settlement.kind === 'timedOut') {
+    return 'failed';
+  }
+  return 'succeeded';
+};
+
+const mapItemStatus = (
+  output: WorkflowStatus['output'],
+  candidate: Extract<DurableScopeCandidate, { readonly kind: 'mapItem' }>,
+): RunStatus => {
+  const result = parseMapItemResult(output);
+  if (
+    result.sourceIndex !== candidate.mapIdentity.sourceIndex ||
+    result.itemKey !== candidate.mapIdentity.itemKey
+  ) {
+    throw new Error('Map item workflow output identity is invalid.');
+  }
+  if (result.kind === 'terminal') {
+    return result.result.status;
+  }
+  return result.kind === 'settlementOnly' ? 'cancelled' : 'succeeded';
+};
+
+const parallelBranchStatus = (
+  output: WorkflowStatus['output'],
+  candidate: Extract<DurableScopeCandidate, { readonly kind: 'parallelBranch' }>,
+): RunStatus => {
+  const result = parseParallelBranchResult(output);
+  if (result.key !== candidate.parallelIdentity.branchKey) {
+    throw new Error('Parallel branch workflow output identity is invalid.');
+  }
+  return result.kind === 'terminal' ? result.result.status : 'succeeded';
+};
+
 const successfulScopeStatus = (
   status: WorkflowStatus,
   candidate: DurableScopeCandidate,
@@ -26,40 +76,15 @@ const successfulScopeStatus = (
     return parseRunWorkflowResult(status.output).status;
   }
   if (candidate.kind === 'repeatIteration') {
-    const result = parseRepeatIterationResult(status.output);
-    if (result.ordinal !== candidate.repeatIdentity.ordinal) {
-      throw new Error('Repeat iteration workflow output identity is invalid.');
-    }
-    return result.kind === 'terminal' ? result.result.status : 'succeeded';
+    return repeatIterationStatus(status.output, candidate);
   }
   if (candidate.kind === 'consensusParticipant') {
-    const settlement = parseParticipantSettlement(status.output);
-    if (settlement.kind === 'cancelled') {
-      return 'cancelled';
-    }
-    if (settlement.kind === 'executionFailed' || settlement.kind === 'timedOut') {
-      return 'failed';
-    }
-    return 'succeeded';
+    return consensusParticipantStatus(status.output);
   }
   if (candidate.kind === 'mapItem') {
-    const result = parseMapItemResult(status.output);
-    if (
-      result.sourceIndex !== candidate.mapIdentity.sourceIndex ||
-      result.itemKey !== candidate.mapIdentity.itemKey
-    ) {
-      throw new Error('Map item workflow output identity is invalid.');
-    }
-    if (result.kind === 'terminal') {
-      return result.result.status;
-    }
-    return result.kind === 'settlementOnly' ? 'cancelled' : 'succeeded';
+    return mapItemStatus(status.output, candidate);
   }
-  const result = parseParallelBranchResult(status.output);
-  if (result.key !== candidate.parallelIdentity.branchKey) {
-    throw new Error('Parallel branch workflow output identity is invalid.');
-  }
-  return result.kind === 'terminal' ? result.result.status : 'succeeded';
+  return parallelBranchStatus(status.output, candidate);
 };
 
 const scopeDates = (status: WorkflowStatus, candidate: DurableScopeCandidate) => {

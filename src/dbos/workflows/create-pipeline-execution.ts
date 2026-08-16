@@ -52,22 +52,22 @@ export const createPipelineExecution = (
     dependencies.observeEffect?.(result);
     return result;
   };
-  const interpreter = new PipelineInterpreter(
-    execute,
-    (request, delayMs) => coordinator.waitForRetry(request, delayMs),
-    new DbosParallelBranchRunner(parallelBranchWorkflows, coordinator),
-    new DbosRepeatIterationRunner(repeatIterationWorkflows, coordinator),
-    new DbosMapItemRunner(mapItemWorkflows, coordinator),
-    coordinator,
-    coordinator,
-    (durationMs) => coordinator.waitForDelay(durationMs),
-    (request, recovery, retry, reconciliationRound) =>
+  const interpreter = new PipelineInterpreter({
+    executeEffect: execute,
+    waitForRetry: (request, delayMs) => coordinator.waitForRetry(request, delayMs),
+    parallel: new DbosParallelBranchRunner(parallelBranchWorkflows, coordinator),
+    repeatIterations: new DbosRepeatIterationRunner(repeatIterationWorkflows, coordinator),
+    mapItems: new DbosMapItemRunner(mapItemWorkflows, coordinator),
+    inlineScopes: coordinator,
+    events: coordinator,
+    waitForDelay: (durationMs) => coordinator.waitForDelay(durationMs),
+    waitForUnknownOutcome: (request, recovery, retry, reconciliationRound) =>
       coordinator.waitForUnknownOutcome(request, recovery, retry, reconciliationRound),
-    (request) => coordinator.waitForHumanGate(request),
-    {
+    waitForHumanGate: (request) => coordinator.waitForHumanGate(request),
+    consensus: {
       runner: new DbosConsensusParticipantRunner(consensusParticipantWorkflows, coordinator),
       wait: (request) => coordinator.waitForConsensusResolution(request),
     },
-  );
+  });
   return { coordinator, interpreter };
 };

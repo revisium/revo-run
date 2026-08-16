@@ -35,23 +35,37 @@ import {
 } from './scope-result-mapping.js';
 import { TaskNodeExecutor } from './task-node-executor.js';
 
+export interface PipelineInterpreterDependencies {
+  readonly executeEffect: ExecuteNodeEffect;
+  readonly waitForRetry: WaitForRetry;
+  readonly parallel: ParallelBranchRunner;
+  readonly repeatIterations: RepeatIterationRunner;
+  readonly mapItems: MapItemRunner;
+  readonly inlineScopes: InlineScopeOwnershipRegistrar;
+  readonly events: PipelineEventSink;
+  readonly waitForDelay: WaitForDelay;
+  readonly waitForUnknownOutcome: WaitForUnknownOutcome;
+  readonly waitForHumanGate: WaitForHumanGate;
+  readonly consensus: ConsensusExecutionPorts;
+}
+
 export class PipelineInterpreter {
   private readonly failures: PipelineFailureReporter;
   private readonly dispatch: PipelineNodeDispatch;
 
-  constructor(
-    executeEffect: ExecuteNodeEffect,
-    waitForRetry: WaitForRetry,
-    parallel: ParallelBranchRunner,
-    repeatIterations: RepeatIterationRunner,
-    mapItems: MapItemRunner,
-    inlineScopes: InlineScopeOwnershipRegistrar,
-    events: PipelineEventSink,
-    waitForDelay: WaitForDelay,
-    waitForUnknownOutcome: WaitForUnknownOutcome,
-    waitForHumanGate: WaitForHumanGate,
-    consensus: ConsensusExecutionPorts,
-  ) {
+  constructor({
+    executeEffect,
+    waitForRetry,
+    parallel,
+    repeatIterations,
+    mapItems,
+    inlineScopes,
+    events,
+    waitForDelay,
+    waitForUnknownOutcome,
+    waitForHumanGate,
+    consensus,
+  }: PipelineInterpreterDependencies) {
     this.failures = new PipelineFailureReporter(events);
     this.dispatch = new PipelineNodeDispatch({
       tasks: new TaskNodeExecutor(

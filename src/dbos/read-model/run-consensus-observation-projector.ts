@@ -27,7 +27,6 @@ type DurableScopeCandidate = Exclude<
 
 interface PendingConsensus {
   readonly candidate: ObservableConsensusCandidate;
-  readonly openedAt?: Date;
   state: ConsensusReductionState;
 }
 
@@ -79,7 +78,6 @@ export class RunConsensusProjector {
     }
     this.pending.set(nodeInstanceId, {
       candidate,
-      ...(step.startedAtEpochMs === undefined ? {} : { openedAt: new Date(step.startedAtEpochMs) }),
       state: initialConsensusState(),
     });
   }
@@ -104,7 +102,7 @@ export class RunConsensusProjector {
     }
     const verdict = parseDurableConsensusVerdict(step.output);
     this.resolved.set(nodeInstanceId, {
-      ...this.base(pending.candidate, pending.openedAt),
+      ...this.base(pending.candidate),
       acceptedVotes: verdict.acceptedVotes,
       failedParticipantIds: verdict.failedParticipantIds,
       invalidParticipantIds: verdict.invalidParticipantIds,
@@ -151,7 +149,7 @@ export class RunConsensusProjector {
 
   private toPending(entry: PendingConsensus): RunConsensus {
     return {
-      ...this.base(entry.candidate, entry.openedAt),
+      ...this.base(entry.candidate),
       acceptedVotes: entry.state.accepted,
       failedParticipantIds: entry.state.failedIds,
       invalidParticipantIds: entry.state.invalidIds,
@@ -160,7 +158,7 @@ export class RunConsensusProjector {
     };
   }
 
-  private base(candidate: ObservableConsensusCandidate, openedAt?: Date) {
+  private base(candidate: ObservableConsensusCandidate) {
     return {
       scopeId: candidate.scopeId,
       nodeInstanceId: candidate.nodeInstanceId,
@@ -171,7 +169,6 @@ export class RunConsensusProjector {
       policy: candidate.node.policy,
       remaining: candidate.node.remaining,
       ...(candidate.node.timeoutMs === undefined ? {} : { timeoutMs: candidate.node.timeoutMs }),
-      ...(openedAt === undefined ? {} : {}),
     };
   }
 }

@@ -53,7 +53,7 @@ export class ConsensusCoordination {
     appendEvent: (event: RunEventDraft) => Promise<boolean>,
   ): Promise<void> {
     const entry = this.registry.get(message.consensusNodeInstanceId);
-    if (entry === undefined || entry.workflowId !== message.workflowId) {
+    if (entry?.workflowId !== message.workflowId) {
       return;
     }
     const admission = admitParticipantSettlement(
