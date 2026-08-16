@@ -12,8 +12,12 @@ export const waitingGateFenceDirective = (
   eventBudgetExceeded: boolean,
   cancellationRequested: boolean,
   subtreeFenced: boolean,
-): 'cancel' | 'fail' | undefined =>
-  eventBudgetExceeded ? 'fail' : cancellationRequested || subtreeFenced ? 'cancel' : undefined;
+): 'cancel' | 'fail' | undefined => {
+  if (eventBudgetExceeded) {
+    return 'fail';
+  }
+  return cancellationRequested || subtreeFenced ? 'cancel' : undefined;
+};
 
 /**
  * Owns waiting-gate registration and the D-04 mark → send → append resolution order.

@@ -129,6 +129,27 @@ type RunCommandEventDraft = Extract<
   { readonly type: 'runCommand.accepted' | 'runCommand.rejected' }
 >;
 
+const answerGateEvent = (
+  metadata: Extract<RunCommandRequestMetadata, { readonly commandKind: 'answerGate' }>,
+  receipt: RunCommandReceipt,
+): RunCommandEventDraft => {
+  if (receipt.status === 'accepted') {
+    return { type: 'runCommand.accepted', data: metadata };
+  }
+  if (
+    receipt.reason === 'actor_already_answered' ||
+    receipt.reason === 'actor_not_eligible' ||
+    receipt.reason === 'gate_already_resolved' ||
+    receipt.reason === 'invalid_gate_answer'
+  ) {
+    return {
+      type: 'runCommand.rejected',
+      data: { ...metadata, reason: receipt.reason },
+    };
+  }
+  throw new Error('An answer-gate command rejection is inconsistent with the gate vocabulary.');
+};
+
 export const createRunCommandEvent = (
   input: CommandDispatchWorkflowInput,
   receipt: RunCommandReceipt,
@@ -141,21 +162,7 @@ export const createRunCommandEvent = (
       }
       return { type: 'runCommand.accepted', data: metadata };
     case 'answerGate':
-      if (receipt.status === 'accepted') {
-        return { type: 'runCommand.accepted', data: metadata };
-      }
-      if (
-        receipt.reason === 'actor_already_answered' ||
-        receipt.reason === 'actor_not_eligible' ||
-        receipt.reason === 'gate_already_resolved' ||
-        receipt.reason === 'invalid_gate_answer'
-      ) {
-        return {
-          type: 'runCommand.rejected',
-          data: { ...metadata, reason: receipt.reason },
-        };
-      }
-      throw new Error('An answer-gate command rejection is inconsistent with the gate vocabulary.');
+      return answerGateEvent(metadata, receipt);
     case 'resolveUnknownOutcome':
       if (receipt.status === 'accepted') {
         return { type: 'runCommand.accepted', data: metadata };

@@ -147,7 +147,7 @@ export class RunGateProjector {
     }
     const gateInstanceId = humanGateResolutionGateInstanceId(step.name);
     const gate = this.gates.get(gateInstanceId);
-    if (gate === undefined || gate.status !== 'pending') {
+    if (gate?.status !== 'pending') {
       return;
     }
     const resolution = gateResolution(parseHumanGateResolutionDirective(step.output));
