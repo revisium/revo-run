@@ -79,12 +79,27 @@ describe.sequential('RR-10 map recovery', () => {
     let recovered: RecoveryProcess | undefined;
 
     try {
-      await first.waitFor({ kind: 'dispatched', path: 'main/repositories[a]/work' });
-      first.complete('main/repositories[a]/work');
-      await first.waitFor({ kind: 'dispatched', path: 'main/repositories[b]/work' });
-      first.complete('main/repositories[b]/work');
-      await first.waitFor({ kind: 'dispatched', path: 'main/repositories[c]/work' });
-      first.complete('main/repositories[c]/work');
+      const workPaths = [
+        'main/repositories[a]/work',
+        'main/repositories[b]/work',
+        'main/repositories[c]/work',
+      ] as const;
+      const remaining = new Set<string>(workPaths);
+      const deadline = Date.now() + 10_000;
+      while (remaining.size > 0) {
+        const path = [...remaining].find((entry) => first.dispatched(entry) > 0);
+        if (path === undefined) {
+          if (Date.now() >= deadline) {
+            throw new Error(
+              `Map recovery worker did not dispatch remaining items: ${[...remaining].join(', ')}.`,
+            );
+          }
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          continue;
+        }
+        first.complete(path);
+        remaining.delete(path);
+      }
       await first.waitFor({ kind: 'afterDecision' });
       await first.kill();
 
