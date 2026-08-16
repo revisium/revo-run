@@ -6,6 +6,7 @@ import * as publicApi from '../../src/index.js';
 import type {
   AgentExecutorBinding,
   AnswerGateInput,
+  ConsensusVote,
   CancelRunInput,
   CommandId,
   CreateRunManagerOptions,
@@ -16,6 +17,7 @@ import type {
   RunAttempt,
   RunCommandReceipt,
   RunCommandDetails,
+  RunConsensus,
   RunDetails,
   RunError,
   RunEventCursor,
@@ -51,6 +53,7 @@ describe('root-only public API', () => {
       'AnswerGateInputSchema',
       'CancelRunInputSchema',
       'CommandIdSchema',
+      'ConsensusVoteSchema',
       'ExecutionBindingSchema',
       'ExecutionPlanSchema',
       'MapExecutionObservationSchema',
@@ -127,6 +130,8 @@ describe('root-only public API', () => {
     expectTypeOf<ResolveUnknownOutcomeInput>().toBeObject();
     expectTypeOf<AnswerGateInput>().toBeObject();
     expectTypeOf<RunGate>().toMatchTypeOf<{ readonly status: string }>();
+    expectTypeOf<RunConsensus>().toMatchTypeOf<{ readonly status: string }>();
+    expectTypeOf<ConsensusVote>().toMatchTypeOf<{ readonly vote: string }>();
     expectTypeOf<RunCommandReceipt>().toMatchTypeOf<{ readonly commandId: string }>();
     expectTypeOf<RunCommandDetails>().toMatchTypeOf<{ readonly commandId: string }>();
     expectTypeOf<CommandId>().toBeString();

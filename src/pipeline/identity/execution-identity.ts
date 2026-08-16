@@ -74,6 +74,18 @@ export const createMapItemScopeId = (input: {
 }): string =>
   identity('sc1', 'scope', ['map', input.parentScopeId, input.authoredNodeId, input.itemKey]);
 
+export const createConsensusParticipantScopeId = (input: {
+  readonly parentScopeId: string;
+  readonly authoredNodeId: string;
+  readonly participantId: string;
+}): string =>
+  identity('sc1', 'scope', [
+    'consensus',
+    input.parentScopeId,
+    input.authoredNodeId,
+    input.participantId,
+  ]);
+
 export const createRepeatIterationScopeId = (input: {
   readonly parentScopeId: string;
   readonly authoredNodeId: string;

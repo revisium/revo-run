@@ -4,9 +4,14 @@ import type { RunNodeExecution } from '../../contracts/executor/run-node-executi
 import type { JsonValue } from '../../contracts/json-value.js';
 import type { NodeOutput } from '../../contracts/pipeline/node-output.js';
 import type { PipelineInputScope } from '../../contracts/pipeline/pipeline-input.js';
-import type { HumanGateNode } from '../../contracts/pipeline/pipeline-node.js';
+import type {
+  ConsensusNode,
+  ConsensusPolicy,
+  HumanGateNode,
+} from '../../contracts/pipeline/pipeline-node.js';
 import type { RecoveryPolicy, RetryPolicy } from '../../contracts/pipeline/task-policy.js';
 import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
+import type { ConsensusResolutionDirective } from '../../contracts/workflow/consensus-resolution.js';
 
 export interface PipelineExecutionContext {
   readonly plan: ExecutionPlan;
@@ -94,3 +99,42 @@ export type HumanGateResolution =
   | { readonly kind: 'fail' };
 
 export type WaitForHumanGate = (request: HumanGateWaitRequest) => Promise<HumanGateResolution>;
+
+export interface ConsensusParticipantInstance {
+  readonly participantId: string;
+  readonly scopeId: string;
+  readonly authoredNodeId: string;
+  readonly nodeInstanceId: string;
+  readonly workflowId: string;
+}
+
+export interface ConsensusWaitRequest {
+  readonly consensusNodeInstanceId: string;
+  readonly scopeId: string;
+  readonly authoredNodeId: string;
+  readonly pipelineId: string;
+  readonly nodePath: string;
+  readonly participantIds: readonly string[];
+  readonly participantInstances: readonly ConsensusParticipantInstance[];
+  readonly policy: ConsensusPolicy;
+  readonly remaining: 'cancel' | 'drain';
+  readonly timeoutMs?: number;
+}
+
+export type WaitForConsensusResolution = (
+  request: ConsensusWaitRequest,
+) => Promise<ConsensusResolutionDirective>;
+
+export interface ConsensusParticipantRunner {
+  execute(
+    node: ConsensusNode,
+    context: PipelineExecutionContext,
+    nodePath: string,
+    wait: WaitForConsensusResolution,
+  ): Promise<ConsensusResolutionDirective>;
+}
+
+export interface ConsensusExecutionPorts {
+  readonly runner: ConsensusParticipantRunner;
+  readonly wait: WaitForConsensusResolution;
+}

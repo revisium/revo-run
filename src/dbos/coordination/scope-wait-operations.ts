@@ -2,21 +2,30 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 
 import type { RunExecutorRequest } from '../../contracts/executor/run-executor.js';
 import type { RecoveryPolicy, RetryPolicy } from '../../contracts/pipeline/task-policy.js';
+import type { ConsensusResolutionDirective } from '../../contracts/workflow/consensus-resolution.js';
 import type {
   HumanGateResolutionDirective,
   UnknownResolutionDirective,
 } from '../../contracts/workflow/run-command-workflow.js';
 import type { RunCoordinatorMessage } from '../../contracts/workflow/run-coordinator-message.js';
 import type {
+  ConsensusWaitRequest,
   DelayWaitResult,
   HumanGateResolution,
   HumanGateWaitRequest,
 } from '../../pipeline/interpreter/interpreter-context.js';
+import { parseConsensusResolutionDirective } from '../../validation/consensus-resolution.validator.js';
+import { parseDurableConsensusVerdict } from '../../validation/consensus-verdict.validator.js';
 import {
   parseHumanGateResolutionDirective,
   parseScopeDirective,
   parseUnknownResolutionDirective,
 } from '../../validation/run-command-workflow.validator.js';
+import {
+  consensusResolutionTopic,
+  consensusVerdictStepName,
+  consensusWaitingStepName,
+} from '../consensus/consensus-names.js';
 import {
   retryBackoffStepName,
   scopeDirectiveTopic,
@@ -155,6 +164,35 @@ export class ScopeWaitOperations {
     return this.parkForGateResolution(request.gateInstanceId, request.timeoutMs);
   }
 
+  async registerConsensusWaiting(request: ConsensusWaitRequest): Promise<void> {
+    await this.scope.send({
+      kind: 'consensusWaiting',
+      workflowId: this.scope.workflowId(),
+      consensusNodeInstanceId: request.consensusNodeInstanceId,
+      scopeId: request.scopeId,
+      authoredNodeId: request.authoredNodeId,
+      pipelineId: request.pipelineId,
+      nodePath: request.nodePath,
+      participantIds: request.participantIds,
+      participantInstances: request.participantInstances.map(
+        ({ workflowId: _workflowId, ...identity }) => identity,
+      ),
+      policy: request.policy,
+      remaining: request.remaining,
+      ...(request.timeoutMs === undefined ? {} : { timeoutMs: request.timeoutMs }),
+    });
+    await this.scope.receiveReply();
+    await DBOS.runStep(async () => request.consensusNodeInstanceId, {
+      name: consensusWaitingStepName(request.consensusNodeInstanceId),
+    });
+  }
+
+  async waitForConsensusResolution(
+    request: ConsensusWaitRequest,
+  ): Promise<ConsensusResolutionDirective> {
+    return this.parkForConsensusResolution(request);
+  }
+
   private async parkForGateResolution(
     gateInstanceId: string,
     timeoutMs: number | undefined,
@@ -182,6 +220,47 @@ export class ScopeWaitOperations {
         gateInstanceId,
       });
     }
+  }
+
+  private async parkForConsensusResolution(
+    request: ConsensusWaitRequest,
+  ): Promise<ConsensusResolutionDirective> {
+    const topic = consensusResolutionTopic(request.consensusNodeInstanceId);
+    for (;;) {
+      if (request.timeoutMs === undefined) {
+        return this.checkpointConsensusResolution(
+          request.consensusNodeInstanceId,
+          parseConsensusResolutionDirective(await this.scope.receive(topic)),
+        );
+      }
+      const response = await DBOS.recv(topic, { timeoutSeconds: request.timeoutMs / 1_000 });
+      if (response !== null) {
+        return this.checkpointConsensusResolution(
+          request.consensusNodeInstanceId,
+          parseConsensusResolutionDirective(response),
+        );
+      }
+      await this.scope.assertCoordinatorLive();
+      await this.scope.send({
+        kind: 'consensusDeadlineReached',
+        workflowId: this.scope.workflowId(),
+        consensusNodeInstanceId: request.consensusNodeInstanceId,
+      });
+    }
+  }
+
+  private async checkpointConsensusResolution(
+    nodeInstanceId: string,
+    resolution: ConsensusResolutionDirective,
+  ): Promise<ConsensusResolutionDirective> {
+    const payload = resolution.kind === 'decided' ? resolution.verdict : resolution;
+    const checkpointed = await DBOS.runStep(async () => payload, {
+      name: consensusVerdictStepName(nodeInstanceId),
+    });
+    if (resolution.kind === 'decided') {
+      return { kind: 'decided', verdict: parseDurableConsensusVerdict(checkpointed) };
+    }
+    return parseConsensusResolutionDirective(checkpointed);
   }
 
   private async checkpointGateResolution(

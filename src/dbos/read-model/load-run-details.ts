@@ -13,6 +13,7 @@ import {
   parseRunCommandDecision,
   parseUnknownResolutionDirective,
 } from '../../validation/run-command-workflow.validator.js';
+import { consensusParticipantWorkflowName } from '../consensus/consensus-names.js';
 import {
   isNodeAttemptOutcomeStepName,
   isRunCommandDecisionStepName,
@@ -33,6 +34,7 @@ import {
   type ObservablePlan,
   type ObservableScopeCandidate,
 } from './observable-plan.js';
+import { RunConsensusProjector } from './run-consensus-observation-projector.js';
 import { RunGateProjector } from './run-gate-projection.js';
 import { RunMapObservationProjector } from './run-map-observation-projector.js';
 import { RunParallelObservationProjector } from './run-parallel-observation-projector.js';
@@ -57,6 +59,7 @@ const introducedScopeWorkflow = (
       parallelBranchWorkflowName,
       mapItemWorkflowName,
       repeatIterationWorkflowName,
+      consensusParticipantWorkflowName,
     ].includes(step.name)
   ) {
     return step.childWorkflowID;
@@ -77,6 +80,7 @@ class RunDetailsLoader {
   private readonly parallel: RunParallelObservationProjector;
   private readonly maps: RunMapObservationProjector;
   private readonly gates: RunGateProjector;
+  private readonly consensuses: RunConsensusProjector;
   private readonly nodeIndexes = new Map<string, number>();
   private readonly includedAttempts = new Set<string>();
   private readonly visitedWorkflows = new Set<string>();
@@ -90,6 +94,7 @@ class RunDetailsLoader {
     this.maps = new RunMapObservationProjector(this.plan, authoritativeTerminal);
     this.scopeProjection = new RunScopeObservationProjector(this.plan);
     this.gates = new RunGateProjector(this.plan);
+    this.consensuses = new RunConsensusProjector(this.plan);
   }
 
   async load(): Promise<RunDetails> {
@@ -105,6 +110,7 @@ class RunDetailsLoader {
       attempts: this.attempts,
       commands: this.commands,
       gates: this.gates.finish(this.commands),
+      consensuses: this.consensuses.finish(),
       parallelJoins: this.parallel.observations,
       skippedParallelBranches: this.parallel.skippedBranches,
       mapExecutions: this.maps.observations,
@@ -123,6 +129,7 @@ class RunDetailsLoader {
       const candidate = scopeCandidateFromStatus(status, this.run.id, this.plan);
       this.scopeProjection.includeDurable(status, candidate);
       this.maps.includeScopeStatus(status, candidate);
+      this.consensuses.includeScopeStatus(status, candidate);
 
       const steps = await loadAllWorkflowSteps(workflowId);
       await this.visitScopeSteps(steps, candidate);
@@ -151,6 +158,7 @@ class RunDetailsLoader {
     this.parallel.includeScopeSteps(steps, candidate);
     this.maps.includeScopeSteps(steps, candidate);
     this.gates.includeScopeSteps(steps, candidate);
+    this.consensuses.includeScopeSteps(steps, candidate);
     await steps.reduce<Promise<void>>(async (previous, step) => {
       await previous;
       if (isNodeAttemptOutcomeStepName(step.name)) {

@@ -13,11 +13,12 @@ import {
   RunEventBudgetExceededError,
 } from '../streams/run-event-stream.js';
 import { runWorkflowId } from '../workflow-id.js';
+import { ConsensusCoordination } from './consensus-coordination.js';
 import { DelayCancellationEventAdmission } from './delay-cancellation-event-admission.js';
 import { durableOperationLoop } from './durable-operation-loop.js';
-import { waitingGateFenceDirective } from './human-gate-resolutions.js';
 import { orphanHealthCheckSeconds } from './orphan-health-check.js';
 import { RunCommandCoordinator, type RunCommandContext } from './run-command-coordinator.js';
+import { processCoordinatorInbox } from './run-coordinator-inbox.js';
 import { RunExecutionReservations } from './run-execution-reservations.js';
 import { RunScopeAdmission } from './run-scope-admission.js';
 import { RunScopeRegistry } from './run-scope-registry.js';
@@ -34,6 +35,7 @@ export class RunWorkflowCoordinator {
   private readonly admissions: RunScopeAdmission;
   private readonly reservations: RunExecutionReservations;
   private readonly delayCancellationEvents = new DelayCancellationEventAdmission();
+  private readonly consensus = new ConsensusCoordination();
   private eventBudgetFailure: RunEventBudgetFailure | undefined;
   private rootScopeWorkflowId: string | undefined;
   private rootCompletionFenced = false;
@@ -74,97 +76,32 @@ export class RunWorkflowCoordinator {
     return this.cancellationRequested ? { status: 'cancelled', outcome: 'cancelled' } : result;
   }
 
-  private async process(message: RunCoordinatorMessage): Promise<void> {
-    if ('command' in message) {
-      await this.commands.decide(message, this.commandContext());
-      return;
-    }
-    switch (message.kind) {
-      case 'event':
-        this.scopes.assertRegistered(message.workflowId);
-        if (!this.fenced) {
-          await this.appendEvent(message.event);
-        } else {
-          await this.delayCancellationEvents.appendIfAllowed(message, {
-            cancellationRequested: this.cancellationRequested,
-            eventBudgetExceeded: this.eventBudgetFailure !== undefined,
-            senderCancelled: this.scopes.cancellationFence(message.workflowId) !== undefined,
-            senderOwnsScope: this.scopes.ownsScope(message.workflowId, message.event.data.scopeId),
-            appendEvent: (event) => this.appendEvent(event),
-          });
-        }
-        await this.replyScope(message.workflowId);
-        return;
-      case 'reserveExecution':
-        await this.reserveExecution(message);
-        return;
-      case 'scopeAdmission':
-        await this.admissions.admit(message, {
-          cancellationRequested: this.cancellationRequested,
-          ...(this.cancellationCommandId === undefined
-            ? {}
-            : { cancellationCommandId: this.cancellationCommandId }),
-          ...(this.eventBudgetFailure === undefined
-            ? {}
-            : { eventBudgetFailure: this.eventBudgetFailure }),
-        });
-        return;
-      case 'scopeReady':
-        this.scopes.assertLineage(message.workflowId, message.parentWorkflowId);
-        if ('requestId' in message) {
-          this.scopes.assertAdmission(message.workflowId, message.requestId, message.admissionId);
-        }
-        this.scopes.markReady(message.workflowId);
-        await this.replyScope(message.workflowId);
-        return;
-      case 'scopeBoundary':
-        this.scopes.assertRegistered(message.workflowId);
-        await this.replyScope(message.workflowId);
-        return;
-      case 'inlineScopeOwnership':
-        this.scopes.registerInlineOwnership(message);
-        await this.replyScope(message.workflowId);
-        return;
-      case 'scopeCancellation':
-        await this.cancelChildScopes(
-          message.workflowId,
-          message.childWorkflowIds,
-          message.joinNodeInstanceId,
-        );
-        return;
-      case 'scopeFinish':
-        await this.finishScope(message.workflowId);
-        return;
-      case 'scopeSettled':
-        this.scopes.settle(message.workflowId);
-        await this.scopes.acknowledgeSettlement(message.workflowId);
-        return;
-      case 'unknownOutcomeWaiting':
-        this.scopes.assertRegistered(message.workflowId);
-        this.commands.registerUnknownOutcome(message);
-        await this.replyScope(message.workflowId);
-        return;
-      case 'humanGateWaiting':
-        this.scopes.assertRegistered(message.workflowId);
-        await this.commands.registerHumanGate(
-          message,
-          waitingGateFenceDirective(
-            this.eventBudgetFailure !== undefined,
-            this.cancellationRequested,
-            this.scopes.cancellationFence(message.workflowId) !== undefined,
-          ),
-        );
-        await this.replyScope(message.workflowId);
-        return;
-      case 'humanGateDeadlineReached':
-        this.scopes.assertRegistered(message.workflowId);
-        await this.commands.resolveGateDeadline(
-          message.gateInstanceId,
-          message.workflowId,
-          (event) => this.appendEvent(event),
-        );
-        return;
-    }
+  private process(message: RunCoordinatorMessage): Promise<void> {
+    return processCoordinatorInbox(
+      {
+        scopes: this.scopes,
+        commands: this.commands,
+        admissions: this.admissions,
+        consensus: this.consensus,
+        delayCancellationEvents: this.delayCancellationEvents,
+        cancellationRequested: this.cancellationRequested,
+        ...(this.cancellationCommandId === undefined
+          ? {}
+          : { cancellationCommandId: this.cancellationCommandId }),
+        ...(this.eventBudgetFailure === undefined
+          ? {}
+          : { eventBudgetFailure: this.eventBudgetFailure }),
+        fenced: this.fenced,
+        appendEvent: (event) => this.appendEvent(event),
+        replyScope: (workflowId) => this.replyScope(workflowId),
+        reserveExecution: (reservation) => this.reserveExecution(reservation),
+        cancelChildScopes: (parent, children, joinId) =>
+          this.cancelChildScopes(parent, children, joinId),
+        finishScope: (workflowId) => this.finishScope(workflowId),
+        commandContext: () => this.commandContext(),
+      },
+      message,
+    );
   }
 
   private get fenced(): boolean {
@@ -193,6 +130,7 @@ export class RunWorkflowCoordinator {
     await this.commands.sendGateResolutionsForWorkflows(cancelled, (event) =>
       this.appendEvent(event),
     );
+    await this.consensus.sendForWorkflows(cancelled, (event) => this.appendEvent(event));
     await this.replyScope(parentWorkflowId);
   }
 
@@ -235,6 +173,7 @@ export class RunWorkflowCoordinator {
       await this.commands.sendAllGateResolutions('fail', (failEvent) =>
         this.appendEvent(failEvent),
       );
+      await this.consensus.sendAll('fail', (failEvent) => this.appendEvent(failEvent));
       this.cancellation.cancelRun(this.runId);
       return false;
     }
@@ -280,6 +219,7 @@ export class RunWorkflowCoordinator {
     await this.scopes.directAll({ kind: 'cancel' });
     await this.commands.sendAllUnknownResolutions({ kind: 'cancel' });
     await this.commands.sendAllGateResolutions('cancel', (event) => this.appendEvent(event));
+    await this.consensus.sendAll('cancel', (event) => this.appendEvent(event));
     this.cancellation.cancelRun(this.runId);
     this.commands.cancelRetryPermits();
   }

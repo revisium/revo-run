@@ -13,6 +13,7 @@ import type { MapItemWorkflowInput } from '../../src/contracts/workflow/map-item
 import { ScopeCancellationRegistry } from '../../src/dbos/coordination/scope-cancellation-registry.js';
 import { ProviderCallRegistry } from '../../src/dbos/executor/provider-call-registry.js';
 import { RunExecutorProvider } from '../../src/dbos/executor/run-executor-provider.js';
+import { ConsensusParticipantWorkflowProvider } from '../../src/dbos/workflows/consensus-participant-workflow-provider.js';
 import { MapItemWorkflowProvider } from '../../src/dbos/workflows/map-item-workflow-provider.js';
 import { createMapItemWorkflow } from '../../src/dbos/workflows/map-item-workflow.js';
 import { ParallelBranchWorkflowProvider } from '../../src/dbos/workflows/parallel-branch-workflow-provider.js';
@@ -54,6 +55,7 @@ const providers = () => ({
   maps: new MapItemWorkflowProvider(),
   parallel: new ParallelBranchWorkflowProvider(),
   repeat: new RepeatIterationWorkflowProvider(),
+  consensus: new ConsensusParticipantWorkflowProvider(),
   cancellation: new ScopeCancellationRegistry(),
   calls: new ProviderCallRegistry(),
 });
@@ -90,6 +92,7 @@ describe('RR-10 map item workflow', () => {
       dependencies.maps,
       dependencies.parallel,
       dependencies.repeat,
+      dependencies.consensus,
       dependencies.cancellation,
       dependencies.calls,
     );
@@ -133,6 +136,7 @@ describe('RR-10 map item workflow', () => {
       dependencies.maps,
       dependencies.parallel,
       dependencies.repeat,
+      dependencies.consensus,
       dependencies.cancellation,
       dependencies.calls,
     );

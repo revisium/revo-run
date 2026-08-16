@@ -45,18 +45,24 @@ const executePlan = async (plan: ExecutionPlan, response?: TaskResponse) => {
       nextReconciliationRound: 1,
     };
   };
-  const interpreter = new PipelineInterpreter(
-    execute,
-    async () => undefined,
-    { execute: async () => Promise.reject(new Error('Unexpected parallel execution.')) },
-    { execute: async () => Promise.reject(new Error('Unexpected repeat execution.')) },
-    { execute: async () => Promise.reject(new Error('Unexpected map execution.')) },
-    { registerInlineScopeOwnership: async () => undefined },
-    { write: async (event) => void events.push(event) },
-    async () => 'elapsed',
-    async () => ({ kind: 'fail' }),
-    async () => ({ kind: 'fail' }),
-  );
+  const interpreter = new PipelineInterpreter({
+    executeEffect: execute,
+    waitForRetry: async () => undefined,
+    parallel: { execute: async () => Promise.reject(new Error('Unexpected parallel execution.')) },
+    repeatIterations: {
+      execute: async () => Promise.reject(new Error('Unexpected repeat execution.')),
+    },
+    mapItems: { execute: async () => Promise.reject(new Error('Unexpected map execution.')) },
+    inlineScopes: { registerInlineScopeOwnership: async () => undefined },
+    events: { write: async (event) => void events.push(event) },
+    waitForDelay: async () => 'elapsed',
+    waitForUnknownOutcome: async () => ({ kind: 'fail' }),
+    waitForHumanGate: async () => ({ kind: 'fail' }),
+    consensus: {
+      runner: { execute: async () => Promise.reject(new Error('Unexpected consensus execution.')) },
+      wait: async () => Promise.reject(new Error('Unexpected consensus wait.')),
+    },
+  });
   const result = await interpreter.execute(plan, 'run-1', null, `sc1_${'a'.repeat(43)}`);
   return { events, result };
 };

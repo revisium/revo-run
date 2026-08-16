@@ -1,6 +1,7 @@
 import { DBOS } from '@dbos-inc/dbos-sdk';
 
 import { parseDbosWorkflowStatus } from '../../validation/dbos-workflow-status.validator.js';
+import { consensusParticipantWorkflowName } from '../consensus/consensus-names.js';
 import {
   parallelBranchWorkflowName,
   mapItemWorkflowName,
@@ -13,6 +14,7 @@ const supportedWorkflowNames = new Set([
   parallelBranchWorkflowName,
   mapItemWorkflowName,
   repeatIterationWorkflowName,
+  consensusParticipantWorkflowName,
 ]);
 
 export const currentRecoveryGeneration = async (): Promise<number> => {

@@ -233,7 +233,7 @@ export const consensusScenarios: readonly RunScenario[] = [
           participants: consensusParticipants,
           policy: { kind: 'unanimous' },
           remaining: 'cancel',
-          timeoutMs: 300_000,
+          timeoutMs: 2_000,
         },
         { approved: end('succeeded'), timedOut: end('failed') },
       ),
@@ -241,7 +241,7 @@ export const consensusScenarios: readonly RunScenario[] = [
     ),
     steps: [
       startRun(),
-      advanceTime(300_000),
+      advanceTime(2_000),
       expectEvent('consensus.timedOut', { path: 'main/review' }),
       expectRunStatus('failed'),
     ],

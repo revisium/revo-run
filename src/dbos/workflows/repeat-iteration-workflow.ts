@@ -9,6 +9,7 @@ import {
 import type { ScopeCancellationRegistry } from '../coordination/scope-cancellation-registry.js';
 import type { ProviderCallRegistry } from '../executor/provider-call-registry.js';
 import type { RunExecutorProvider } from '../executor/run-executor-provider.js';
+import type { ConsensusParticipantWorkflowProvider } from './consensus-participant-workflow-provider.js';
 import { createPipelineExecution } from './create-pipeline-execution.js';
 import { loadRunWorkflowInput } from './load-run-workflow-input.js';
 import type { MapItemWorkflowProvider } from './map-item-workflow-provider.js';
@@ -24,6 +25,7 @@ export const createRepeatIterationWorkflow = (
   mapWorkflows: MapItemWorkflowProvider,
   parallelWorkflows: ParallelBranchWorkflowProvider,
   repeatWorkflows: RepeatIterationWorkflowProvider,
+  consensusWorkflows: ConsensusParticipantWorkflowProvider,
   cancellation: ScopeCancellationRegistry,
   providerCalls: ProviderCallRegistry,
 ): RepeatIterationWorkflow =>
@@ -37,6 +39,7 @@ export const createRepeatIterationWorkflow = (
         mapItemWorkflows: mapWorkflows,
         parallelBranchWorkflows: parallelWorkflows,
         repeatIterationWorkflows: repeatWorkflows,
+        consensusParticipantWorkflows: consensusWorkflows,
         cancellation,
         providerCalls,
       },

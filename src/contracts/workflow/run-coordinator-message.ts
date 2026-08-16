@@ -10,15 +10,21 @@ import {
   ScopeWorkflowIdSchema,
 } from '../execution-identity.js';
 import { RunExecutorRequestSchema } from '../executor/run-executor.js';
-import { HumanGateDecisionSchema } from '../pipeline/pipeline-node.schema.js';
+import {
+  ConsensusPolicySchema,
+  HumanGateDecisionSchema,
+  RemainingBranchPolicySchema,
+} from '../pipeline/pipeline-node.schema.js';
 import { RecoveryPolicySchema, RetryPolicySchema } from '../pipeline/task-policy.js';
 import { CommandIdSchema } from '../run/run-command.js';
 import { PipelineEventDraftSchema } from '../run/run-event.js';
 import {
   IdentifierSchema,
   NonEmptyStringSchema,
+  PipelineNodePathSchema,
   PositiveSafeIntegerSchema,
 } from '../schema-primitives.js';
+import { ParticipantSettlementSchema } from './participant-settlement.js';
 import { CommandDispatchWorkflowInputSchema } from './run-command-workflow.js';
 
 const EventMessageSchema = Type.Object(
@@ -149,6 +155,54 @@ const HumanGateDeadlineReachedMessageSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const ConsensusParticipantIdentitySchema = Type.Object(
+  {
+    participantId: IdentifierSchema,
+    scopeId: ScopeIdSchema,
+    authoredNodeId: AuthoredNodeIdSchema,
+    nodeInstanceId: NodeInstanceIdSchema,
+  },
+  { additionalProperties: false },
+);
+
+const ConsensusWaitingMessageSchema = Type.Object(
+  {
+    kind: Type.Literal('consensusWaiting'),
+    workflowId: ScopeWorkflowIdSchema,
+    consensusNodeInstanceId: NodeInstanceIdSchema,
+    scopeId: ScopeIdSchema,
+    authoredNodeId: AuthoredNodeIdSchema,
+    pipelineId: IdentifierSchema,
+    nodePath: PipelineNodePathSchema,
+    participantIds: Type.Array(IdentifierSchema, { minItems: 1, uniqueItems: true }),
+    participantInstances: Type.Array(ConsensusParticipantIdentitySchema, { minItems: 1 }),
+    policy: ConsensusPolicySchema,
+    remaining: RemainingBranchPolicySchema,
+    timeoutMs: Type.Optional(PositiveSafeIntegerSchema),
+  },
+  { additionalProperties: false },
+);
+
+const ConsensusDeadlineReachedMessageSchema = Type.Object(
+  {
+    kind: Type.Literal('consensusDeadlineReached'),
+    workflowId: ScopeWorkflowIdSchema,
+    consensusNodeInstanceId: NodeInstanceIdSchema,
+  },
+  { additionalProperties: false },
+);
+
+const ConsensusParticipantSettledMessageSchema = Type.Object(
+  {
+    kind: Type.Literal('consensusParticipantSettled'),
+    workflowId: ScopeWorkflowIdSchema,
+    consensusNodeInstanceId: NodeInstanceIdSchema,
+    participantId: IdentifierSchema,
+    settlement: ParticipantSettlementSchema,
+  },
+  { additionalProperties: false },
+);
+
 export const RunCoordinatorMessageSchema = Type.Union([
   EventMessageSchema,
   ReserveExecutionMessageSchema,
@@ -162,6 +216,9 @@ export const RunCoordinatorMessageSchema = Type.Union([
   UnknownOutcomeWaitingMessageSchema,
   HumanGateWaitingMessageSchema,
   HumanGateDeadlineReachedMessageSchema,
+  ConsensusWaitingMessageSchema,
+  ConsensusDeadlineReachedMessageSchema,
+  ConsensusParticipantSettledMessageSchema,
   CommandDispatchWorkflowInputSchema,
 ]);
 

@@ -210,6 +210,13 @@ export class ControlledRunExecutor implements RunExecutor {
     });
   }
 
+  hasPending(path: string, attemptOrdinal = 1): boolean {
+    return (
+      this.pending.get(path)?.some(({ request }) => request.attemptOrdinal === attemptOrdinal) ===
+      true
+    );
+  }
+
   async expectStarted(path: string): Promise<void> {
     await this.waitForCondition(
       () => this.requests.some((request) => request.displayPath === path),

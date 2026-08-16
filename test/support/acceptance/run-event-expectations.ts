@@ -6,6 +6,7 @@ import type { ExecutionPlan, RunEvent } from '../../../src/index.js';
 import type { RunEventCursor } from '../../../src/index.js';
 import {
   createAuthoredNodeId,
+  createConsensusParticipantScopeId,
   createNodeInstanceId,
   createParallelBranchScopeId,
   createRootScopeId,
@@ -90,7 +91,7 @@ export class RunEventExpectations {
     }
   }
 
-  nodeInstanceId(plan: ExecutionPlan, path: string): string | undefined {
+  nodeInstanceId(plan: ExecutionPlan, path: string, eventType?: string): string | undefined {
     const root = Object.hasOwn(plan.pipelines, plan.rootPipelineId)
       ? plan.pipelines[plan.rootPipelineId]?.root
       : undefined;
@@ -105,6 +106,7 @@ export class RunEventExpectations {
       '',
       { pipelineId: plan.rootPipelineId, runtimePrefix: plan.rootPipelineId, scopeId },
       path,
+      eventType,
     );
   }
 
@@ -117,11 +119,17 @@ export class RunEventExpectations {
     const expectedNodeInstanceId =
       expected.path === undefined
         ? undefined
-        : (dynamicNodeInstanceId ?? this.nodeInstanceId(plan, expected.path));
+        : (dynamicNodeInstanceId ?? this.nodeInstanceId(plan, expected.path, expected.type));
+    const expectedParticipantId =
+      expected.type === 'consensus.unknownParticipantRejected' && expected.path !== undefined
+        ? expected.path.slice(expected.path.lastIndexOf('/') + 1)
+        : undefined;
     return (
       event.type === expected.type &&
       (expected.path === undefined ||
         ('nodeInstanceId' in event.data && event.data.nodeInstanceId === expectedNodeInstanceId)) &&
+      (expectedParticipantId === undefined ||
+        ('participantId' in event.data && event.data.participantId === expectedParticipantId)) &&
       (expected.errorCode === undefined ||
         ('errorCode' in event.data && event.data.errorCode === expected.errorCode))
     );
@@ -139,6 +147,7 @@ export class RunEventExpectations {
     parentPath: string,
     context: NodeSearchContext,
     targetRuntimePath: string,
+    eventType?: string,
   ): string | undefined {
     const nodePath = pipelineNodePath(node, parentPath);
     const runtimePath =
@@ -171,6 +180,7 @@ export class RunEventExpectations {
         '',
         { pipelineId: node.pipelineId, runtimePrefix: runtimePath, scopeId },
         targetRuntimePath,
+        eventType,
       );
     }
 
@@ -187,6 +197,35 @@ export class RunEventExpectations {
           nodePath,
           { ...context, scopeId: branchScopeId },
           targetRuntimePath,
+          eventType,
+        );
+        if (match !== undefined) {
+          return match;
+        }
+      }
+      return undefined;
+    }
+
+    if (node.kind === 'consensus') {
+      if (
+        eventType === 'consensus.unknownParticipantRejected' &&
+        targetRuntimePath.startsWith(`${runtimePath}/`)
+      ) {
+        return createNodeInstanceId({ scopeId: context.scopeId, authoredNodeId });
+      }
+      for (const [participantId, participant] of Object.entries(node.participants)) {
+        const participantScopeId = createConsensusParticipantScopeId({
+          parentScopeId: context.scopeId,
+          authoredNodeId,
+          participantId,
+        });
+        const match = this.findNodeInstanceId(
+          participant,
+          plan,
+          nodePath,
+          { ...context, scopeId: participantScopeId },
+          targetRuntimePath,
+          eventType,
         );
         if (match !== undefined) {
           return match;
@@ -196,7 +235,14 @@ export class RunEventExpectations {
     }
 
     for (const child of this.childrenOf(node)) {
-      const match = this.findNodeInstanceId(child, plan, nodePath, context, targetRuntimePath);
+      const match = this.findNodeInstanceId(
+        child,
+        plan,
+        nodePath,
+        context,
+        targetRuntimePath,
+        eventType,
+      );
       if (match !== undefined) {
         return match;
       }
@@ -223,7 +269,6 @@ export class RunEventExpectations {
       case 'sequence':
         return node.children;
       case 'consensus':
-        return Object.values(node.participants);
       case 'delay':
       case 'end':
       case 'humanGate':

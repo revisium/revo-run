@@ -3,6 +3,7 @@ export {
   ExecutionBindingSchema,
   ScriptExecutorBindingSchema,
 } from './contracts/run/execution-binding.js';
+export { ConsensusVoteSchema } from './contracts/pipeline/consensus-vote.js';
 export { ExecutionPlanSchema } from './contracts/run/execution-plan.js';
 export {
   RunEventCursorSchema,
@@ -59,6 +60,7 @@ export type {
   SecretReference,
   TerminalOutputSource,
 } from './contracts/pipeline/data-reference.js';
+export type { ConsensusVote } from './contracts/pipeline/consensus-vote.js';
 export type { MapItemFailure, MapNodeOutput, MapSummary } from './contracts/pipeline/map-output.js';
 export type { NodeOutput, OutputValue } from './contracts/pipeline/node-output.js';
 export type {
@@ -95,6 +97,7 @@ export type { ListRunsInput, RunPage } from './contracts/run/list-runs.js';
 export type {
   RunAttempt,
   RunDetails,
+  RunConsensus,
   RunGate,
   RunGateAcceptedAnswer,
   RunGateResolution,

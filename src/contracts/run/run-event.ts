@@ -131,6 +131,29 @@ const delayCancelled = eventVariant('delay.cancelled', NodeIdentitySchema);
 const humanGateConflict = eventVariant('humanGate.conflict', NodeIdentitySchema);
 const humanGateTimedOut = eventVariant('humanGate.timedOut', NodeIdentitySchema);
 const humanGateCancelled = eventVariant('humanGate.cancelled', NodeIdentitySchema);
+const consensusRejected = eventVariant('consensus.rejected', NodeIdentitySchema);
+const consensusInsufficientQuorum = eventVariant(
+  'consensus.insufficientQuorum',
+  NodeIdentitySchema,
+);
+const consensusTimedOut = eventVariant('consensus.timedOut', NodeIdentitySchema);
+const consensusDuplicateParticipant = eventVariant(
+  'consensus.duplicateParticipantResultRejected',
+  NodeIdentitySchema,
+);
+const consensusParticipantFailed = eventVariant('consensus.participantFailed', NodeIdentitySchema);
+const consensusUnknownParticipant = eventVariant(
+  'consensus.unknownParticipantRejected',
+  Type.Object(
+    {
+      scopeId: ScopeIdSchema,
+      authoredNodeId: AuthoredNodeIdSchema,
+      nodeInstanceId: NodeInstanceIdSchema,
+      participantId: IdentifierSchema,
+    },
+    { additionalProperties: false },
+  ),
+);
 const repeatExhausted = eventVariant('repeat.exhausted', NodeIdentitySchema);
 const mapLimitExceeded = eventVariant('map.limitExceeded', NodeIdentitySchema);
 const runCompleted = eventVariant(
@@ -177,6 +200,12 @@ export const RunEventDraftSchema = Type.Union([
   humanGateConflict.draft,
   humanGateTimedOut.draft,
   humanGateCancelled.draft,
+  consensusRejected.draft,
+  consensusInsufficientQuorum.draft,
+  consensusTimedOut.draft,
+  consensusDuplicateParticipant.draft,
+  consensusParticipantFailed.draft,
+  consensusUnknownParticipant.draft,
   repeatExhausted.draft,
   mapLimitExceeded.draft,
   runCompleted.draft,
@@ -201,6 +230,12 @@ export const RunEventSchema = Type.Union([
   humanGateConflict.stored,
   humanGateTimedOut.stored,
   humanGateCancelled.stored,
+  consensusRejected.stored,
+  consensusInsufficientQuorum.stored,
+  consensusTimedOut.stored,
+  consensusDuplicateParticipant.stored,
+  consensusParticipantFailed.stored,
+  consensusUnknownParticipant.stored,
   repeatExhausted.stored,
   mapLimitExceeded.stored,
   runCompleted.stored,

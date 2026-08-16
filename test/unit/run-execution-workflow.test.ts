@@ -27,6 +27,7 @@ import {
 } from '../../src/dbos/dbos-names.js';
 import { ProviderCallRegistry } from '../../src/dbos/executor/provider-call-registry.js';
 import { RunExecutorProvider } from '../../src/dbos/executor/run-executor-provider.js';
+import { ConsensusParticipantWorkflowProvider } from '../../src/dbos/workflows/consensus-participant-workflow-provider.js';
 import { MapItemWorkflowProvider } from '../../src/dbos/workflows/map-item-workflow-provider.js';
 import { ParallelBranchWorkflowProvider } from '../../src/dbos/workflows/parallel-branch-workflow-provider.js';
 import { RepeatIterationWorkflowProvider } from '../../src/dbos/workflows/repeat-iteration-workflow-provider.js';
@@ -60,6 +61,7 @@ const executeWorkflow = async (executionResult: FinishedNodeExecutionResult) => 
     new MapItemWorkflowProvider(),
     new ParallelBranchWorkflowProvider(),
     new RepeatIterationWorkflowProvider(),
+    new ConsensusParticipantWorkflowProvider(),
     cancellation,
     new ProviderCallRegistry(),
   );

@@ -1,12 +1,14 @@
 import { DBOS } from '@dbos-inc/dbos-sdk';
 
 import type { RunExecutor } from '../contracts/executor/run-executor.js';
+import { ConsensusParticipantWorkflowArgumentsParser } from '../validation/consensus-participant-workflow-input.validator.js';
 import { MapItemWorkflowArgumentsParser } from '../validation/map-item-workflow-input.validator.js';
 import { ParallelBranchWorkflowArgumentsParser } from '../validation/parallel-branch-workflow-input.validator.js';
 import { RepeatIterationWorkflowArgumentsParser } from '../validation/repeat-iteration-workflow-input.validator.js';
 import { CommandDispatchWorkflowArgumentsParser } from '../validation/run-command-workflow.validator.js';
 import { RunExecutionWorkflowArgumentsParser } from '../validation/run-execution-workflow-input.validator.js';
 import { RunWorkflowArgumentsParser } from '../validation/run-workflow.validator.js';
+import { consensusParticipantWorkflowName } from './consensus/consensus-names.js';
 import { ScopeCancellationRegistry } from './coordination/scope-cancellation-registry.js';
 import {
   commandDispatchWorkflowName,
@@ -22,6 +24,8 @@ import {
   createCommandDispatchWorkflow,
   type CommandDispatchWorkflow,
 } from './workflows/command-dispatch-workflow.js';
+import { ConsensusParticipantWorkflowProvider } from './workflows/consensus-participant-workflow-provider.js';
+import { createConsensusParticipantWorkflow } from './workflows/consensus-participant-workflow.js';
 import { MapItemWorkflowProvider } from './workflows/map-item-workflow-provider.js';
 import { createMapItemWorkflow } from './workflows/map-item-workflow.js';
 import { ParallelBranchWorkflowProvider } from './workflows/parallel-branch-workflow-provider.js';
@@ -45,6 +49,7 @@ export class WorkflowRegistry {
     const parallelBranchWorkflows = new ParallelBranchWorkflowProvider();
     const mapItemWorkflows = new MapItemWorkflowProvider();
     const repeatIterationWorkflows = new RepeatIterationWorkflowProvider();
+    const consensusParticipantWorkflows = new ConsensusParticipantWorkflowProvider();
     mapItemWorkflows.register(
       DBOS.registerWorkflow(
         createMapItemWorkflow(
@@ -52,6 +57,7 @@ export class WorkflowRegistry {
           mapItemWorkflows,
           parallelBranchWorkflows,
           repeatIterationWorkflows,
+          consensusParticipantWorkflows,
           cancellation,
           providerCalls,
         ),
@@ -68,6 +74,7 @@ export class WorkflowRegistry {
           mapItemWorkflows,
           parallelBranchWorkflows,
           repeatIterationWorkflows,
+          consensusParticipantWorkflows,
           cancellation,
           providerCalls,
         ),
@@ -84,6 +91,7 @@ export class WorkflowRegistry {
           mapItemWorkflows,
           parallelBranchWorkflows,
           repeatIterationWorkflows,
+          consensusParticipantWorkflows,
           cancellation,
           providerCalls,
         ),
@@ -93,12 +101,30 @@ export class WorkflowRegistry {
         },
       ),
     );
+    consensusParticipantWorkflows.register(
+      DBOS.registerWorkflow(
+        createConsensusParticipantWorkflow(
+          this.executor,
+          mapItemWorkflows,
+          parallelBranchWorkflows,
+          repeatIterationWorkflows,
+          consensusParticipantWorkflows,
+          cancellation,
+          providerCalls,
+        ),
+        {
+          name: consensusParticipantWorkflowName,
+          inputSchema: ConsensusParticipantWorkflowArgumentsParser,
+        },
+      ),
+    );
     const runExecutionWorkflow: RunExecutionWorkflow = DBOS.registerWorkflow(
       createRunExecutionWorkflow(
         this.executor,
         mapItemWorkflows,
         parallelBranchWorkflows,
         repeatIterationWorkflows,
+        consensusParticipantWorkflows,
         cancellation,
         providerCalls,
       ),
