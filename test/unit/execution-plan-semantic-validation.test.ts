@@ -99,6 +99,53 @@ describe('execution plan semantic validation', () => {
     },
   );
 
+  it('accepts a human gate with an explicit conflict policy', () => {
+    const plan = executionPlan({
+      kind: 'humanGate',
+      key: 'approval',
+      answers: ['approved', 'rejected'],
+      decision: { kind: 'matchingAnswers', count: 2, onConflict: 'conflict' },
+    });
+
+    expect(ExecutionPlanValidator.Check(plan)).toBe(true);
+  });
+
+  it('rejects a human gate authored with onConflict wait at admission', () => {
+    const plan = executionPlan({
+      kind: 'humanGate',
+      key: 'approval',
+      answers: ['approved', 'rejected'],
+      decision: { kind: 'matchingAnswers', count: 2, onConflict: 'wait' },
+    });
+
+    expect(validationError(plan)).toBe('unsupported_gate_conflict_policy');
+  });
+
+  it('accepts a human gate whose answers avoid the reserved routing tokens', () => {
+    const plan = executionPlan({
+      kind: 'humanGate',
+      key: 'approval',
+      answers: ['approved', 'rejected'],
+      decision: { kind: 'firstAnswer' },
+    });
+
+    expect(ExecutionPlanValidator.Check(plan)).toBe(true);
+  });
+
+  it.each(['conflict', 'timedOut', 'cancelled'])(
+    'rejects a human gate whose answers contain the reserved token %s',
+    (reserved) => {
+      const plan = executionPlan({
+        kind: 'humanGate',
+        key: 'approval',
+        answers: ['approved', reserved],
+        decision: { kind: 'firstAnswer' },
+      });
+
+      expect(validationError(plan)).toBe('reserved_gate_answer');
+    },
+  );
+
   it('rejects structural nesting beyond the plan bound', () => {
     const plan = executionPlan(
       {

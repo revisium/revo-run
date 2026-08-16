@@ -13,6 +13,7 @@ const runtime = (overrides: Partial<ConstructorParameters<typeof RunManager>[0]>
   getRun: async () => undefined,
   listRuns: async () => ({ items: [] }),
   resolveUnknownOutcome: async () => Promise.reject(new Error('not used')),
+  answerGate: async () => Promise.reject(new Error('not used')),
   getRunDetails: async () => undefined,
   getRunEvents: async () => ({ items: [], hasMore: false }),
   subscribeRunEvents: async function* () {},

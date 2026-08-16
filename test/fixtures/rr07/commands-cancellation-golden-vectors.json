@@ -2,13 +2,14 @@
   "metadata": {
     "contract": "rr-07-commands-cancellation",
     "artifactVersion": 1,
-    "sourceRevision": "ff351219cd0bedfcba848aa429b00221190ca188",
-    "cloudRevision": "Xx-qwSEgx953UpLTLlTjo"
+    "sourceRevision": "69e321c540cf3aaf7cd6d39b7797bc6ef1fcea5b",
+    "cloudRevision": "R2x6tCvlAf6saYkSIS9U9"
   },
   "identities": {
     "commandId": "cmd_00000000-0000-4000-8000-000000000000",
     "attemptId": "at1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-    "scopeWorkflowId": "rr:scope:sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "scopeWorkflowId": "rr:scope:sc1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "gateInstanceId": "ni1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   },
   "publicInputs": [
     {
@@ -103,6 +104,72 @@
           "outcome": "released"
         }
       }
+    },
+    {
+      "id": "answerGate.valid",
+      "schema": "answerGate",
+      "valid": true,
+      "value": {
+        "runId": "run-1",
+        "gateInstanceId": "ni1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "answer": "approved",
+        "actorId": "alice",
+        "actorGroups": ["approvers"],
+        "commandId": "cmd_00000000-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "id": "answerGate.additional-properties",
+      "schema": "answerGate",
+      "valid": false,
+      "value": {
+        "runId": "run-1",
+        "gateInstanceId": "ni1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "answer": "approved",
+        "actorId": "alice",
+        "actorGroups": ["approvers"],
+        "commandId": "cmd_00000000-0000-4000-8000-000000000000",
+        "extra": true
+      }
+    },
+    {
+      "id": "answerGate.bad-command-id",
+      "schema": "answerGate",
+      "valid": false,
+      "value": {
+        "runId": "run-1",
+        "gateInstanceId": "ni1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "answer": "approved",
+        "actorId": "alice",
+        "actorGroups": ["approvers"],
+        "commandId": "gate-answer-1"
+      }
+    },
+    {
+      "id": "answerGate.bad-gate-instance-id",
+      "schema": "answerGate",
+      "valid": false,
+      "value": {
+        "runId": "run-1",
+        "gateInstanceId": "main/approval",
+        "answer": "approved",
+        "actorId": "alice",
+        "actorGroups": ["approvers"],
+        "commandId": "cmd_00000000-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "id": "answerGate.malformed-actor-group",
+      "schema": "answerGate",
+      "valid": false,
+      "value": {
+        "runId": "run-1",
+        "gateInstanceId": "ni1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "answer": "approved",
+        "actorId": "alice",
+        "actorGroups": ["ok", ""],
+        "commandId": "cmd_00000000-0000-4000-8000-000000000000"
+      }
     }
   ],
   "commandIds": [
@@ -194,17 +261,24 @@
       }
     },
     {
-      "id": "answer-gate-reserved",
+      "id": "answer-gate",
       "valid": true,
       "value": {
         "commandId": "cmd_00000000-0000-4000-8000-000000000000",
         "command": {
-          "kind": "answerGate"
+          "kind": "answerGate",
+          "input": {
+            "runId": "run-1",
+            "gateInstanceId": "ni1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "actorId": "operator",
+            "actorGroups": ["operators"],
+            "answer": "approved"
+          }
         }
       }
     },
     {
-      "id": "answer-gate-public-fields",
+      "id": "answer-gate-missing-fields",
       "valid": false,
       "value": {
         "commandId": "cmd_00000000-0000-4000-8000-000000000000",
@@ -213,6 +287,16 @@
           "input": {
             "runId": "run-1"
           }
+        }
+      }
+    },
+    {
+      "id": "answer-gate-missing-input",
+      "valid": false,
+      "value": {
+        "commandId": "cmd_00000000-0000-4000-8000-000000000000",
+        "command": {
+          "kind": "answerGate"
         }
       }
     }
@@ -481,6 +565,31 @@
       }
     },
     {
+      "id": "answer-gate-accepted",
+      "valid": true,
+      "value": {
+        "commandId": "cmd_00000000-0000-4000-8000-000000000000",
+        "commandKind": "answerGate",
+        "gateInstanceId": "ni1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "actorId": "operator",
+        "answer": "approved",
+        "decision": "accepted"
+      }
+    },
+    {
+      "id": "answer-gate-rejected",
+      "valid": true,
+      "value": {
+        "commandId": "cmd_00000000-0000-4000-8000-000000000000",
+        "commandKind": "answerGate",
+        "gateInstanceId": "ni1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "actorId": "operator",
+        "answer": "approved",
+        "decision": "rejected",
+        "reason": "gate_already_resolved"
+      }
+    },
+    {
       "id": "answer-gate-accepted-negative",
       "valid": false,
       "value": {
@@ -501,7 +610,7 @@
       }
     },
     {
-      "id": "mark-rejected-unsupported-negative",
+      "id": "mark-rejected-foreign-reason-negative",
       "valid": false,
       "value": {
         "commandId": "cmd_00000000-0000-4000-8000-000000000000",
@@ -510,7 +619,7 @@
         "attemptId": "at1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "resolutionKind": "markFailed",
         "decision": "rejected",
-        "reason": "command_not_supported"
+        "reason": "gate_already_resolved"
       }
     },
     {
@@ -608,7 +717,7 @@
       }
     },
     {
-      "id": "mark-rejected-unsupported-negative",
+      "id": "mark-rejected-foreign-reason-negative",
       "valid": false,
       "value": {
         "cursor": "run-1:6",
@@ -620,7 +729,7 @@
           "actorId": "operator",
           "attemptId": "at1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "resolutionKind": "markFailed",
-          "reason": "command_not_supported"
+          "reason": "gate_already_resolved"
         }
       }
     },
@@ -637,6 +746,39 @@
           "reason": "unknown_outcome_retry_not_permitted"
         }
       }
+    },
+    {
+      "id": "answer-gate-accepted",
+      "valid": true,
+      "value": {
+        "cursor": "run-1:8",
+        "timestamp": "2026-08-12T00:00:07.000Z",
+        "type": "runCommand.accepted",
+        "data": {
+          "commandId": "cmd_00000000-0000-4000-8000-000000000000",
+          "commandKind": "answerGate",
+          "gateInstanceId": "ni1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "actorId": "operator",
+          "answer": "approved"
+        }
+      }
+    },
+    {
+      "id": "answer-gate-rejected",
+      "valid": true,
+      "value": {
+        "cursor": "run-1:9",
+        "timestamp": "2026-08-12T00:00:08.000Z",
+        "type": "runCommand.rejected",
+        "data": {
+          "commandId": "cmd_00000000-0000-4000-8000-000000000000",
+          "commandKind": "answerGate",
+          "gateInstanceId": "ni1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "actorId": "operator",
+          "answer": "approved",
+          "reason": "gate_already_resolved"
+        }
+      }
     }
   ],
   "rejectionReasons": [
@@ -645,11 +787,12 @@
     "unknown_outcome_not_pending",
     "unknown_outcome_already_resolved",
     "unknown_outcome_retry_not_permitted",
-    "command_not_supported"
+    "gate_already_resolved"
   ],
   "managerErrors": [
     "invalid_cancel_run_input",
     "invalid_resolve_unknown_outcome_input",
+    "invalid_answer_gate_input",
     "run_command_failed",
     "manager_not_started",
     "run_not_found",

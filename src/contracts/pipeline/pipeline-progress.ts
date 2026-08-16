@@ -38,23 +38,10 @@ export const ConsensusVoteSchema = Type.Object(
 
 export type ConsensusVote = DeepReadonly<Type.Static<typeof ConsensusVoteSchema>>;
 
-export const HumanGateAnswerSchema = Type.Object(
-  {
-    nodePath: RunNodePathSchema,
-    answer: IdentifierSchema,
-    actorId: NonEmptyStringSchema,
-    actorGroups: Type.Array(NonEmptyStringSchema),
-    commandId: NonEmptyStringSchema,
-  },
-  { additionalProperties: false },
-);
-
-export type HumanGateAnswer = DeepReadonly<Type.Static<typeof HumanGateAnswerSchema>>;
-
 export const ReachedDeadlineSchema = Type.Object(
   {
     nodePath: RunNodePathSchema,
-    kind: Type.Union([Type.Literal('consensus'), Type.Literal('delay'), Type.Literal('humanGate')]),
+    kind: Type.Union([Type.Literal('consensus'), Type.Literal('delay')]),
   },
   { additionalProperties: false },
 );
@@ -65,7 +52,6 @@ export const PipelineProgressSchema = Type.Object(
   {
     nodes: Type.Array(NodeProgressSchema),
     consensusVotes: Type.Array(ConsensusVoteSchema),
-    humanGateAnswers: Type.Array(HumanGateAnswerSchema),
     reachedDeadlines: Type.Array(ReachedDeadlineSchema),
   },
   { additionalProperties: false },

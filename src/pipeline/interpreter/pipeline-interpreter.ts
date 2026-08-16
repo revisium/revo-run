@@ -12,11 +12,13 @@ import type {
 } from '../repeat/repeat-iteration-runner.js';
 import { withCancellationEvent } from './cancellation-event-policy.js';
 import { DelayNodeExecutor } from './delay-node-executor.js';
+import { HumanGateNodeExecutor } from './human-gate-node-executor.js';
 import type { InlineScopeOwnershipRegistrar } from './inline-scope-ownership-registrar.js';
 import type {
   ExecuteNodeEffect,
   PipelineExecutionContext,
   WaitForDelay,
+  WaitForHumanGate,
   WaitForRetry,
   WaitForUnknownOutcome,
 } from './interpreter-context.js';
@@ -36,6 +38,7 @@ import { TaskNodeExecutor } from './task-node-executor.js';
 export class PipelineInterpreter {
   private readonly failures: PipelineFailureReporter;
   private readonly delays: DelayNodeExecutor;
+  private readonly humanGates: HumanGateNodeExecutor;
   private readonly maps: MapNodeExecutor;
   private readonly repeats: RepeatNodeExecutor;
   private readonly tasks: TaskNodeExecutor;
@@ -50,9 +53,11 @@ export class PipelineInterpreter {
     private readonly events: PipelineEventSink,
     waitForDelay: WaitForDelay,
     waitForUnknownOutcome: WaitForUnknownOutcome,
+    waitForHumanGate: WaitForHumanGate,
   ) {
     this.failures = new PipelineFailureReporter(events);
     this.delays = new DelayNodeExecutor(waitForDelay, events);
+    this.humanGates = new HumanGateNodeExecutor(waitForHumanGate);
     this.maps = new MapNodeExecutor(mapItems, events);
     this.repeats = new RepeatNodeExecutor(repeatIterations, events);
     this.tasks = new TaskNodeExecutor(
@@ -181,6 +186,8 @@ export class PipelineInterpreter {
         return this.executeParallel(node, context, nodePath);
       case 'delay':
         return this.delays.execute(node, context, nodePath);
+      case 'humanGate':
+        return this.humanGates.execute(node, context, nodePath);
       case 'repeat':
         return this.repeats.execute(node, context, nodePath);
       case 'map':
@@ -188,7 +195,6 @@ export class PipelineInterpreter {
       case 'end':
         return this.executeEnd(node, context, nodePath);
       case 'consensus':
-      case 'humanGate':
         return this.failures.invalidNode(node, context, nodePath, 'node_kind_not_implemented');
     }
     node satisfies never;

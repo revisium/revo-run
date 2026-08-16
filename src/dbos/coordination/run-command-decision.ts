@@ -8,13 +8,24 @@ import type {
   CommandDispatchWorkflowInput,
   RunCommandDecision,
 } from '../../contracts/workflow/run-command-workflow.js';
+import {
+  decideGateAnswer,
+  type HumanGateAcceptedAnswer,
+  type HumanGateAuthoredPolicy,
+} from '../../pipeline/human-gate/human-gate-policy.js';
 import type { WaitingUnknownOutcome } from './unknown-outcome-registry.js';
+
+export interface OpenGateDecisionInput {
+  readonly policy: HumanGateAuthoredPolicy;
+  readonly accepted: readonly HumanGateAcceptedAnswer[];
+}
 
 interface RunCommandDecisionState {
   readonly cancellationRequested: boolean;
   readonly executions: number;
   readonly maximumExecutions: number;
   readonly waiting: WaitingUnknownOutcome | undefined;
+  readonly gate: OpenGateDecisionInput | undefined;
 }
 
 export const prospectiveRunCommandReceipt = (
@@ -29,7 +40,17 @@ export const prospectiveRunCommandReceipt = (
     reason,
   });
   if (input.command.kind === 'answerGate') {
-    return rejected('command_not_supported');
+    if (state.gate === undefined) {
+      return rejected('gate_already_resolved');
+    }
+    const decision = decideGateAnswer(state.gate.policy, state.gate.accepted, {
+      answer: input.command.input.answer,
+      actorId: input.command.input.actorId,
+      actorGroups: input.command.input.actorGroups,
+    });
+    return decision.kind === 'accepted'
+      ? { status: 'accepted', commandId: input.commandId }
+      : rejected(decision.reason);
   }
   if (input.command.kind === 'cancelRun') {
     return { status: 'accepted', commandId: input.commandId };
@@ -57,7 +78,13 @@ export const prospectiveRunCommandReceipt = (
 const commandMetadata = (input: CommandDispatchWorkflowInput): RunCommandRequestMetadata => {
   const command = input.command;
   if (command.kind === 'answerGate') {
-    return { commandId: input.commandId, commandKind: 'answerGate' };
+    return {
+      commandId: input.commandId,
+      commandKind: 'answerGate',
+      gateInstanceId: command.input.gateInstanceId,
+      actorId: command.input.actorId,
+      answer: command.input.answer,
+    };
   }
   if (command.kind === 'cancelRun') {
     return {
@@ -114,13 +141,21 @@ export const createRunCommandEvent = (
       }
       return { type: 'runCommand.accepted', data: metadata };
     case 'answerGate':
-      if (receipt.status !== 'rejected' || receipt.reason !== 'command_not_supported') {
-        throw new Error('An answer-gate command must be rejected as unsupported.');
+      if (receipt.status === 'accepted') {
+        return { type: 'runCommand.accepted', data: metadata };
       }
-      return {
-        type: 'runCommand.rejected',
-        data: { ...metadata, reason: receipt.reason },
-      };
+      if (
+        receipt.reason === 'actor_already_answered' ||
+        receipt.reason === 'actor_not_eligible' ||
+        receipt.reason === 'gate_already_resolved' ||
+        receipt.reason === 'invalid_gate_answer'
+      ) {
+        return {
+          type: 'runCommand.rejected',
+          data: { ...metadata, reason: receipt.reason },
+        };
+      }
+      throw new Error('An answer-gate command rejection is inconsistent with the gate vocabulary.');
     case 'resolveUnknownOutcome':
       if (receipt.status === 'accepted') {
         return { type: 'runCommand.accepted', data: metadata };

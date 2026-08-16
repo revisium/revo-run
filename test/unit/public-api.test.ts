@@ -5,6 +5,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import * as publicApi from '../../src/index.js';
 import type {
   AgentExecutorBinding,
+  AnswerGateInput,
   CancelRunInput,
   CommandId,
   CreateRunManagerOptions,
@@ -23,6 +24,7 @@ import type {
   RunEventSubscriptionInput,
   RunExecutorRequest,
   RunExecutorResult,
+  RunGate,
   RunManager,
   RunManagerErrorCode,
   RunEvent,
@@ -46,6 +48,7 @@ describe('root-only public API', () => {
   it('exports only the approved runtime values', () => {
     expect(Object.keys(publicApi).sort()).toEqual([
       'AgentExecutorBindingSchema',
+      'AnswerGateInputSchema',
       'CancelRunInputSchema',
       'CommandIdSchema',
       'ExecutionBindingSchema',
@@ -122,6 +125,8 @@ describe('root-only public API', () => {
     expectTypeOf<RunAttempt>().toBeObject();
     expectTypeOf<CancelRunInput>().toBeObject();
     expectTypeOf<ResolveUnknownOutcomeInput>().toBeObject();
+    expectTypeOf<AnswerGateInput>().toBeObject();
+    expectTypeOf<RunGate>().toMatchTypeOf<{ readonly status: string }>();
     expectTypeOf<RunCommandReceipt>().toMatchTypeOf<{ readonly commandId: string }>();
     expectTypeOf<RunCommandDetails>().toMatchTypeOf<{ readonly commandId: string }>();
     expectTypeOf<CommandId>().toBeString();

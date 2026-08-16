@@ -1,10 +1,12 @@
 import type {
+  AnswerGateInput,
   CancelRunInput,
   ResolveUnknownOutcomeInput,
   RunCommandReceipt,
 } from '../contracts/run/run-command.js';
 import { RunManagerError } from '../contracts/run/run-manager-error.js';
 import {
+  isAnswerGateInput,
   isCancelRunInput,
   isResolveUnknownOutcomeInput,
 } from '../validation/run-command.validator.js';
@@ -12,6 +14,7 @@ import {
 interface RunCommandRuntime {
   cancelRun(input: CancelRunInput): Promise<RunCommandReceipt>;
   resolveUnknownOutcome(input: ResolveUnknownOutcomeInput): Promise<RunCommandReceipt>;
+  answerGate(input: AnswerGateInput): Promise<RunCommandReceipt>;
 }
 
 export class RunCommandDispatcher {
@@ -33,6 +36,13 @@ export class RunCommandDispatcher {
       throw new RunManagerError('invalid_resolve_unknown_outcome_input');
     }
     return this.dispatch(() => this.runtime.resolveUnknownOutcome(input));
+  }
+
+  answerGate(input: AnswerGateInput): Promise<RunCommandReceipt> {
+    if (!isAnswerGateInput(input)) {
+      throw new RunManagerError('invalid_answer_gate_input');
+    }
+    return this.dispatch(() => this.runtime.answerGate(input));
   }
 
   private async dispatch(operation: () => Promise<RunCommandReceipt>): Promise<RunCommandReceipt> {

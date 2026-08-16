@@ -11,6 +11,7 @@ import { NodeOutputSchema } from '../pipeline/node-output.js';
 import { RecoveryPolicySchema, RetryPolicySchema } from '../pipeline/task-policy.js';
 export { RunCommandDecisionSchema, type RunCommandDecision } from '../run/run-command-metadata.js';
 import {
+  AnswerGateInputSchema,
   CancelRunInputSchema,
   CommandIdSchema,
   ResolveUnknownOutcomeInputSchema,
@@ -28,8 +29,19 @@ const ResolveUnknownOutcomeCommandSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const AnswerGateCommandInputSchema = Type.Object(
+  {
+    runId: AnswerGateInputSchema.properties.runId,
+    gateInstanceId: AnswerGateInputSchema.properties.gateInstanceId,
+    answer: AnswerGateInputSchema.properties.answer,
+    actorId: AnswerGateInputSchema.properties.actorId,
+    actorGroups: AnswerGateInputSchema.properties.actorGroups,
+  },
+  { additionalProperties: false },
+);
+
 const AnswerGateCommandSchema = Type.Object(
-  { kind: Type.Literal('answerGate') },
+  { kind: Type.Literal('answerGate'), input: AnswerGateCommandInputSchema },
   { additionalProperties: false },
 );
 
@@ -159,4 +171,23 @@ export const unknownOutcomeResolvedFailureCode = 'unknown_outcome_resolved_faile
 
 export type UnknownResolutionDirective = DeepReadonly<
   Type.Static<typeof UnknownResolutionDirectiveSchema>
+>;
+
+export const HumanGateResolutionDirectiveSchema = Type.Union([
+  Type.Object(
+    {
+      kind: Type.Literal('answered'),
+      answer: IdentifierSchema,
+      commandIds: Type.Array(CommandIdSchema, { minItems: 1, uniqueItems: true }),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object({ kind: Type.Literal('conflict') }, { additionalProperties: false }),
+  Type.Object({ kind: Type.Literal('timedOut') }, { additionalProperties: false }),
+  Type.Object({ kind: Type.Literal('cancel') }, { additionalProperties: false }),
+  Type.Object({ kind: Type.Literal('fail') }, { additionalProperties: false }),
+]);
+
+export type HumanGateResolutionDirective = DeepReadonly<
+  Type.Static<typeof HumanGateResolutionDirectiveSchema>
 >;

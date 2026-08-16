@@ -1,7 +1,7 @@
 import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
-import { AttemptIdSchema } from '../execution-identity.js';
+import { AttemptIdSchema, NodeInstanceIdSchema } from '../execution-identity.js';
 import { NodeOutputSchema } from '../pipeline/node-output.js';
 import { IdentifierSchema } from '../schema-primitives.js';
 import { RunIdSchema } from './run-id.js';
@@ -46,13 +46,30 @@ export type ResolveUnknownOutcomeInput = DeepReadonly<
   Type.Static<typeof ResolveUnknownOutcomeInputSchema>
 >;
 
+export const AnswerGateInputSchema = Type.Object(
+  {
+    runId: RunIdSchema,
+    gateInstanceId: NodeInstanceIdSchema,
+    answer: IdentifierSchema,
+    actorId: IdentifierSchema,
+    actorGroups: Type.Array(IdentifierSchema),
+    commandId: CommandIdSchema,
+  },
+  { additionalProperties: false },
+);
+
+export type AnswerGateInput = DeepReadonly<Type.Static<typeof AnswerGateInputSchema>>;
+
 export const RunCommandRejectionReasonSchema = Type.Union([
   Type.Literal('run_already_terminal'),
   Type.Literal('run_cancellation_requested'),
   Type.Literal('unknown_outcome_not_pending'),
   Type.Literal('unknown_outcome_already_resolved'),
   Type.Literal('unknown_outcome_retry_not_permitted'),
-  Type.Literal('command_not_supported'),
+  Type.Literal('actor_already_answered'),
+  Type.Literal('actor_not_eligible'),
+  Type.Literal('gate_already_resolved'),
+  Type.Literal('invalid_gate_answer'),
 ]);
 
 export type RunCommandRejectionReason = DeepReadonly<

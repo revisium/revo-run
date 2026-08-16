@@ -16,6 +16,7 @@ import { advanceLogicalTime } from '../../dsl/scenario-time.js';
 import type { RunScenario, ScenarioStep } from '../../dsl/scenario.js';
 import { ControlledRunExecutor } from '../executor/controlled-run-executor.js';
 import { runEffectRecoveryScenario } from '../process/run-effect-recovery-scenario.js';
+import { runHumanGateRecoveryScenario } from '../process/run-human-gate-recovery-scenario.js';
 import { runParallelRecoveryScenario } from '../process/run-parallel-recovery-scenario.js';
 import { runRetryRecoveryScenario } from '../process/run-retry-recovery-scenario.js';
 import { runSubscriptionRecoveryScenario } from '../process/run-subscription-recovery-scenario.js';
@@ -60,6 +61,11 @@ class AcceptanceScenarioRunner {
     }
     try {
       await this.eventIterator?.return?.();
+    } catch (error) {
+      scenarioError ??= error;
+    }
+    try {
+      await this.settleWaitingGatesForShutdown(scenario);
     } catch (error) {
       scenarioError ??= error;
     }
@@ -252,8 +258,12 @@ class AcceptanceScenarioRunner {
         this.runCommands.expectDistinctCommandIds(step.captures);
         return;
       case 'answerHumanGate':
-      case 'completeConsensusParticipant':
+        await this.runCommands.answerHumanGate(step);
+        return;
       case 'expectHumanGateWaiting':
+        await this.runCommands.expectHumanGateWaiting(step);
+        return;
+      case 'completeConsensusParticipant':
         throw new Error(`Scenario step ${step.kind} is not implemented.`);
     }
 
@@ -279,6 +289,26 @@ class AcceptanceScenarioRunner {
     }
     await wait(remainingMs);
     await this.waitForElapsedTime(startedAt, durationMs);
+  }
+
+  private async settleWaitingGatesForShutdown(scenario: RunScenario): Promise<void> {
+    const run = await this.manager.getRun(this.runId);
+    if (run === undefined || terminal(run.status)) {
+      return;
+    }
+    // A parked human-gate recv has no bound, so manager.stop() hangs unless we cancel first.
+    // Only scenarios that assert expectRunStatus('running') (rr-046, rr-048) are allowed to
+    // reach teardown still running; any other leftover waiter is a missed assertion.
+    const expectedNonTerminal = scenario.steps.some(
+      (step) => step.kind === 'expectRunStatus' && step.status === 'running',
+    );
+    if (!expectedNonTerminal) {
+      throw new Error(
+        `Acceptance scenario ${scenario.intentId} left run ${this.runId} non-terminal (${run.status}).`,
+      );
+    }
+    await this.manager.cancelRun({ runId: this.runId, actorId: 'acceptance-teardown' });
+    await this.manager.waitForTerminal(this.runId, { timeoutMs: 10_000 });
   }
 
   private async crashManager(): Promise<void> {
@@ -411,6 +441,10 @@ export const runAcceptanceScenario = async (scenario: RunScenario): Promise<void
   }
   if (scenario.intentId === 'rr-078') {
     await runParallelRecoveryScenario(scenario);
+    return;
+  }
+  if (scenario.intentId === 'rr-043') {
+    await runHumanGateRecoveryScenario(scenario);
     return;
   }
   await new AcceptanceScenarioRunner().run(scenario);

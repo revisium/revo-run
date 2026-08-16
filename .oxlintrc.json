@@ -44,8 +44,10 @@
     },
     {
       "files": [
+        "src/dbos/coordination/human-gate-resolutions.ts",
         "src/dbos/coordination/run-coordinator-client.ts",
         "src/dbos/coordination/run-workflow-coordinator.ts",
+        "src/dbos/coordination/scope-wait-operations.ts",
         "src/dbos/parallel/dbos-parallel-branch-runner.ts"
       ],
       "rules": {

@@ -33,6 +33,7 @@ import {
   type ObservablePlan,
   type ObservableScopeCandidate,
 } from './observable-plan.js';
+import { RunGateProjector } from './run-gate-projection.js';
 import { RunMapObservationProjector } from './run-map-observation-projector.js';
 import { RunParallelObservationProjector } from './run-parallel-observation-projector.js';
 import { RunScopeObservationProjector } from './run-scope-observation-projector.js';
@@ -75,6 +76,7 @@ class RunDetailsLoader {
   private readonly commands: RunCommandDetails[] = [];
   private readonly parallel: RunParallelObservationProjector;
   private readonly maps: RunMapObservationProjector;
+  private readonly gates: RunGateProjector;
   private readonly nodeIndexes = new Map<string, number>();
   private readonly includedAttempts = new Set<string>();
   private readonly visitedWorkflows = new Set<string>();
@@ -87,6 +89,7 @@ class RunDetailsLoader {
     this.parallel = new RunParallelObservationProjector(this.plan, authoritativeTerminal);
     this.maps = new RunMapObservationProjector(this.plan, authoritativeTerminal);
     this.scopeProjection = new RunScopeObservationProjector(this.plan);
+    this.gates = new RunGateProjector(this.plan);
   }
 
   async load(): Promise<RunDetails> {
@@ -101,6 +104,7 @@ class RunDetailsLoader {
       nodeInstances: this.nodeInstances,
       attempts: this.attempts,
       commands: this.commands,
+      gates: this.gates.finish(this.commands),
       parallelJoins: this.parallel.observations,
       skippedParallelBranches: this.parallel.skippedBranches,
       mapExecutions: this.maps.observations,
@@ -146,6 +150,7 @@ class RunDetailsLoader {
     const introduced = new Set<string>();
     this.parallel.includeScopeSteps(steps, candidate);
     this.maps.includeScopeSteps(steps, candidate);
+    this.gates.includeScopeSteps(steps, candidate);
     await steps.reduce<Promise<void>>(async (previous, step) => {
       await previous;
       if (isNodeAttemptOutcomeStepName(step.name)) {

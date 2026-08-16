@@ -10,6 +10,7 @@ import {
   RunCommandReceiptSchema,
 } from '../../src/index.js';
 import type {
+  AnswerGateInput,
   CancelRunInput,
   ExecutionPlan,
   JsonValue,
@@ -39,6 +40,10 @@ const runtime = () => ({
   resolveUnknownOutcome: vi.fn<(input: ResolveUnknownOutcomeInput) => Promise<RunCommandReceipt>>(
     async () => ({ status: 'accepted', commandId }),
   ),
+  answerGate: vi.fn<(input: AnswerGateInput) => Promise<RunCommandReceipt>>(async () => ({
+    status: 'accepted',
+    commandId,
+  })),
   start: vi.fn<() => Promise<void>>(async () => undefined),
   startRun: vi.fn<(runId: string, plan: ExecutionPlan, input: JsonValue) => Promise<void>>(
     async () => undefined,
@@ -141,7 +146,18 @@ describe('RR-07 public run-command contract', () => {
         resolution: { kind: 'retry' },
       }),
     ).rejects.toMatchObject({ code: 'invalid_resolve_unknown_outcome_input' });
+    await expect(
+      manager.answerGate({
+        runId: 'run-1',
+        gateInstanceId: 'main/approval',
+        answer: 'approved',
+        actorId: 'alice',
+        actorGroups: [],
+        commandId: 'gate-answer-1',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_answer_gate_input' });
     expect(adapter.cancelRun).not.toHaveBeenCalled();
     expect(adapter.resolveUnknownOutcome).not.toHaveBeenCalled();
+    expect(adapter.answerGate).not.toHaveBeenCalled();
   });
 });

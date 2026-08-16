@@ -19,7 +19,6 @@ const startRunInputValidator = Schema.Compile(StartRunInputSchema);
 const emptyProgress = {
   nodes: [],
   consensusVotes: [],
-  humanGateAnswers: [],
   reachedDeadlines: [],
 };
 

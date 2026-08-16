@@ -55,6 +55,7 @@ const executePlan = async (plan: ExecutionPlan, response?: TaskResponse) => {
     { write: async (event) => void events.push(event) },
     async () => 'elapsed',
     async () => ({ kind: 'fail' }),
+    async () => ({ kind: 'fail' }),
   );
   const result = await interpreter.execute(plan, 'run-1', null, `sc1_${'a'.repeat(43)}`);
   return { events, result };

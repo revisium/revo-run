@@ -24,10 +24,12 @@ export type ExecutionPlanValidationErrorCode =
   | 'node_depth_exceeded'
   | 'overlapping_repeat_outcome_sets'
   | 'pipeline_not_found'
+  | 'reserved_gate_answer'
   | 'root_pipeline_not_found'
   | 'subpipeline_cycle'
   | 'subpipeline_depth_exceeded'
   | 'unsupported_plan_schema_version'
+  | 'unsupported_gate_conflict_policy'
   | 'unreachable_consensus_threshold'
   | 'unreachable_parallel_threshold';
 

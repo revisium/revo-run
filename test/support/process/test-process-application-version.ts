@@ -4,7 +4,8 @@ export type TestProcessKind =
   | 'admin-cancellation'
   | 'effect-recovery-spike'
   | 'recovery'
-  | 'run-observer';
+  | 'run-observer'
+  | 'human-gate';
 
 const testRunNonce = randomUUID();
 

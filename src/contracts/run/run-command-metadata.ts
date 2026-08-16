@@ -1,7 +1,7 @@
 import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
-import { AttemptIdSchema } from '../execution-identity.js';
+import { AttemptIdSchema, NodeInstanceIdSchema } from '../execution-identity.js';
 import { IdentifierSchema } from '../schema-primitives.js';
 import { CommandIdSchema } from './run-command.js';
 
@@ -14,7 +14,13 @@ const CancelMetadataSchema = Type.Object(
   { additionalProperties: false },
 );
 const AnswerGateMetadataSchema = Type.Object(
-  { commandId: CommandIdSchema, commandKind: Type.Literal('answerGate') },
+  {
+    commandId: CommandIdSchema,
+    commandKind: Type.Literal('answerGate'),
+    gateInstanceId: NodeInstanceIdSchema,
+    actorId: IdentifierSchema,
+    answer: IdentifierSchema,
+  },
   { additionalProperties: false },
 );
 const ResolutionMetadataFields = {
@@ -57,9 +63,16 @@ const RetryRejectionReasonSchema = Type.Union([
   ResolveRejectionReasonSchema,
   Type.Literal('unknown_outcome_retry_not_permitted'),
 ]);
+const GateRejectionReasonSchema = Type.Union([
+  Type.Literal('actor_already_answered'),
+  Type.Literal('actor_not_eligible'),
+  Type.Literal('gate_already_resolved'),
+  Type.Literal('invalid_gate_answer'),
+]);
 
 export const RunCommandAcceptedMetadataSchema = Type.Union([
   CancelMetadataSchema,
+  AnswerGateMetadataSchema,
   AdoptMetadataSchema,
   MarkFailedMetadataSchema,
   RetryMetadataSchema,
@@ -67,7 +80,7 @@ export const RunCommandAcceptedMetadataSchema = Type.Union([
 
 export const RunCommandRejectedMetadataSchema = Type.Union([
   Type.Object(
-    { ...AnswerGateMetadataSchema.properties, reason: Type.Literal('command_not_supported') },
+    { ...AnswerGateMetadataSchema.properties, reason: GateRejectionReasonSchema },
     { additionalProperties: false },
   ),
   Type.Object(
@@ -90,6 +103,10 @@ export const RunCommandDecisionSchema = Type.Union([
     { additionalProperties: false },
   ),
   Type.Object(
+    { ...AnswerGateMetadataSchema.properties, decision: Type.Literal('accepted') },
+    { additionalProperties: false },
+  ),
+  Type.Object(
     { ...AdoptMetadataSchema.properties, decision: Type.Literal('accepted') },
     { additionalProperties: false },
   ),
@@ -105,7 +122,7 @@ export const RunCommandDecisionSchema = Type.Union([
     {
       ...AnswerGateMetadataSchema.properties,
       decision: Type.Literal('rejected'),
-      reason: Type.Literal('command_not_supported'),
+      reason: GateRejectionReasonSchema,
     },
     { additionalProperties: false },
   ),

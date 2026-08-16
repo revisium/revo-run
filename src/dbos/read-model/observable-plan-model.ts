@@ -1,6 +1,7 @@
 import type { PipelineNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { MapItemWorkflowInput } from '../../contracts/workflow/map-item-workflow-input.js';
 import type { RepeatIterationWorkflowInput } from '../../contracts/workflow/repeat-iteration-workflow-input.js';
+import type { ObservableGateCandidate } from './observable-gate-candidates.js';
 
 export interface ParallelScopeIdentity {
   readonly branchKey: string;
@@ -97,6 +98,7 @@ export interface ObservablePlan {
   readonly nodesByDisplayPath: ReadonlyMap<string, ObservableNodeCandidate>;
   readonly parallelNodesByDisplayPath: ReadonlyMap<string, ObservableParallelCandidate>;
   readonly mapNodesByDisplayPath: ReadonlyMap<string, ObservableMapCandidate>;
+  readonly gatesByNodeInstanceId: ReadonlyMap<string, ObservableGateCandidate>;
   addRepeatIteration(
     input: RepeatIterationWorkflowInput,
   ): Extract<ObservableScopeCandidate, { readonly kind: 'repeatIteration' }>;

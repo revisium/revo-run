@@ -10,10 +10,15 @@ import {
   ScopeWorkflowIdSchema,
 } from '../execution-identity.js';
 import { RunExecutorRequestSchema } from '../executor/run-executor.js';
+import { HumanGateDecisionSchema } from '../pipeline/pipeline-node.schema.js';
 import { RecoveryPolicySchema, RetryPolicySchema } from '../pipeline/task-policy.js';
 import { CommandIdSchema } from '../run/run-command.js';
 import { PipelineEventDraftSchema } from '../run/run-event.js';
-import { NonEmptyStringSchema, PositiveSafeIntegerSchema } from '../schema-primitives.js';
+import {
+  IdentifierSchema,
+  NonEmptyStringSchema,
+  PositiveSafeIntegerSchema,
+} from '../schema-primitives.js';
 import { CommandDispatchWorkflowInputSchema } from './run-command-workflow.js';
 
 const EventMessageSchema = Type.Object(
@@ -120,6 +125,30 @@ const UnknownOutcomeWaitingMessageSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const HumanGateWaitingMessageSchema = Type.Object(
+  {
+    kind: Type.Literal('humanGateWaiting'),
+    workflowId: ScopeWorkflowIdSchema,
+    gateInstanceId: NodeInstanceIdSchema,
+    scopeId: ScopeIdSchema,
+    authoredNodeId: AuthoredNodeIdSchema,
+    answers: Type.Array(IdentifierSchema, { minItems: 1, uniqueItems: true }),
+    decision: HumanGateDecisionSchema,
+    eligibleGroup: Type.Optional(IdentifierSchema),
+    timeoutMs: Type.Optional(PositiveSafeIntegerSchema),
+  },
+  { additionalProperties: false },
+);
+
+const HumanGateDeadlineReachedMessageSchema = Type.Object(
+  {
+    kind: Type.Literal('humanGateDeadlineReached'),
+    workflowId: ScopeWorkflowIdSchema,
+    gateInstanceId: NodeInstanceIdSchema,
+  },
+  { additionalProperties: false },
+);
+
 export const RunCoordinatorMessageSchema = Type.Union([
   EventMessageSchema,
   ReserveExecutionMessageSchema,
@@ -131,6 +160,8 @@ export const RunCoordinatorMessageSchema = Type.Union([
   ScopeSettledMessageSchema,
   ScopeCancellationMessageSchema,
   UnknownOutcomeWaitingMessageSchema,
+  HumanGateWaitingMessageSchema,
+  HumanGateDeadlineReachedMessageSchema,
   CommandDispatchWorkflowInputSchema,
 ]);
 

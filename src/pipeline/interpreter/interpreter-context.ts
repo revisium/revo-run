@@ -4,6 +4,7 @@ import type { RunNodeExecution } from '../../contracts/executor/run-node-executi
 import type { JsonValue } from '../../contracts/json-value.js';
 import type { NodeOutput } from '../../contracts/pipeline/node-output.js';
 import type { PipelineInputScope } from '../../contracts/pipeline/pipeline-input.js';
+import type { HumanGateNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { RecoveryPolicy, RetryPolicy } from '../../contracts/pipeline/task-policy.js';
 import type { ExecutionPlan } from '../../contracts/run/execution-plan.js';
 
@@ -74,3 +75,22 @@ export type WaitForUnknownOutcome = (
   retry: RetryPolicy | undefined,
   reconciliationRound: number,
 ) => Promise<UnknownOutcomeResolution>;
+
+export interface HumanGateWaitRequest {
+  readonly gateInstanceId: string;
+  readonly scopeId: string;
+  readonly authoredNodeId: string;
+  readonly answers: readonly string[];
+  readonly decision: HumanGateNode['decision'];
+  readonly eligibleGroup?: string;
+  readonly timeoutMs?: number;
+}
+
+export type HumanGateResolution =
+  | { readonly kind: 'answered'; readonly answer: string; readonly commandIds: readonly string[] }
+  | { readonly kind: 'conflict' }
+  | { readonly kind: 'timedOut' }
+  | { readonly kind: 'cancel' }
+  | { readonly kind: 'fail' };
+
+export type WaitForHumanGate = (request: HumanGateWaitRequest) => Promise<HumanGateResolution>;

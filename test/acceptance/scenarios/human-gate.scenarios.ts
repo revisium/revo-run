@@ -3,11 +3,13 @@ import {
   answerGate,
   end,
   executionPlan,
+  expectCommandAccepted,
   expectCommandRejected,
   expectEvent,
   expectRunStatus,
   routeOutcomes,
   scenario,
+  sequence,
   startRun,
   type RunScenario,
 } from '../../dsl/run-scenario.js';
@@ -51,16 +53,23 @@ export const humanGateScenarios: readonly RunScenario[] = [
           answers: ['approved', 'rejected'],
           decision: { kind: 'firstAnswer' },
         },
-        { approved: end('succeeded'), rejected: end('failed') },
+        {
+          // A brief settle delay keeps the run alive so the second (idempotent) and third
+          // (conflicting) answerGate commands below are decided by a still-running coordinator,
+          // not raced against root completion (R-04).
+          approved: sequence({ kind: 'delay', key: 'settle', durationMs: 2_000 }, end('succeeded')),
+          rejected: end('failed'),
+        },
       ),
     ),
     steps: [
       startRun(),
       answerGate('main/approval', 'approved', 'alice', 'gate-answer-same'),
       answerGate('main/approval', 'approved', 'alice', 'gate-answer-same'),
+      expectCommandAccepted('gate-answer-same'),
       answerGate('main/approval', 'rejected', 'alice', 'gate-answer-conflict'),
       expectCommandRejected('gate_already_resolved', 'gate-answer-conflict'),
-      expectRunStatus('succeeded'),
+      expectRunStatus('succeeded', 4_000),
     ],
   }),
   scenario({
@@ -189,7 +198,7 @@ export const humanGateScenarios: readonly RunScenario[] = [
           key: 'approval',
           answers: ['approved', 'rejected'],
           decision: { kind: 'firstAnswer' },
-          timeoutMs: 86_400_000,
+          timeoutMs: 2_000,
         },
         {
           approved: end('succeeded'),
@@ -201,7 +210,7 @@ export const humanGateScenarios: readonly RunScenario[] = [
     steps: [
       startRun(),
       { kind: 'expectHumanGateWaiting', path: 'main/approval' },
-      advanceTime(86_400_000),
+      advanceTime(2_000),
       expectEvent('humanGate.timedOut', { path: 'main/approval' }),
       expectRunStatus('succeeded'),
     ],

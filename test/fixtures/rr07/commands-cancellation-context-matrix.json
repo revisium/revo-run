@@ -2,8 +2,8 @@
   "metadata": {
     "contract": "rr-07-commands-cancellation",
     "artifactVersion": 1,
-    "sourceRevision": "ff351219cd0bedfcba848aa429b00221190ca188",
-    "cloudRevision": "Xx-qwSEgx953UpLTLlTjo"
+    "sourceRevision": "69e321c540cf3aaf7cd6d39b7797bc6ef1fcea5b",
+    "cloudRevision": "R2x6tCvlAf6saYkSIS9U9"
   },
   "axes": {
     "commandKind": [
@@ -11,7 +11,11 @@
       "resolve.adoptSuccess",
       "resolve.markFailed",
       "resolve.retry",
-      "answerGate.reserved"
+      "answerGate.accepted",
+      "answerGate.actorNotEligible",
+      "answerGate.actorAlreadyAnswered",
+      "answerGate.gateAlreadyResolved",
+      "answerGate.invalidAnswer"
     ],
     "managerState": ["notStarted", "started", "stopping", "stopped", "restarted"],
     "runState": [
@@ -58,6 +62,17 @@
     ]
   },
   "proofCases": [
+    {
+      "id": "manager-not-started-missing-run",
+      "commandKind": "cancelRun",
+      "managerState": "notStarted",
+      "runState": "missing",
+      "delivery": "first",
+      "executionLocus": "beforeDispatch",
+      "processBoundary": "sameProcess",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "noTerminalAppend"
+    },
     {
       "id": "admitted-before-ready",
       "commandKind": "cancelRun",
@@ -150,16 +165,71 @@
       "historyEffect": "rejectedLiveEvent"
     },
     {
-      "id": "answer-gate-reserved",
-      "commandKind": "answerGate.reserved",
-      "managerState": "notStarted",
-      "runState": "missing",
+      "id": "unknown-not-pending",
+      "commandKind": "resolve.markFailed",
+      "managerState": "started",
+      "runState": "running",
       "delivery": "first",
       "resolutionTarget": "notPending",
       "executionLocus": "beforeDispatch",
       "processBoundary": "sameProcess",
       "providerSettlement": "cooperativeAbort",
-      "historyEffect": "noTerminalAppend"
+      "historyEffect": "rejectedLiveEvent"
+    },
+    {
+      "id": "gate-answer-accepted",
+      "commandKind": "answerGate.accepted",
+      "managerState": "started",
+      "runState": "running",
+      "delivery": "first",
+      "executionLocus": "providerRunning",
+      "processBoundary": "sameProcess",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "acceptedLiveEvent"
+    },
+    {
+      "id": "gate-answer-actor-not-eligible",
+      "commandKind": "answerGate.actorNotEligible",
+      "managerState": "started",
+      "runState": "running",
+      "delivery": "first",
+      "executionLocus": "beforeDispatch",
+      "processBoundary": "sameProcess",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "rejectedLiveEvent"
+    },
+    {
+      "id": "gate-answer-actor-already-answered",
+      "commandKind": "answerGate.actorAlreadyAnswered",
+      "managerState": "started",
+      "runState": "running",
+      "delivery": "distinctSemanticRepeat",
+      "executionLocus": "beforeDispatch",
+      "processBoundary": "sameProcess",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "rejectedLiveEvent"
+    },
+    {
+      "id": "gate-answer-gate-already-resolved",
+      "commandKind": "answerGate.gateAlreadyResolved",
+      "managerState": "started",
+      "runState": "running",
+      "delivery": "conflictingSameId",
+      "executionLocus": "beforeDispatch",
+      "processBoundary": "restartAfterDecision",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "rejectedLiveEvent"
+    },
+    {
+      "id": "gate-answer-invalid-answer",
+      "commandKind": "answerGate.invalidAnswer",
+      "managerState": "started",
+      "runState": "running",
+      "delivery": "first",
+      "executionLocus": "beforeDispatch",
+      "processBoundary": "sameProcess",
+      "providerSettlement": "cooperativeAbort",
+      "historyEffect": "rejectedLiveEvent"
     },
     {
       "id": "cancel-resolution-race",

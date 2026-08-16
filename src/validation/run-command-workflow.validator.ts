@@ -4,12 +4,14 @@ import {
   CommandDispatchWorkflowArgumentsSchema,
   CommandDispatchWorkflowInputSchema,
   CommandDispatchWorkflowResultSchema,
+  HumanGateResolutionDirectiveSchema,
   RunCommandDecisionSchema,
   ScopeDirectiveSchema,
   ScopeSettlementAcknowledgementSchema,
   UnknownResolutionDirectiveSchema,
   type CommandDispatchWorkflowInput,
   type CommandDispatchWorkflowResult,
+  type HumanGateResolutionDirective,
   type RunCommandDecision,
   type ScopeDirective,
   type ScopeSettlementAcknowledgement,
@@ -25,6 +27,7 @@ const scopeSettlementAcknowledgementValidator = Schema.Compile(
   ScopeSettlementAcknowledgementSchema,
 );
 const unknownResolutionValidator = Schema.Compile(UnknownResolutionDirectiveSchema);
+const humanGateResolutionValidator = Schema.Compile(HumanGateResolutionDirectiveSchema);
 
 const parse = <Value>(
   value: unknown,
@@ -60,6 +63,9 @@ export const parseScopeSettlementAcknowledgement = (
 
 export const parseUnknownResolutionDirective = (value: unknown): UnknownResolutionDirective =>
   parse(value, unknownResolutionValidator, 'Unknown outcome resolution is invalid.');
+
+export const parseHumanGateResolutionDirective = (value: unknown): HumanGateResolutionDirective =>
+  parse(value, humanGateResolutionValidator, 'Human gate resolution is invalid.');
 
 export const CommandDispatchWorkflowArgumentsParser = {
   parse(value: unknown): unknown {
