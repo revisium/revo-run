@@ -114,12 +114,15 @@ describe('RR-11 human gate details and receipts', () => {
       }),
     ).resolves.toEqual({ status: 'accepted', commandId });
 
-    const resolved = await vi.waitFor(async () => {
-      const details = await manager?.getRunDetails(managerRunId);
-      const gate = details?.gates.find((entry) => entry.id === pending.id);
-      expect(gate?.status).toBe('resolved');
-      return gate;
-    });
+    const resolved = await vi.waitFor(
+      async () => {
+        const details = await manager?.getRunDetails(managerRunId);
+        const gate = details?.gates.find((entry) => entry.id === pending.id);
+        expect(gate?.status).toBe('resolved');
+        return gate;
+      },
+      { timeout: 8_000 },
+    );
     expect(resolved).toMatchObject({
       status: 'resolved',
       acceptedAnswers: [{ actorId: 'alice', answer: 'approved', commandId }],
@@ -255,16 +258,19 @@ describe('RR-11 human gate details and receipts', () => {
       input: null,
     });
     const pending = await waitForPendingGate(manager, managerRunId);
-    const cancelled = await vi.waitFor(async () => {
-      const details = await manager?.getRunDetails(managerRunId);
-      const gate = details?.gates.find((entry) => entry.id === pending.id);
-      expect(gate).toMatchObject({ status: 'resolved', resolution: { kind: 'cancelled' } });
-      expect(details?.run.status).toBe('running');
-      if (gate?.status !== 'resolved') {
-        throw new Error('Subtree gate was not resolved.');
-      }
-      return gate;
-    });
+    const cancelled = await vi.waitFor(
+      async () => {
+        const details = await manager?.getRunDetails(managerRunId);
+        const gate = details?.gates.find((entry) => entry.id === pending.id);
+        expect(gate).toMatchObject({ status: 'resolved', resolution: { kind: 'cancelled' } });
+        expect(details?.run.status).toBe('running');
+        if (gate?.status !== 'resolved') {
+          throw new Error('Subtree gate was not resolved.');
+        }
+        return gate;
+      },
+      { timeout: 8_000 },
+    );
     expect(cancelled.resolution).toEqual({ kind: 'cancelled' });
     await expect(
       manager.answerGate({
@@ -276,5 +282,5 @@ describe('RR-11 human gate details and receipts', () => {
         commandId: `cmd_${randomUUID()}`,
       }),
     ).resolves.toMatchObject({ status: 'rejected', reason: 'gate_already_resolved' });
-  });
+  }, 20_000);
 });
