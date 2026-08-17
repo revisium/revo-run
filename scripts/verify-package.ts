@@ -62,7 +62,7 @@ try {
       type: 'module',
       dependencies: {
         '@dbos-inc/dbos-sdk': '4.25.14',
-        '@revisium/revo-pipeline': '0.1.0-alpha.0',
+        '@revisium/revo-pipeline': '0.1.0',
         '@revisium/revo-run': `file:${tarball}`,
       },
     }),

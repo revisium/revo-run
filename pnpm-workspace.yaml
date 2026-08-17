@@ -1,4 +1,4 @@
 allowBuilds:
   esbuild: false # tsx uses the platform package; no install script is required
 minimumReleaseAgeExclude:
-  - '@revisium/revo-pipeline@0.1.0-alpha.0'
+  - '@revisium/revo-pipeline@0.1.0'

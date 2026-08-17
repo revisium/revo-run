@@ -12,8 +12,8 @@ importers:
         specifier: 4.25.14
         version: 4.25.14
       '@revisium/revo-pipeline':
-        specifier: 0.1.0-alpha.0
-        version: 0.1.0-alpha.0
+        specifier: 0.1.0
+        version: 0.1.0
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: 0.18.5
@@ -558,8 +558,8 @@ packages:
     resolution: {integrity: sha512-edgyN2pP07uXiP4tJs0s8KVmU8M8i60YPbbI0/WDeok1mIJHRXz+CgD8I0nelwDkoCh3EWL/G5kGfbuHjsdbvw==}
     engines: {node: '>=18'}
 
-  '@revisium/revo-pipeline@0.1.0-alpha.0':
-    resolution: {integrity: sha512-Clge2ZL0vcs2jaJ0YG3SjKgOaAOZsEt5tDjY7Nwt+p/VTdNAp+HIzLIBAuvpEdri9KuYx02WGIN5jjqUi012Mw==}
+  '@revisium/revo-pipeline@0.1.0':
+    resolution: {integrity: sha512-jer969oCe+YqADEiwb8LfGLktL38jG9RD0azyAiLeDG0NfzRgMgXZej0fCyWsO4jII7CXU/+ou14FyRFaQunew==}
     engines: {node: '>=24.11.1 <25'}
 
   '@rolldown/binding-android-arm64@1.1.5':
@@ -1798,7 +1798,7 @@ snapshots:
     dependencies:
       tinyexec: 1.2.4
 
-  '@revisium/revo-pipeline@0.1.0-alpha.0': {}
+  '@revisium/revo-pipeline@0.1.0': {}
 
   '@rolldown/binding-android-arm64@1.1.5':
     optional: true
