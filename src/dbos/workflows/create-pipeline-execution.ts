@@ -1,5 +1,5 @@
-import type { ExecuteNodeEffect } from '../../pipeline/interpreter/interpreter-context.js';
 import { PipelineInterpreter } from '../../pipeline/interpreter/pipeline-interpreter.js';
+import type { ExecuteNodeEffect } from '../../pipeline/interpreter/task-execution-ports.js';
 import { DbosConsensusParticipantRunner } from '../consensus/dbos-consensus-participant-runner.js';
 import { RunCoordinatorClient } from '../coordination/run-coordinator-client.js';
 import type { ScopeCancellationRegistry } from '../coordination/scope-cancellation-registry.js';

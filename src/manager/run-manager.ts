@@ -208,21 +208,20 @@ export class RunManager {
   }
 
   private assertEventPageInput(input: unknown): asserts input is RunEventPageInput {
-    if (
-      typeof input === 'object' &&
-      input !== null &&
-      'after' in input &&
-      input.after !== undefined &&
-      !isRunEventCursor(input.after)
-    ) {
-      throw new RunManagerError('invalid_run_event_cursor');
-    }
+    this.assertOptionalEventCursor(input);
     if (!isRunEventPageInput(input)) {
       throw new RunManagerError('invalid_run_event_page_input');
     }
   }
 
   private assertSubscriptionInput(input: unknown): asserts input is RunEventSubscriptionInput {
+    this.assertOptionalEventCursor(input);
+    if (!isRunEventSubscriptionInput(input)) {
+      throw new RunManagerError('invalid_run_event_subscription_input');
+    }
+  }
+
+  private assertOptionalEventCursor(input: unknown): void {
     if (
       typeof input === 'object' &&
       input !== null &&
@@ -230,9 +229,6 @@ export class RunManager {
       input.after !== undefined &&
       !isRunEventCursor(input.after)
     ) {
-      throw new RunManagerError('invalid_run_event_cursor');
-    }
-    if (!isRunEventSubscriptionInput(input)) {
       throw new RunManagerError('invalid_run_event_cursor');
     }
   }

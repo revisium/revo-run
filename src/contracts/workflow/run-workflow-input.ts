@@ -20,5 +20,3 @@ export const RunWorkflowInputSchema = Type.Object(
 export type RunWorkflowInput = DeepReadonly<Type.Static<typeof RunWorkflowInputSchema>>;
 
 export const RunWorkflowArgumentsSchema = Type.Tuple([RunWorkflowInputSchema]);
-
-export type RunWorkflowArguments = DeepReadonly<Type.Static<typeof RunWorkflowArgumentsSchema>>;

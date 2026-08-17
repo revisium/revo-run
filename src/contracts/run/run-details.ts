@@ -18,7 +18,7 @@ import {
   NonNegativeIntegerSchema,
 } from '../schema-primitives.js';
 import type { CommandId, RunCommandRejectionReason } from './run-command.js';
-import type { RunSnapshot } from './run.js';
+import type { RunSnapshot, RunStatus } from './run.js';
 
 export type RunNodeExecutionStatus =
   | 'cancelled'
@@ -100,11 +100,14 @@ export const SkippedMapItemSchema = Type.Object(
 
 export type SkippedMapItem = DeepReadonly<Type.Static<typeof SkippedMapItemSchema>>;
 
+// Durable observation payloads above are TypeBox-first and their schemas ship.
+// Date-bearing projections below are in-memory views and have no runtime schema.
+
 interface RunWorkflowScopeBase {
   readonly id: ScopeId;
   readonly pipelineId: string;
   readonly displayPath: string;
-  readonly status: import('./run.js').RunStatus;
+  readonly status: RunStatus;
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly completedAt?: Date;

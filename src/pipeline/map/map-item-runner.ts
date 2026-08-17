@@ -1,5 +1,6 @@
 import type { JsonValue } from '../../contracts/json-value.js';
 import type { MapNodeOutput } from '../../contracts/pipeline/map-output.js';
+import type { NodeOutput } from '../../contracts/pipeline/node-output.js';
 import type { MapNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { RunWorkflowResult } from '../../contracts/workflow/run-workflow-result.js';
 import type { TerminalWorkflowResult } from '../../contracts/workflow/terminal-workflow-result.js';
@@ -34,7 +35,7 @@ export type MapItemBodyResult =
   | {
       readonly kind: 'continued';
       readonly outcome: string;
-      readonly output?: import('../../contracts/pipeline/node-output.js').NodeOutput;
+      readonly output?: NodeOutput;
     }
   | { readonly kind: 'authoredEnd'; readonly result: RunWorkflowResult }
   | { readonly kind: 'terminal'; readonly result: TerminalWorkflowResult };

@@ -155,10 +155,4 @@ export const RunCommandDecisionSchema = Type.Union([
 export type RunCommandRequestMetadata = DeepReadonly<
   Type.Static<typeof RunCommandRequestMetadataSchema>
 >;
-export type RunCommandAcceptedMetadata = DeepReadonly<
-  Type.Static<typeof RunCommandAcceptedMetadataSchema>
->;
-export type RunCommandRejectedMetadata = DeepReadonly<
-  Type.Static<typeof RunCommandRejectedMetadataSchema>
->;
 export type RunCommandDecision = DeepReadonly<Type.Static<typeof RunCommandDecisionSchema>>;

@@ -98,6 +98,7 @@ export type {
   RunAttempt,
   RunDetails,
   RunConsensus,
+  RunConsensusAcceptedVote,
   RunGate,
   RunGateAcceptedAnswer,
   RunGateResolution,
@@ -131,6 +132,7 @@ export type {
   CommandId,
   ResolveUnknownOutcomeInput,
   RunCommandReceipt,
+  RunCommandRejectionReason,
 } from './contracts/run/run-command.js';
 export type { RunManagerErrorCode } from './contracts/run/run-manager-error.js';
 export type { StartRunInput, StartRunResult } from './contracts/run/start-run.js';

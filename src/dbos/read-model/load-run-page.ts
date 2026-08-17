@@ -4,6 +4,7 @@ import type { GetWorkflowsInput, WorkflowStatus, WorkflowStatusString } from '@d
 import type { ListRunsInput, RunPage } from '../../contracts/run/list-runs.js';
 import type { RunStatus, RunSummary } from '../../contracts/run/run.js';
 import { runWorkflowName } from '../dbos-names.js';
+import { runWorkflowIdPrefix } from '../workflow-id.js';
 import { mapRunSummary, RunOwnershipError } from './map-run-snapshot.js';
 
 const defaultLimit = 50;
@@ -68,7 +69,7 @@ const ownedRunSummary = (row: WorkflowStatus): RunSummary | undefined => {
 const queryFrom = (input: ListRunsInput): GetWorkflowsInput => {
   const status = dbosStatuses(input.statuses);
   return {
-    workflow_id_prefix: 'rr:run:',
+    workflow_id_prefix: runWorkflowIdPrefix,
     ...(status === undefined ? {} : { status }),
     ...(input.createdFrom === undefined ? {} : { startTime: input.createdFrom.toISOString() }),
     ...(input.createdThrough === undefined ? {} : { endTime: input.createdThrough.toISOString() }),

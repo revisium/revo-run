@@ -16,8 +16,10 @@ import type {
   MapExecutionObservation,
   RunAttempt,
   RunCommandReceipt,
+  RunCommandRejectionReason,
   RunCommandDetails,
   RunConsensus,
+  RunConsensusAcceptedVote,
   RunDetails,
   RunError,
   RunEventCursor,
@@ -131,10 +133,46 @@ describe('root-only public API', () => {
     expectTypeOf<AnswerGateInput>().toBeObject();
     expectTypeOf<RunGate>().toMatchTypeOf<{ readonly status: string }>();
     expectTypeOf<RunConsensus>().toMatchTypeOf<{ readonly status: string }>();
+    expectTypeOf<RunConsensusAcceptedVote>().toMatchTypeOf<{ readonly vote: string }>();
+    expectTypeOf<RunCommandRejectionReason>().toBeString();
     expectTypeOf<ConsensusVote>().toMatchTypeOf<{ readonly vote: string }>();
     expectTypeOf<RunCommandReceipt>().toMatchTypeOf<{ readonly commandId: string }>();
     expectTypeOf<RunCommandDetails>().toMatchTypeOf<{ readonly commandId: string }>();
     expectTypeOf<CommandId>().toBeString();
     expectTypeOf<WaitForTerminalInput>().toBeObject();
+  });
+
+  it.each([
+    ['createRunManager', "import { createRunManager } from '@revisium/revo-run';"],
+    ['start', '- lifecycle: `start`, `stop`'],
+    ['stop', '- lifecycle: `start`, `stop`'],
+    ['startRun', '- start: `startRun`'],
+    [
+      'getRun',
+      '- observe: `getRun`, `listRuns`, `getRunDetails`, `getRunEvents`, `subscribeRunEvents`,',
+    ],
+    [
+      'listRuns',
+      '- observe: `getRun`, `listRuns`, `getRunDetails`, `getRunEvents`, `subscribeRunEvents`,',
+    ],
+    [
+      'getRunDetails',
+      '- observe: `getRun`, `listRuns`, `getRunDetails`, `getRunEvents`, `subscribeRunEvents`,',
+    ],
+    [
+      'getRunEvents',
+      '- observe: `getRun`, `listRuns`, `getRunDetails`, `getRunEvents`, `subscribeRunEvents`,',
+    ],
+    [
+      'subscribeRunEvents',
+      '- observe: `getRun`, `listRuns`, `getRunDetails`, `getRunEvents`, `subscribeRunEvents`,',
+    ],
+    ['waitForTerminal', '  `waitForTerminal`'],
+    ['cancelRun', '- control: `cancelRun`, `answerGate`, `resolveUnknownOutcome`'],
+    ['answerGate', '- control: `cancelRun`, `answerGate`, `resolveUnknownOutcome`'],
+    ['resolveUnknownOutcome', '- control: `cancelRun`, `answerGate`, `resolveUnknownOutcome`'],
+  ] as const)('documents %s on the package root README', (_name, needle) => {
+    const readme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8');
+    expect(readme.includes(needle)).toBe(true);
   });
 });

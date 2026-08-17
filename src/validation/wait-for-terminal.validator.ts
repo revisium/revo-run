@@ -1,9 +1,7 @@
 import type { WaitForTerminalInput } from '../contracts/run/wait-for-terminal.js';
+import { ownValue } from './own-value.js';
 
 const keys = new Set(['timeoutMs', 'signal']);
-
-const ownValue = (value: object, key: string): unknown =>
-  Object.getOwnPropertyDescriptor(value, key)?.value;
 
 export const isWaitForTerminalInput = (value: unknown): value is WaitForTerminalInput => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {

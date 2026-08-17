@@ -2,6 +2,7 @@ import Schema from 'typebox/schema';
 
 import type { ListRunsInput } from '../contracts/run/list-runs.js';
 import { RunStatusSchema } from '../contracts/run/run.js';
+import { ownValue } from './own-value.js';
 
 const RunStatusValidator = Schema.Compile(RunStatusSchema);
 const keys = new Set(['statuses', 'createdFrom', 'createdThrough', 'offset', 'limit']);
@@ -11,9 +12,6 @@ const isValidDate = (value: unknown): value is Date =>
 
 const isSafeIntegerBetween = (value: unknown, minimum: number, maximum: number): boolean =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= minimum && value <= maximum;
-
-const ownValue = (value: object, key: string): unknown =>
-  Object.getOwnPropertyDescriptor(value, key)?.value;
 
 export const isListRunsInput = (value: unknown): value is ListRunsInput => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {

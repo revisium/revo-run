@@ -1,11 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { DelayNode } from '../../src/contracts/pipeline/pipeline-node.js';
+import type { WaitForDelay } from '../../src/pipeline/interpreter/delay-execution-ports.js';
 import { DelayNodeExecutor } from '../../src/pipeline/interpreter/delay-node-executor.js';
-import type {
-  PipelineExecutionContext,
-  WaitForDelay,
-} from '../../src/pipeline/interpreter/interpreter-context.js';
+import type { PipelineExecutionContext } from '../../src/pipeline/interpreter/interpreter-context.js';
 import type { PipelineEventSink } from '../../src/pipeline/interpreter/pipeline-event-sink.js';
 import { terminalExecutionPlan } from '../support/execution-plan.fixture.js';
 

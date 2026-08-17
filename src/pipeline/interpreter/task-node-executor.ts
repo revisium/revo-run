@@ -4,12 +4,7 @@ import type { RetryPolicy } from '../../contracts/pipeline/task-policy.js';
 import type { ExecutionBinding } from '../../contracts/run/execution-binding.js';
 import { InputResolver } from '../data/input-resolver.js';
 import { createAttemptId } from '../identity/execution-identity.js';
-import type {
-  ExecuteNodeEffect,
-  PipelineExecutionContext,
-  WaitForRetry,
-  WaitForUnknownOutcome,
-} from './interpreter-context.js';
+import type { PipelineExecutionContext } from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
 import {
   inputResolutionFailedEvent,
@@ -19,6 +14,8 @@ import {
 } from './pipeline-event-sink.js';
 import type { NodeExecutionResult } from './pipeline-node-result.js';
 import { continuedExecution, terminalExecution } from './pipeline-node-result.js';
+import type { ExecuteNodeEffect, WaitForRetry } from './task-execution-ports.js';
+import type { WaitForUnknownOutcome } from './unknown-outcome-ports.js';
 import { resolveUnknownOutcome } from './unknown-outcome-resolver.js';
 
 type ResolvedTaskRequest = Omit<

@@ -44,13 +44,6 @@ export const unknownOutcomeReadyStepName = (attemptId: string): string =>
 export const isUnknownOutcomeReadyStepName = (name: string): boolean =>
   name.startsWith(unknownOutcomeReadyStepPrefix);
 
-export const unknownOutcomeReadyAttemptId = (name: string): string => {
-  if (!isUnknownOutcomeReadyStepName(name)) {
-    throw new Error('DBOS step is not an unknown-outcome readiness checkpoint.');
-  }
-  return name.slice(unknownOutcomeReadyStepPrefix.length);
-};
-
 export const unknownOutcomeResolutionStepName = (attemptId: string): string =>
   `${unknownOutcomeResolutionStepPrefix}${attemptId}`;
 
@@ -88,6 +81,13 @@ export const isRetryBackoffStepName = (name: string): boolean =>
 
 export const isUnknownOutcomeResolutionStepName = (name: string): boolean =>
   name.startsWith(unknownOutcomeResolutionStepPrefix);
+
+export const unknownOutcomeResolutionAttemptId = (name: string): string => {
+  if (!isUnknownOutcomeResolutionStepName(name)) {
+    throw new Error('DBOS step is not an unknown-outcome resolution checkpoint.');
+  }
+  return name.slice(unknownOutcomeResolutionStepPrefix.length);
+};
 
 const nodeEffectIntentStepPrefix = 'node-effect-intent:';
 const nodeEffectDecisionStepPrefix = 'node-effect-decision:';
@@ -178,9 +178,6 @@ export const isNodeAttemptOutcomeStepName = (name: string): boolean =>
   name.startsWith(nodeReconciliationStepPrefix) ||
   name.startsWith(nodeReconciliationFailureStepPrefix) ||
   name.startsWith(nodeReconciliationOutcomeStepPrefix);
-
-export const isNodeEffectIntentStepName = (name: string): boolean =>
-  name.startsWith(nodeEffectIntentStepPrefix);
 
 export const isNodeEffectDecisionStepName = (name: string): boolean =>
   name.startsWith(nodeEffectDecisionStepPrefix);

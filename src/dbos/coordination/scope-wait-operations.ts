@@ -8,12 +8,12 @@ import type {
   UnknownResolutionDirective,
 } from '../../contracts/workflow/run-command-workflow.js';
 import type { RunCoordinatorMessage } from '../../contracts/workflow/run-coordinator-message.js';
+import type { ConsensusWaitRequest } from '../../pipeline/consensus/consensus-participant-runner.js';
+import type { DelayWaitResult } from '../../pipeline/interpreter/delay-execution-ports.js';
 import type {
-  ConsensusWaitRequest,
-  DelayWaitResult,
   HumanGateResolution,
   HumanGateWaitRequest,
-} from '../../pipeline/interpreter/interpreter-context.js';
+} from '../../pipeline/interpreter/human-gate-ports.js';
 import { parseConsensusResolutionDirective } from '../../validation/consensus-resolution.validator.js';
 import { parseDurableConsensusVerdict } from '../../validation/consensus-verdict.validator.js';
 import {

@@ -25,7 +25,21 @@ values, malformed nested values, additional properties, and identifier grammar.
 
 JSON-compatible contract schemas are the source of truth and ordinary durable types must be
 derived with `Type.Static`. `RunSnapshot` is an in-memory view containing `Date` values and must not
-be reused as a serialized DTO. `Type.Unsafe` is allowed only for the reviewed recursive seams in
+be reused as a serialized DTO. The same rule applies to the Date-bearing `RunDetails` projections
+(`scopes`, `nodeInstances`, `attempts`, `commands`, `gates`, `consensuses`): they ship no runtime
+schema. Durable observation payloads (`parallelJoins`, `skippedParallelBranches`, `mapExecutions`,
+`skippedMapItems`) stay TypeBox-first and their schemas are public.
+
+Bounded-concurrency scope fan-out (parallel, map) uses a pure reducer that returns actions, a
+DBOS action interpreter, and a scope controller. Coordination registries stay pure in-memory
+state; DBOS transport lives in a sibling module.
+
+Name unit tests after the unit under test. The `rrNN-` prefix scheme is retired; fixture
+directories keep their milestone names. Public manager inputs that map to an error code without
+throwing are `isX`; durable envelopes that throw are `parseX`. `XWorkflowArgumentsParser` is the
+DBOS `inputSchema` adapter shape, not a third naming idiom.
+
+`Type.Unsafe` is allowed only for the reviewed recursive seams in
 `contracts/json-value.ts` and
 `contracts/pipeline/pipeline-node.schema.ts`. Subpipeline recursion is invalid; use bounded `repeat`
 for iteration.

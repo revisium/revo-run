@@ -18,6 +18,7 @@ import {
   isNodeAttemptOutcomeStepName,
   isRunCommandDecisionStepName,
   isUnknownOutcomeResolutionStepName,
+  unknownOutcomeResolutionAttemptId,
   nodeAttemptStepIdentity,
   parallelBranchWorkflowName,
   mapItemWorkflowName,
@@ -199,7 +200,7 @@ class RunDetailsLoader {
     if (resolution.kind === 'cancel' || resolution.kind === 'fail' || resolution.kind === 'retry') {
       return;
     }
-    const attemptId = step.name.slice('unknown-outcome-resolution:'.length);
+    const attemptId = unknownOutcomeResolutionAttemptId(step.name);
     const attempt = this.attempts.find(({ id }) => id === attemptId);
     if (attempt?.status !== 'outcomeUnknown') {
       throw new Error('Unknown outcome resolution has no immutable unknown attempt.');

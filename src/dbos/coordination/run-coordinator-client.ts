@@ -9,16 +9,16 @@ import type {
   RunCoordinatorMessage,
   ScopeStartFenceReply,
 } from '../../contracts/workflow/run-coordinator-message.js';
+import type { ConsensusWaitRequest } from '../../pipeline/consensus/consensus-participant-runner.js';
+import type { DelayWaitResult } from '../../pipeline/interpreter/delay-execution-ports.js';
+import type {
+  HumanGateResolution,
+  HumanGateWaitRequest,
+} from '../../pipeline/interpreter/human-gate-ports.js';
 import type {
   InlineScopeOwnershipRegistrar,
   InlineScopeOwnershipRegistration,
 } from '../../pipeline/interpreter/inline-scope-ownership-registrar.js';
-import type {
-  ConsensusWaitRequest,
-  DelayWaitResult,
-  HumanGateResolution,
-  HumanGateWaitRequest,
-} from '../../pipeline/interpreter/interpreter-context.js';
 import type {
   PipelineEventDraft,
   PipelineEventSink,
@@ -39,7 +39,7 @@ import {
   scopeReplyTopic,
   scopeSettlementTopic,
 } from '../dbos-names.js';
-import { runWorkflowId } from '../workflow-id.js';
+import { isScopeWorkflowId, runWorkflowId } from '../workflow-id.js';
 import { isActiveWorkflowStatus } from '../workflow-status.js';
 import { durableOperationLoop } from './durable-operation-loop.js';
 import { orphanHealthCheckSeconds } from './orphan-health-check.js';
@@ -276,7 +276,7 @@ export class RunCoordinatorClient implements PipelineEventSink, InlineScopeOwner
 
   private workflowId(): string {
     const workflowId = DBOS.workflowID;
-    if (!workflowId?.startsWith('rr:scope:')) {
+    if (workflowId === undefined || !isScopeWorkflowId(workflowId)) {
       throw new Error('Pipeline execution has no DBOS workflow ID.');
     }
     return workflowId;

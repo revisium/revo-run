@@ -209,9 +209,9 @@
       "capacity": "one",
       "scenario": "rr-078",
       "evidence": {
-        "testFile": "test/unit/rr08-node-execution-step.test.ts",
+        "testFile": "test/unit/node-execution-provider-boundaries.test.ts",
         "testName": "retains execute capacity until an abandoned abort-ignoring provider promise settles",
-        "assertionFile": "test/unit/rr08-node-execution-step.test.ts",
+        "assertionFile": "test/unit/node-execution-provider-boundaries.test.ts",
         "assertions": ["expect(active).toBe(1)", "expect(maximumActive).toBe(1)"]
       }
     },
@@ -223,9 +223,9 @@
       "capacity": "one",
       "scenario": "rr-078",
       "evidence": {
-        "testFile": "test/unit/rr08-node-execution-step.test.ts",
+        "testFile": "test/unit/node-execution-provider-boundaries.test.ts",
         "testName": "retains reconcile capacity until an abandoned abort-ignoring provider promise settles",
-        "assertionFile": "test/unit/rr08-node-execution-step.test.ts",
+        "assertionFile": "test/unit/node-execution-provider-boundaries.test.ts",
         "assertions": ["expect(reconcile).toHaveBeenCalledOnce()", "expect(maximumActive).toBe(1)"]
       }
     },
@@ -258,9 +258,9 @@
       "observation": "cancelled",
       "scenario": "rr-078",
       "evidence": {
-        "testFile": "test/unit/rr08-node-execution-step.test.ts",
+        "testFile": "test/unit/node-execution-provider-boundaries.test.ts",
         "testName": "persists cancellation when execute resolves successfully after ignoring abort",
-        "assertionFile": "test/unit/rr08-node-execution-step.test.ts",
+        "assertionFile": "test/unit/node-execution-provider-boundaries.test.ts",
         "assertions": [
           "cancellation.cancelScope(request.scopeId)",
           "call.resolve({ kind: 'completed', outcome: 'too-late' })",
@@ -277,9 +277,9 @@
       "observation": "cancelled",
       "scenario": "rr-078",
       "evidence": {
-        "testFile": "test/unit/rr08-node-execution-step.test.ts",
+        "testFile": "test/unit/node-execution-provider-boundaries.test.ts",
         "testName": "persists cancellation when execute rejects with a provider-owned error after abort",
-        "assertionFile": "test/unit/rr08-node-execution-step.test.ts",
+        "assertionFile": "test/unit/node-execution-provider-boundaries.test.ts",
         "assertions": [
           "call.reject(new Error('provider rejected after cancellation'))",
           "resolves.toEqual({ kind: 'cancelled' })"
@@ -295,9 +295,9 @@
       "observation": "cancelled",
       "scenario": "rr-078",
       "evidence": {
-        "testFile": "test/unit/rr08-node-execution-step.test.ts",
+        "testFile": "test/unit/node-execution-provider-boundaries.test.ts",
         "testName": "persists cancellation when reconcile resolves successfully after ignoring abort",
-        "assertionFile": "test/unit/rr08-node-execution-step.test.ts",
+        "assertionFile": "test/unit/node-execution-provider-boundaries.test.ts",
         "assertions": [
           "expect(reconcile).toHaveBeenCalledOnce()",
           "kind: 'effectCompleted'",
@@ -314,9 +314,9 @@
       "observation": "cancelled",
       "scenario": "rr-078",
       "evidence": {
-        "testFile": "test/unit/rr08-node-execution-step.test.ts",
+        "testFile": "test/unit/node-execution-provider-boundaries.test.ts",
         "testName": "persists cancellation when reconcile rejects with a provider-owned error after abort",
-        "assertionFile": "test/unit/rr08-node-execution-step.test.ts",
+        "assertionFile": "test/unit/node-execution-provider-boundaries.test.ts",
         "assertions": [
           "call.reject(new Error('reconcile rejected after cancellation'))",
           "resolves.toEqual({ kind: 'cancelled' })"
@@ -350,7 +350,7 @@
       "processBoundary": "sameProcess",
       "scenario": "rr-034",
       "evidence": {
-        "testFile": "test/unit/rr08-assurance-artifacts.test.ts",
+        "testFile": "test/unit/scopes-parallel-golden-vectors.test.ts",
         "testName": "executes join vectors and keeps the decisive prefix immutable after late settlements",
         "assertionFile": "test/fixtures/rr08/scopes-parallel-golden-vectors.json",
         "assertions": ["any-succeeds-out-of-order", "\"decisionAfter\": 2"]
@@ -365,7 +365,7 @@
       "processBoundary": "sameProcess",
       "scenario": "rr-035",
       "evidence": {
-        "testFile": "test/unit/rr08-assurance-artifacts.test.ts",
+        "testFile": "test/unit/scopes-parallel-golden-vectors.test.ts",
         "testName": "executes join vectors and keeps the decisive prefix immutable after late settlements",
         "assertionFile": "test/fixtures/rr08/scopes-parallel-golden-vectors.json",
         "assertions": ["threshold-becomes-unreachable", "\"observedBranchKeys\":"]
@@ -376,9 +376,9 @@
       "protocolEvidence": "singleRegistration",
       "scenario": "rr-078",
       "evidence": {
-        "testFile": "test/unit/rr07-single-protocol.test.ts",
+        "testFile": "test/unit/workflow-registration-contract.test.ts",
         "testName": "registers exactly one workflow of each current contract kind",
-        "assertionFile": "test/unit/rr07-single-protocol.test.ts",
+        "assertionFile": "test/unit/workflow-registration-contract.test.ts",
         "assertions": [
           "expect(registerWorkflow).toHaveBeenCalledTimes(7)",
           "registerWorkflow.mock.calls",
@@ -396,9 +396,9 @@
       "protocolEvidence": "currentContractSurface",
       "scenario": "rr-078",
       "evidence": {
-        "testFile": "test/unit/rr07-single-protocol.test.ts",
+        "testFile": "test/unit/workflow-registration-contract.test.ts",
         "testName": "registers exactly one workflow of each current contract kind",
-        "assertionFile": "test/unit/rr07-single-protocol.test.ts",
+        "assertionFile": "test/unit/workflow-registration-contract.test.ts",
         "assertions": [
           "expect(registerWorkflow).toHaveBeenCalledTimes(7)",
           "expect(registry).toHaveProperty('run')",
@@ -411,9 +411,9 @@
       "protocolEvidence": "noncanonicalRejected",
       "scenario": "rr-078",
       "evidence": {
-        "testFile": "test/unit/rr07-single-protocol.test.ts",
+        "testFile": "test/unit/workflow-registration-contract.test.ts",
         "testName": "rejects noncanonical workflow names and foreign ID namespaces",
-        "assertionFile": "test/unit/rr07-single-protocol.test.ts",
+        "assertionFile": "test/unit/workflow-registration-contract.test.ts",
         "assertions": ["foreign.workflow", "foreign:run:Run_1", "Workflow is not a Revo run."]
       }
     }
@@ -436,7 +436,7 @@
         "processBoundary": "crashAfterSelection"
       },
       "reason": "Process recovery and ignored-abort permit lifetime are separate executable boundaries; no atomic cross-product claim is made.",
-      "sourceFile": "test/unit/rr08-node-execution-step.test.ts",
+      "sourceFile": "test/unit/node-execution-provider-boundaries.test.ts",
       "sourceAssertions": ["abandoned abort-ignoring provider promise", "maximumActive"]
     }
   ]

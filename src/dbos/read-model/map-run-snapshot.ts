@@ -8,9 +8,7 @@ import {
   parseRunWorkflowResult,
 } from '../../validation/parse-run-workflow-data.js';
 import { isValidRunId } from '../../validation/run-id.validator.js';
-import { runWorkflowId } from '../workflow-id.js';
-
-const workflowIdPrefix = 'rr:run:';
+import { isRunWorkflowId, runWorkflowId, runWorkflowIdPrefix } from '../workflow-id.js';
 
 export const mapRunStatus = (status: string): RunStatus => {
   switch (status) {
@@ -73,10 +71,10 @@ const timestamps = (
 };
 
 const runIdFromWorkflowId = (workflowId: string): string => {
-  if (!workflowId.startsWith(workflowIdPrefix)) {
+  if (!isRunWorkflowId(workflowId)) {
     throw new RunOwnershipError('Workflow is not a Revo run.');
   }
-  const runId = workflowId.slice(workflowIdPrefix.length);
+  const runId = workflowId.slice(runWorkflowIdPrefix.length);
   if (!isValidRunId(runId)) {
     throw new Error('Owned run workflow ID is invalid.');
   }

@@ -1,7 +1,8 @@
 import type { NodeOutput } from '../../contracts/pipeline/node-output.js';
 import type { ConsensusNode } from '../../contracts/pipeline/pipeline-node.js';
 import type { AcceptedConsensusVote } from '../../contracts/workflow/consensus-verdict.js';
-import type { ConsensusExecutionPorts, PipelineExecutionContext } from './interpreter-context.js';
+import type { ConsensusExecutionPorts } from './consensus-execution-ports.js';
+import type { PipelineExecutionContext } from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
 import type { NodeExecutionResult } from './pipeline-node-result.js';
 import { continuedExecution, terminalExecution } from './pipeline-node-result.js';

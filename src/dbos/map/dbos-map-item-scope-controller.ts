@@ -15,7 +15,7 @@ import { encodeMapItemPathSegment } from '../../pipeline/map/map-item-path.js';
 import type { MapItemExecution, PreparedMapItem } from '../../pipeline/map/map-item-runner.js';
 import { parseMapItemResult } from '../../validation/map-item-result.validator.js';
 import { RunCoordinatorClient } from '../coordination/run-coordinator-client.js';
-import { scopeWorkflowId } from '../workflow-id.js';
+import { isScopeWorkflowId, scopeWorkflowId } from '../workflow-id.js';
 import type { MapItemWorkflowProvider } from '../workflows/map-item-workflow-provider.js';
 
 export type ActiveMapItemDisposition = MapItemDisposition | 'discarded';
@@ -58,7 +58,7 @@ export class DbosMapItemScopeController {
       itemKey: item.itemKey,
     });
     const parentWorkflowId = DBOS.workflowID;
-    if (!parentWorkflowId?.startsWith('rr:scope:')) {
+    if (parentWorkflowId === undefined || !isScopeWorkflowId(parentWorkflowId)) {
       throw new Error('Map item parent has no workflow ID.');
     }
     const workflowId = scopeWorkflowId(scopeId);
