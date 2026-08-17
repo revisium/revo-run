@@ -1,7 +1,6 @@
-import { NonEmptyStringSchema } from '../schema-primitives.js';
 import type { PipelineNode } from './pipeline-node.js';
 
-export const RunNodePathSchema = NonEmptyStringSchema;
+export { NonEmptyStringSchema as RunNodePathSchema } from '../schema-primitives.js';
 
 export const childNodePath = (parent: string, child: string): string =>
   parent.length === 0 ? child : `${parent}/${child}`;

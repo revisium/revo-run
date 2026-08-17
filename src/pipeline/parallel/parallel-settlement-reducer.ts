@@ -87,15 +87,65 @@ const admissionActions = (
     : [];
 };
 
+const discardPendingIfAny = (
+  snapshot: ParallelSettlementSnapshot,
+): readonly ParallelSettlementAction[] =>
+  snapshot.pendingBranchKeys.length === 0 ? [] : [{ kind: 'discardPending' as const }];
+
+const cancelActiveIfAny = (
+  context: ParallelSettlementContext,
+  snapshot: ParallelSettlementSnapshot,
+): readonly ParallelSettlementAction[] =>
+  snapshot.activeCount === 0
+    ? []
+    : [{ kind: 'cancelActive' as const, nodeInstanceId: context.nodeInstanceId }];
+
 const stopActions = (
   context: ParallelSettlementContext,
   snapshot: ParallelSettlementSnapshot,
 ): readonly ParallelSettlementAction[] => [
-  ...(snapshot.pendingBranchKeys.length === 0 ? [] : [{ kind: 'discardPending' as const }]),
-  ...(snapshot.activeCount === 0
-    ? []
-    : [{ kind: 'cancelActive' as const, nodeInstanceId: context.nodeInstanceId }]),
+  ...discardPendingIfAny(snapshot),
+  ...cancelActiveIfAny(context, snapshot),
 ];
+
+const eventBudgetTransition = (
+  context: ParallelSettlementContext,
+  snapshot: ParallelSettlementSnapshot,
+  state: ParallelSettlementState,
+  eventBudget: TerminalWorkflowResult,
+): ParallelSettlementTransition => ({
+  state: { ...state, terminal: eventBudget },
+  actions: [
+    ...discardPendingIfAny(snapshot),
+    ...(state.terminal === undefined &&
+    state.decision === undefined &&
+    context.join.remaining === 'cancel'
+      ? cancelActiveIfAny(context, snapshot)
+      : []),
+  ],
+});
+
+const drainOverrideTransition = (
+  snapshot: ParallelSettlementSnapshot,
+  state: ParallelSettlementState,
+  terminal: TerminalWorkflowResult,
+): ParallelSettlementTransition => ({
+  state: { ...state, terminal },
+  actions: discardPendingIfAny(snapshot),
+});
+
+const preDecisionTerminalTransition = (
+  context: ParallelSettlementContext,
+  snapshot: ParallelSettlementSnapshot,
+  state: ParallelSettlementState,
+  terminal: TerminalWorkflowResult,
+): ParallelSettlementTransition => ({
+  state: { ...state, terminal },
+  actions: [
+    ...discardPendingIfAny(snapshot),
+    ...(context.join.remaining === 'cancel' ? cancelActiveIfAny(context, snapshot) : []),
+  ],
+});
 
 const joinDecision = (
   context: ParallelSettlementContext,
@@ -123,62 +173,12 @@ const joinDecision = (
   };
 };
 
-export const reduceParallelSettlement = (
+const persistJoinTransition = (
   context: ParallelSettlementContext,
   snapshot: ParallelSettlementSnapshot,
   state: ParallelSettlementState,
-  settled: SettledParallelBranch,
+  join: ParallelJoinState,
 ): ParallelSettlementTransition => {
-  const eventBudget = eventBudgetFailureFrom(settled.result);
-  if (eventBudget !== undefined) {
-    return {
-      state: { ...state, terminal: eventBudget },
-      actions: [
-        ...(snapshot.pendingBranchKeys.length === 0 ? [] : [{ kind: 'discardPending' as const }]),
-        ...(state.terminal === undefined &&
-        state.decision === undefined &&
-        context.join.remaining === 'cancel' &&
-        snapshot.activeCount > 0
-          ? [{ kind: 'cancelActive' as const, nodeInstanceId: context.nodeInstanceId }]
-          : []),
-      ],
-    };
-  }
-  if (settled.disposition === 'discarded' || state.terminal !== undefined) {
-    // Map returns [] on discarded. Parallel still consults admissionActions because
-    // cancelActive is always paired with discardPending, so pending is empty here.
-    return { state, actions: admissionActions(context, snapshot, state) };
-  }
-  if (state.decision !== undefined) {
-    if (
-      context.join.remaining === 'drain' &&
-      settled.disposition === 'execute' &&
-      settled.result.kind === 'terminal'
-    ) {
-      return {
-        state: { ...state, terminal: settled.result.result },
-        actions:
-          snapshot.pendingBranchKeys.length === 0 ? [] : [{ kind: 'discardPending' as const }],
-      };
-    }
-    return { state, actions: admissionActions(context, snapshot, state) };
-  }
-  if (settled.result.kind === 'terminal') {
-    return {
-      state: { ...state, terminal: settled.result.result },
-      actions: [
-        ...(snapshot.pendingBranchKeys.length === 0 ? [] : [{ kind: 'discardPending' as const }]),
-        ...(context.join.remaining === 'cancel' && snapshot.activeCount > 0
-          ? [{ kind: 'cancelActive' as const, nodeInstanceId: context.nodeInstanceId }]
-          : []),
-      ],
-    };
-  }
-  const join = settleParallelBranch(context.join, context.branchKeys, state.join, settled.result);
-  if (join.decision === undefined) {
-    const next = { ...state, join };
-    return { state: next, actions: admissionActions(context, snapshot, next) };
-  }
   const decision = joinDecision(context, snapshot, join);
   const decided = { ...state, join, decision };
   return {
@@ -190,6 +190,39 @@ export const reduceParallelSettlement = (
         : admissionActions(context, snapshot, decided)),
     ],
   };
+};
+
+export const reduceParallelSettlement = (
+  context: ParallelSettlementContext,
+  snapshot: ParallelSettlementSnapshot,
+  state: ParallelSettlementState,
+  settled: SettledParallelBranch,
+): ParallelSettlementTransition => {
+  const eventBudget = eventBudgetFailureFrom(settled.result);
+  if (eventBudget !== undefined) {
+    return eventBudgetTransition(context, snapshot, state, eventBudget);
+  }
+  if (settled.disposition === 'discarded' || state.terminal !== undefined) {
+    // Map returns [] on discarded. Parallel still consults admissionActions because
+    // cancelActive is always paired with discardPending, so pending is empty here.
+    return { state, actions: admissionActions(context, snapshot, state) };
+  }
+  if (state.decision !== undefined) {
+    return context.join.remaining === 'drain' &&
+      settled.disposition === 'execute' &&
+      settled.result.kind === 'terminal'
+      ? drainOverrideTransition(snapshot, state, settled.result.result)
+      : { state, actions: admissionActions(context, snapshot, state) };
+  }
+  if (settled.result.kind === 'terminal') {
+    return preDecisionTerminalTransition(context, snapshot, state, settled.result.result);
+  }
+  const join = settleParallelBranch(context.join, context.branchKeys, state.join, settled.result);
+  if (join.decision === undefined) {
+    const next = { ...state, join };
+    return { state: next, actions: admissionActions(context, snapshot, next) };
+  }
+  return persistJoinTransition(context, snapshot, state, join);
 };
 
 // Map completion can still emit persistControlDecision. Parallel already persisted in reduce.
