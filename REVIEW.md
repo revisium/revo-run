@@ -1,7 +1,8 @@
 # Review Contract
 
 Reject compatibility code from the removed `0.1.x` runtime, undocumented public exports, and deep
-package entrypoints.
+package entrypoints. A packed isolated consumer must import only the root entrypoint. Do not ship
+source maps or declaration maps in the published tarball.
 
 DBOS workflow input, step output, workflow result, and streams are the durable execution source.
 Reject a second scheduler, progress store, or result store unless a missing DBOS capability is

@@ -30,8 +30,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Start test database
+        run: pnpm db:test:up
+
       - name: Verify release candidate
         run: pnpm verify
+
+      - name: Stop test database
+        if: ${{ always() }}
+        run: pnpm db:test:down
 
       - name: Create package artifact
         run: |

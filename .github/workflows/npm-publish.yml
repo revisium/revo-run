@@ -15,7 +15,7 @@ jobs:
     with:
       node_version: 24.11.1
       install_command: corepack enable && pnpm install --frozen-lockfile
-      pre_publish_commands: pnpm verify
+      pre_publish_commands: pnpm db:test:up && { pnpm verify; status=$?; pnpm db:test:down; exit $status; }
       npm_access: public
       publish_auth: token
       create_github_release: false

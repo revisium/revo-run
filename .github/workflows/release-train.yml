@@ -46,6 +46,6 @@ jobs:
       node_version: 24.11.1
       package_manager: pnpm
       install_command: pnpm install --frozen-lockfile
-      validate_command: pnpm verify
+      validate_command: pnpm db:test:up && { pnpm verify; status=$?; pnpm db:test:down; exit $status; }
     secrets:
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}

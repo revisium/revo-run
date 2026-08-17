@@ -50,39 +50,17 @@ import type {
 
 describe('root-only public API', () => {
   it('exports only the approved runtime values', () => {
-    expect(Object.keys(publicApi).sort()).toEqual([
-      'AgentExecutorBindingSchema',
-      'AnswerGateInputSchema',
-      'CancelRunInputSchema',
-      'CommandIdSchema',
-      'ConsensusVoteSchema',
-      'ExecutionBindingSchema',
-      'ExecutionPlanSchema',
-      'MapExecutionObservationSchema',
-      'ParallelJoinObservationSchema',
-      'ResolveUnknownOutcomeInputSchema',
-      'RunCommandReceiptSchema',
-      'RunErrorSchema',
-      'RunEventCursorSchema',
-      'RunEventPageInputSchema',
-      'RunEventPageSchema',
-      'RunEventSchema',
-      'RunEventSubscriptionInputSchema',
-      'RunExecutorReconciliationResultSchema',
-      'RunExecutorRequestSchema',
-      'RunExecutorResultSchema',
-      'RunIdSchema',
-      'RunManagerError',
-      'RunManagerErrorCodeSchema',
-      'RunResultSchema',
-      'RunStatusSchema',
-      'ScriptExecutorBindingSchema',
-      'SkippedMapItemSchema',
-      'SkippedParallelBranchSchema',
-      'StartRunInputSchema',
-      'StartRunResultSchema',
-      'createRunManager',
-    ]);
+    const expectedRoot: unknown = JSON.parse(
+      readFileSync(new URL('../../scripts/public-root-exports.json', import.meta.url), 'utf8'),
+    );
+    if (
+      !Array.isArray(expectedRoot) ||
+      !expectedRoot.every((entry): entry is string => typeof entry === 'string')
+    ) {
+      throw new Error('public-root-exports.json must be a string array.');
+    }
+    const compare = (left: string, right: string) => left.localeCompare(right);
+    expect(Object.keys(publicApi).sort(compare)).toEqual([...expectedRoot].sort(compare));
   });
 
   it('declares only the root package entrypoint', () => {
