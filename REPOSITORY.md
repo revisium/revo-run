@@ -22,4 +22,8 @@ read models live in `src/dbos`.
 - `src/dbos/steps`: checkpointed external effects;
 - `src/dbos/streams`: durable run events;
 - `src/dbos/read-model`: DBOS records mapped to public run views;
-- `test/support`: fixtures grouped by acceptance, executor, and process harness responsibility.
+- `test/support`: fixtures grouped by acceptance, executor, and process harness responsibility;
+- `test/package`: public-surface consumer tests; import only `src/index.ts`; run with `pnpm test:package`;
+- `examples/quick-start.ts`: tracked consumer example imported only as `@revisium/revo-run`;
+- `scripts/packed-consumer.ts`: isolated packed-surface assertions imported only as `@revisium/revo-run`;
+- `scripts/verify-package.mjs`: pack contents, publint, attw, and isolated tarball consumer.

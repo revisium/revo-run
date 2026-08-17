@@ -237,10 +237,13 @@ describe('DBOS test process fork boundary', () => {
 
   it('keeps direct test fork ownership behind the semantic helper boundary', () => {
     const repositoryRoot = resolve(import.meta.dirname, '../..');
-    const authorizedHelper = 'test/support/process/fork-test-dbos-process.ts';
+    const authorizedHelpers = new Set([
+      'test/support/process/fork-test-dbos-process.ts',
+      'test/package/support/package-fork-process.ts',
+    ]);
     const testModules = globSync('test/**/*.ts', { cwd: repositoryRoot });
     const unauthorizedAccesses = testModules.flatMap((path) =>
-      path === authorizedHelper
+      authorizedHelpers.has(path)
         ? []
         : directChildProcessForkAccesses(readFileSync(resolve(repositoryRoot, path), 'utf8')).map(
             (access) => ({ access, path }),
@@ -248,11 +251,11 @@ describe('DBOS test process fork boundary', () => {
     );
 
     expect(unauthorizedAccesses).toStrictEqual([]);
-    expect(
-      directChildProcessForkAccesses(
-        readFileSync(resolve(repositoryRoot, authorizedHelper), 'utf8'),
-      ),
-    ).toStrictEqual(['named import']);
+    for (const helper of authorizedHelpers) {
+      expect(
+        directChildProcessForkAccesses(readFileSync(resolve(repositoryRoot, helper), 'utf8')),
+      ).toStrictEqual(['named import']);
+    }
   });
 
   it.each([

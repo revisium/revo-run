@@ -28,11 +28,12 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": true,
+    "tag": "alpha"
   },
   "scripts": {
-    "clean": "rm -rf dist",
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist coverage",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && find dist -type d -exec chmod 755 {} + && find dist -type f -exec chmod 644 {} +",
     "db:test:down": "docker compose -f docker-compose-test.yml -p revo-run-test down --volumes",
     "db:test:up": "docker compose --env-file .env.test -f docker-compose-test.yml -p revo-run-test up -d --wait",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -41,8 +42,10 @@
     "format:check": "oxfmt --check .",
     "test": "dotenv -e .env.test -- vitest run",
     "test:cov": "dotenv -e .env.test -- vitest run --coverage",
+    "test:package": "dotenv -e .env.test -- vitest run test/package",
     "verify:shell": "bash -n scripts/*.sh test/scripts/*.sh && bash test/scripts/sonar-issues-local.test.sh",
-    "verify": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run test:cov && pnpm run verify:shell",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run test:cov && pnpm run verify:shell && pnpm run verify:package",
     "sonar:local": "bash scripts/sonar-local.sh",
     "sonar:issues:local": "bash scripts/sonar-issues-local.sh",
     "ci:local:sonar": "bash scripts/ci-local-sonar.sh",
@@ -53,6 +56,7 @@
     "typebox": "1.3.10"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
     "@babel/parser": "7.29.8",
     "@babel/types": "7.29.8",
     "@types/node": "24.13.3",
@@ -61,6 +65,7 @@
     "oxfmt": "0.58.0",
     "oxlint": "1.73.0",
     "oxlint-tsgolint": "0.24.0",
+    "publint": "0.3.21",
     "tsx": "4.23.5",
     "typescript": "7.0.2",
     "vitest": "4.1.10"

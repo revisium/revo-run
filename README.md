@@ -2,6 +2,11 @@
 
 Durable run orchestration for Revo.
 
+> [!IMPORTANT]
+> This package is under development. A `0.2.0-alpha.*` publication is an unstable
+> prerelease with no compatibility guarantee. Local pack and the npm `alpha` tag are
+> the supported install paths until a stable release exists.
+
 ## Current scope
 
 The package interprets an admitted `ExecutionPlan` as DBOS workflows. Supported node kinds:
@@ -125,3 +130,15 @@ const terminal = await manager.waitForTerminal(runId);
 
 Use `cancelRun` to cancel an active run and `resolveUnknownOutcome` when a task
 attempt is parked as `outcomeUnknown`.
+
+The tracked consumer example is `examples/quick-start.ts`. From this checkout:
+
+```bash
+corepack pnpm add "./$(corepack pnpm pack | tail -1)"
+```
+
+Or install the published prerelease:
+
+```bash
+corepack pnpm add @revisium/revo-run@alpha
+```

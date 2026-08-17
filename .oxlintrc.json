@@ -5,7 +5,16 @@
     "perf": "warn",
     "suspicious": "error"
   },
-  "ignorePatterns": [".revisium-actions/**", "coverage/**", "dist/**", "node_modules/**"],
+  "ignorePatterns": [
+    ".revisium-actions/**",
+    "coverage/**",
+    "dist/**",
+    "examples/quick-start.ts",
+    "node_modules/**",
+    "scripts/packed-consumer.ts",
+    "scripts/packed-surface-probe.mjs",
+    "scripts/verify-package.mjs"
+  ],
   "options": {
     "typeAware": true,
     "typeCheck": true
@@ -74,6 +83,34 @@
       "rules": {
         "vitest/no-disabled-tests": "off",
         "vitest/warn-todo": "off"
+      }
+    },
+    {
+      "files": ["test/package/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "src/(?!index\\.js$)",
+                "message": "Package quality tests may import only the public root."
+              },
+              {
+                "regex": "(?:^|/)(?:acceptance|dsl|fixtures|integration|unit)/",
+                "message": "Package quality tests must not depend on other test layers."
+              },
+              {
+                "regex": "^(?:\\.\\./)+support/",
+                "message": "Package quality tests must not depend on shared test support."
+              },
+              {
+                "regex": "(?:^|/)test/support/",
+                "message": "Package quality tests must not depend on shared test support."
+              }
+            ]
+          }
+        ]
       }
     }
   ],
