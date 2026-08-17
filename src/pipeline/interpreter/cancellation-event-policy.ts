@@ -1,5 +1,5 @@
-import type { ExecuteNodeEffect } from './interpreter-context.js';
 import type { PipelineEventSink } from './pipeline-event-sink.js';
+import type { ExecuteNodeEffect } from './task-execution-ports.js';
 
 /** Adds the public cancellation event at the task-effect boundary. */
 export const withCancellationEvent =

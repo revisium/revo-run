@@ -2,7 +2,6 @@ import { pipelineNodePath } from '../../contracts/pipeline/node-path.js';
 import type { PipelineNode } from '../../contracts/pipeline/pipeline-node.js';
 import { InputResolver } from '../data/input-resolver.js';
 import { createAuthoredNodeId, createSubpipelineScopeId } from '../identity/execution-identity.js';
-import type { ParallelBranchRunner } from '../parallel/parallel-branch-runner.js';
 import type { ConsensusNodeExecutor } from './consensus-node-executor.js';
 import type { DelayNodeExecutor } from './delay-node-executor.js';
 import type { HumanGateNodeExecutor } from './human-gate-node-executor.js';
@@ -10,14 +9,11 @@ import type { InlineScopeOwnershipRegistrar } from './inline-scope-ownership-reg
 import type { PipelineExecutionContext } from './interpreter-context.js';
 import type { MapNodeExecutor } from './map-node-executor.js';
 import { runtimePath } from './node-path.js';
+import type { ParallelNodeExecutor } from './parallel-node-executor.js';
 import { pipelineNodeEventIdentity, type PipelineEventSink } from './pipeline-event-sink.js';
 import type { PipelineFailureReporter } from './pipeline-failure-reporter.js';
 import type { FinishedNodeExecutionResult, NodeExecutionResult } from './pipeline-node-result.js';
-import {
-  authoredEndExecution,
-  continuedExecution,
-  terminalExecution,
-} from './pipeline-node-result.js';
+import { authoredEndExecution, continuedExecution } from './pipeline-node-result.js';
 import type { RepeatNodeExecutor } from './repeat-node-executor.js';
 import type { TaskNodeExecutor } from './task-node-executor.js';
 
@@ -27,7 +23,7 @@ export interface PipelineNodeDispatchPorts {
   readonly humanGates: HumanGateNodeExecutor;
   readonly maps: MapNodeExecutor;
   readonly repeats: RepeatNodeExecutor;
-  readonly parallel: ParallelBranchRunner;
+  readonly parallel: ParallelNodeExecutor;
   readonly consensus: ConsensusNodeExecutor;
   readonly failures: PipelineFailureReporter;
   readonly events: PipelineEventSink;
@@ -58,7 +54,7 @@ export class PipelineNodeDispatch {
       case 'subpipeline':
         return this.executeSubpipeline(node, context, nodePath);
       case 'parallel':
-        return this.executeParallel(node, context, nodePath);
+        return this.ports.parallel.execute(node, context, nodePath);
       case 'delay':
         return this.ports.delays.execute(node, context, nodePath);
       case 'humanGate':
@@ -212,29 +208,6 @@ export class PipelineNodeDispatch {
       runtimePath(context, nodePath),
       settlement.output,
     );
-  }
-
-  private async executeParallel(
-    node: Extract<PipelineNode, { readonly kind: 'parallel' }>,
-    context: PipelineExecutionContext,
-    nodePath: string,
-  ): Promise<NodeExecutionResult> {
-    const result = await this.ports.parallel.execute(node, context, nodePath);
-    if (result.kind === 'terminal') {
-      return terminalExecution(result.result);
-    }
-    for (const branch of result.eligibleResults) {
-      for (const [path, output] of branch.outputs) {
-        context.outputs.set(path, output);
-      }
-    }
-    if (result.outcome === 'failed') {
-      await this.ports.events.write({
-        type: 'parallel.joinFailed',
-        data: pipelineNodeEventIdentity(node, context, nodePath),
-      });
-    }
-    return continuedExecution(result.outcome, runtimePath(context, nodePath));
   }
 
   private async executeEnd(

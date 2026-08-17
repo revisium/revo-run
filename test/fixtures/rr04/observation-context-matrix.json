@@ -187,7 +187,7 @@
       },
       "evidence": [
         {
-          "file": "test/unit/rr04-public-contract.test.ts",
+          "file": "test/unit/run-manager-observation-input.test.ts",
           "anchor": "aborts a pending subscription next when its captured manager lifecycle stops"
         }
       ]
@@ -200,7 +200,7 @@
       },
       "evidence": [
         {
-          "file": "test/unit/rr04-public-contract.test.ts",
+          "file": "test/unit/run-manager-observation-input.test.ts",
           "anchor": "rejects a cursor owned by another run before subscribing to the stream"
         }
       ]
@@ -470,8 +470,8 @@
       "reason": "RR-04 adds read, subscribe, and wait operations only.",
       "evidence": [
         {
-          "file": "test/unit/rr04-public-contract.test.ts",
-          "anchor": "RR-04 public observation input contract"
+          "file": "test/unit/run-manager-observation-input.test.ts",
+          "anchor": "public observation input contract"
         }
       ]
     }

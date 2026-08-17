@@ -9,10 +9,12 @@ import { DelayCancellationEventAdmission } from './delay-cancellation-event-admi
 import { waitingGateFenceDirective } from './human-gate-resolutions.js';
 import type { RunCommandCoordinator } from './run-command-coordinator.js';
 import type { RunScopeAdmission } from './run-scope-admission.js';
+import type { RunScopeDirectives } from './run-scope-directives.js';
 import type { RunScopeRegistry } from './run-scope-registry.js';
 
 export interface RunCoordinatorInboxPorts {
   readonly scopes: RunScopeRegistry;
+  readonly directives: RunScopeDirectives;
   readonly commands: RunCommandCoordinator;
   readonly admissions: RunScopeAdmission;
   readonly consensus: ConsensusCoordination;
@@ -101,7 +103,7 @@ export const processCoordinatorInbox = async (
       return;
     case 'scopeSettled':
       ports.scopes.settle(message.workflowId);
-      await ports.scopes.acknowledgeSettlement(message.workflowId);
+      await ports.directives.acknowledgeSettlement(message.workflowId);
       return;
     case 'unknownOutcomeWaiting':
       ports.scopes.assertRegistered(message.workflowId);

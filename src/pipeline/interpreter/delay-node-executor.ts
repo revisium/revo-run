@@ -1,5 +1,6 @@
 import type { DelayNode } from '../../contracts/pipeline/pipeline-node.js';
-import type { PipelineExecutionContext, WaitForDelay } from './interpreter-context.js';
+import type { WaitForDelay } from './delay-execution-ports.js';
+import type { PipelineExecutionContext } from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
 import { pipelineNodeEventIdentity, type PipelineEventSink } from './pipeline-event-sink.js';
 import type { NodeExecutionResult } from './pipeline-node-result.js';

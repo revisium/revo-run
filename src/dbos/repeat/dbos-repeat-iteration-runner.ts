@@ -13,7 +13,7 @@ import type {
 } from '../../pipeline/repeat/repeat-iteration-runner.js';
 import { parseRepeatIterationResult } from '../../validation/repeat-iteration-result.validator.js';
 import { RunCoordinatorClient } from '../coordination/run-coordinator-client.js';
-import { scopeWorkflowId } from '../workflow-id.js';
+import { isScopeWorkflowId, scopeWorkflowId } from '../workflow-id.js';
 import type { RepeatIterationWorkflowProvider } from '../workflows/repeat-iteration-workflow-provider.js';
 
 export class DbosRepeatIterationRunner implements RepeatIterationRunner {
@@ -36,7 +36,7 @@ export class DbosRepeatIterationRunner implements RepeatIterationRunner {
       iterationOrdinal: input.ordinal,
     });
     const parentWorkflowId = DBOS.workflowID;
-    if (!parentWorkflowId?.startsWith('rr:scope:')) {
+    if (parentWorkflowId === undefined || !isScopeWorkflowId(parentWorkflowId)) {
       throw new Error('Repeat iteration parent has no workflow ID.');
     }
     const workflowId = scopeWorkflowId(scopeId);

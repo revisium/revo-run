@@ -1,14 +1,8 @@
 import Type from 'typebox';
 
 import type { DeepReadonly } from '../deep-readonly.js';
-import {
-  AttemptIdSchema,
-  ScopeParentWorkflowIdSchema,
-  ScopeWorkflowIdSchema,
-} from '../execution-identity.js';
-import { RunExecutorRequestSchema } from '../executor/run-executor.js';
+import { AttemptIdSchema } from '../execution-identity.js';
 import { NodeOutputSchema } from '../pipeline/node-output.js';
-import { RecoveryPolicySchema, RetryPolicySchema } from '../pipeline/task-policy.js';
 export { RunCommandDecisionSchema, type RunCommandDecision } from '../run/run-command-metadata.js';
 import {
   AnswerGateInputSchema,
@@ -17,7 +11,7 @@ import {
   ResolveUnknownOutcomeInputSchema,
   RunCommandReceiptSchema,
 } from '../run/run-command.js';
-import { IdentifierSchema, PositiveSafeIntegerSchema } from '../schema-primitives.js';
+import { IdentifierSchema } from '../schema-primitives.js';
 
 const CancelRunCommandSchema = Type.Object(
   { kind: Type.Literal('cancelRun'), input: CancelRunInputSchema },
@@ -85,32 +79,6 @@ export type CommandDispatchWorkflowResult = DeepReadonly<
   Type.Static<typeof CommandDispatchWorkflowResultSchema>
 >;
 
-export const ScopeReadySchema = Type.Object(
-  {
-    kind: Type.Literal('scopeReady'),
-    workflowId: ScopeWorkflowIdSchema,
-    parentWorkflowId: ScopeParentWorkflowIdSchema,
-  },
-  { additionalProperties: false },
-);
-
-export const ScopeBoundarySchema = Type.Object(
-  {
-    kind: Type.Literal('scopeBoundary'),
-    workflowId: ScopeWorkflowIdSchema,
-    boundaryId: Type.String({ minLength: 1 }),
-  },
-  { additionalProperties: false },
-);
-
-export const ScopeFinishSchema = Type.Object(
-  {
-    kind: Type.Literal('scopeFinish'),
-    workflowId: ScopeWorkflowIdSchema,
-  },
-  { additionalProperties: false },
-);
-
 export const ScopeDirectiveSchema = Type.Union([
   Type.Object({ kind: Type.Literal('continue') }, { additionalProperties: false }),
   Type.Object({ kind: Type.Literal('cancel') }, { additionalProperties: false }),
@@ -127,19 +95,6 @@ export const ScopeSettlementAcknowledgementSchema = Type.Object(
 export type ScopeSettlementAcknowledgement = DeepReadonly<
   Type.Static<typeof ScopeSettlementAcknowledgementSchema>
 >;
-
-export const UnknownOutcomeWaitingSchema = Type.Object(
-  {
-    kind: Type.Literal('unknownOutcomeWaiting'),
-    workflowId: ScopeWorkflowIdSchema,
-    request: RunExecutorRequestSchema,
-    attemptOrdinal: PositiveSafeIntegerSchema,
-    reconciliationRound: PositiveSafeIntegerSchema,
-    recovery: RecoveryPolicySchema,
-    retry: Type.Optional(RetryPolicySchema),
-  },
-  { additionalProperties: false },
-);
 
 export const UnknownResolutionDirectiveSchema = Type.Union([
   Type.Object(

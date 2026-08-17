@@ -1,19 +1,7 @@
-import { DBOS } from '@dbos-inc/dbos-sdk';
-
 import type { ScopeDirective } from '../../contracts/workflow/run-command-workflow.js';
-import type {
-  ScopeCancellationFence,
-  ScopeStartFenceReply,
-} from '../../contracts/workflow/run-coordinator-message.js';
+import type { ScopeCancellationFence } from '../../contracts/workflow/run-coordinator-message.js';
 import { createSubpipelineScopeId } from '../../pipeline/identity/execution-identity.js';
-import {
-  scopeAdmissionReplyTopic,
-  scopeDirectiveTopic,
-  scopeReplyTopic,
-  scopeSettlementTopic,
-} from '../dbos-names.js';
 import { scopeWorkflowId } from '../workflow-id.js';
-import { isActiveWorkflowStatus } from '../workflow-status.js';
 
 interface InlineScopeOwnershipClaim {
   readonly workflowId: string;
@@ -143,8 +131,23 @@ export class RunScopeRegistry {
   allSettled(rootWorkflowId: string): boolean {
     return (
       this.settled.has(rootWorkflowId) &&
-      [...this.parents.keys()].every((workflowId) => this.settled.has(workflowId))
+      this.registeredWorkflowIds().every((workflowId) => this.settled.has(workflowId))
     );
+  }
+
+  registeredWorkflowIds(): readonly string[] {
+    return [...this.parents.keys()];
+  }
+
+  acceptsDirective(workflowId: string): boolean {
+    this.assertRegistered(workflowId);
+    return (
+      this.ready.has(workflowId) && !this.finished.has(workflowId) && !this.settled.has(workflowId)
+    );
+  }
+
+  isSettled(workflowId: string): boolean {
+    return this.settled.has(workflowId);
   }
 
   cancellationFence(workflowId: string): ScopeCancellationFence | undefined {
@@ -169,44 +172,9 @@ export class RunScopeRegistry {
   }
 
   cancelAll(cause: ScopeCancellationFence): void {
-    for (const workflowId of this.parents.keys()) {
+    for (const workflowId of this.registeredWorkflowIds()) {
       this.cancellationFences.set(workflowId, cause);
     }
-  }
-
-  reply(workflowId: string, directive: ScopeDirective): Promise<void> {
-    return DBOS.send(workflowId, directive, scopeReplyTopic);
-  }
-
-  replyAdmission(parentWorkflowId: string, reply: ScopeStartFenceReply): Promise<void> {
-    return DBOS.send(parentWorkflowId, reply, scopeAdmissionReplyTopic(reply.workflowId));
-  }
-
-  acknowledgeSettlement(workflowId: string): Promise<void> {
-    return DBOS.send(workflowId, { kind: 'settled' }, scopeSettlementTopic);
-  }
-
-  async direct(workflowId: string, directive: ScopeDirective): Promise<void> {
-    this.assertRegistered(workflowId);
-    if (
-      this.ready.has(workflowId) &&
-      !this.finished.has(workflowId) &&
-      !this.settled.has(workflowId)
-    ) {
-      await DBOS.send(workflowId, directive, scopeDirectiveTopic);
-    }
-  }
-
-  async directAll(directive: ScopeDirective): Promise<void> {
-    await this.directNext([...this.parents.keys()], directive);
-  }
-
-  async directMany(workflowIds: readonly string[], directive: ScopeDirective): Promise<void> {
-    await this.directNext(workflowIds, directive);
-  }
-
-  async assertUnsettledActive(): Promise<void> {
-    await this.assertNextActive([...this.parents.keys()]);
   }
 
   private register(workflowId: string, parentWorkflowId: string, child: boolean): void {
@@ -265,31 +233,5 @@ export class RunScopeRegistry {
       cancelled.push(workflowId);
       this.cancelDescendants(workflowId, cancelled);
     }
-  }
-
-  private async directNext(
-    workflowIds: readonly string[],
-    directive: ScopeDirective,
-  ): Promise<void> {
-    const [workflowId, ...remaining] = workflowIds;
-    if (workflowId === undefined) {
-      return;
-    }
-    await this.direct(workflowId, directive);
-    await this.directNext(remaining, directive);
-  }
-
-  private async assertNextActive(workflowIds: readonly string[]): Promise<void> {
-    const [workflowId, ...remaining] = workflowIds;
-    if (workflowId === undefined) {
-      return;
-    }
-    if (!this.settled.has(workflowId)) {
-      const status = await DBOS.getWorkflowStatus(workflowId);
-      if (status === null || !isActiveWorkflowStatus(status.status)) {
-        throw new Error(`Run scope ${workflowId} terminated without settlement.`);
-      }
-    }
-    await this.assertNextActive(remaining);
   }
 }

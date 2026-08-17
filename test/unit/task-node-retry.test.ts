@@ -3,17 +3,17 @@ import { describe, expect, it } from 'vitest';
 import type { RunExecutorResult } from '../../src/contracts/executor/run-executor.js';
 import type { TaskNode } from '../../src/contracts/pipeline/pipeline-node.js';
 import { createAttemptId } from '../../src/pipeline/identity/execution-identity.js';
-import type {
-  ExecuteNodeEffect,
-  PipelineExecutionContext,
-  WaitForRetry,
-  WaitForUnknownOutcome,
-} from '../../src/pipeline/interpreter/interpreter-context.js';
+import type { PipelineExecutionContext } from '../../src/pipeline/interpreter/interpreter-context.js';
 import type {
   PipelineEventDraft,
   PipelineEventSink,
 } from '../../src/pipeline/interpreter/pipeline-event-sink.js';
+import type {
+  ExecuteNodeEffect,
+  WaitForRetry,
+} from '../../src/pipeline/interpreter/task-execution-ports.js';
 import { TaskNodeExecutor } from '../../src/pipeline/interpreter/task-node-executor.js';
+import type { WaitForUnknownOutcome } from '../../src/pipeline/interpreter/unknown-outcome-ports.js';
 import { taskExecutionPlan } from '../support/execution-plan.fixture.js';
 
 type AttemptResponse =

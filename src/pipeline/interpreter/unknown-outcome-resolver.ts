@@ -1,10 +1,11 @@
 import type { RunExecutorRequest } from '../../contracts/executor/run-executor.js';
 import type { TaskNode } from '../../contracts/pipeline/pipeline-node.js';
 import { createAttemptId } from '../identity/execution-identity.js';
-import type { PipelineExecutionContext, WaitForUnknownOutcome } from './interpreter-context.js';
+import type { PipelineExecutionContext } from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
 import type { NodeExecutionResult } from './pipeline-node-result.js';
 import { continuedExecution, terminalExecution } from './pipeline-node-result.js';
+import type { WaitForUnknownOutcome } from './unknown-outcome-ports.js';
 
 type RetryUnknownOutcome = (
   nextAttemptOrdinal: number,

@@ -13,11 +13,11 @@ read models live in `src/dbos`.
 ## Navigation
 
 - `src/manager`: consumer-facing lifecycle and run operations;
-- `src/pipeline/interpreter`: deterministic graph traversal and node semantics;
-- `src/pipeline/parallel`: DBOS-independent parallel join semantics and branch port;
+- `src/pipeline/interpreter`: deterministic graph traversal and node semantics; wait and effect ports live in dedicated `*-ports.ts` modules so DBOS adapters do not import executor classes;
+- `src/pipeline/parallel`: DBOS-independent parallel join and remaining-branch settlement semantics and branch port;
 - `src/pipeline/data`: input and output reference resolution;
 - `src/dbos/coordination`: durable run messages, event ordering, and total-execution admission;
-- `src/dbos/parallel`: child-workflow scheduling behind the pipeline branch port;
+- `src/dbos/parallel`: child-branch scheduling and settlement action interpretation behind the pipeline branch port;
 - `src/dbos/workflows`: durable workflow entrypoints;
 - `src/dbos/steps`: checkpointed external effects;
 - `src/dbos/streams`: durable run events;

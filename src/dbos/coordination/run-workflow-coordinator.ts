@@ -12,7 +12,7 @@ import {
   type RunEventBudgetFailure,
   RunEventBudgetExceededError,
 } from '../streams/run-event-stream.js';
-import { runWorkflowId } from '../workflow-id.js';
+import { runWorkflowId, scopeIdFromWorkflowId } from '../workflow-id.js';
 import { ConsensusCoordination } from './consensus-coordination.js';
 import { DelayCancellationEventAdmission } from './delay-cancellation-event-admission.js';
 import { durableOperationLoop } from './durable-operation-loop.js';
@@ -21,6 +21,8 @@ import { RunCommandCoordinator, type RunCommandContext } from './run-command-coo
 import { processCoordinatorInbox } from './run-coordinator-inbox.js';
 import { RunExecutionReservations } from './run-execution-reservations.js';
 import { RunScopeAdmission } from './run-scope-admission.js';
+import { RunScopeDirectives } from './run-scope-directives.js';
+import { assertUnsettledScopesActive } from './run-scope-liveness.js';
 import { RunScopeRegistry } from './run-scope-registry.js';
 import type { ScopeCancellationRegistry } from './scope-cancellation-registry.js';
 
@@ -31,6 +33,7 @@ interface RunExecutionHandle {
 
 export class RunWorkflowCoordinator {
   private readonly scopes = new RunScopeRegistry();
+  private readonly directives = new RunScopeDirectives(this.scopes);
   private readonly commands = new RunCommandCoordinator();
   private readonly admissions: RunScopeAdmission;
   private readonly reservations: RunExecutionReservations;
@@ -49,7 +52,7 @@ export class RunWorkflowCoordinator {
     private readonly cancellation: ScopeCancellationRegistry,
     private readonly providerCalls: ProviderCallRegistry,
   ) {
-    this.admissions = new RunScopeAdmission(runId, this.scopes, cancellation);
+    this.admissions = new RunScopeAdmission(runId, this.scopes, this.directives, cancellation);
     this.reservations = new RunExecutionReservations(maximumExecutions);
   }
 
@@ -80,6 +83,7 @@ export class RunWorkflowCoordinator {
     return processCoordinatorInbox(
       {
         scopes: this.scopes,
+        directives: this.directives,
         commands: this.commands,
         admissions: this.admissions,
         consensus: this.consensus,
@@ -126,7 +130,7 @@ export class RunWorkflowCoordinator {
       id: joinNodeInstanceId,
     });
     cancelled.forEach((workflowId) => this.cancellation.cancelScope(this.scopeId(workflowId)));
-    await this.scopes.directMany(cancelled, { kind: 'cancel' });
+    await this.directives.directMany(cancelled, { kind: 'cancel' });
     await this.commands.sendGateResolutionsForWorkflows(cancelled, (event) =>
       this.appendEvent(event),
     );
@@ -141,7 +145,7 @@ export class RunWorkflowCoordinator {
       this.scopes.finish(workflowId);
       this.rootCompletionFenced ||= workflowId === this.rootScopeWorkflowId;
     }
-    await this.scopes.reply(workflowId, directive);
+    await this.directives.reply(workflowId, directive);
   }
 
   private async reserveExecution(
@@ -168,7 +172,7 @@ export class RunWorkflowCoordinator {
         throw error;
       }
       this.eventBudgetFailure = error.outcome;
-      await this.scopes.directAll({ kind: 'fail' });
+      await this.directives.directAll({ kind: 'fail' });
       await this.commands.sendAllUnknownResolutions({ kind: 'fail' });
       await this.commands.sendAllGateResolutions('fail', (failEvent) =>
         this.appendEvent(failEvent),
@@ -200,7 +204,7 @@ export class RunWorkflowCoordinator {
       await this.process(parseRunCoordinatorMessage(message));
       return;
     }
-    await this.scopes.assertUnsettledActive();
+    await assertUnsettledScopesActive(this.scopes);
   }
 
   private async awaitSettlement(rootWorkflowId: string): Promise<void> {
@@ -216,7 +220,7 @@ export class RunWorkflowCoordinator {
     this.cancellationRequested = true;
     this.cancellationCommandId = commandId;
     this.scopes.cancelAll({ source: 'run', id: commandId });
-    await this.scopes.directAll({ kind: 'cancel' });
+    await this.directives.directAll({ kind: 'cancel' });
     await this.commands.sendAllUnknownResolutions({ kind: 'cancel' });
     await this.commands.sendAllGateResolutions('cancel', (event) => this.appendEvent(event));
     await this.consensus.sendAll('cancel', (event) => this.appendEvent(event));
@@ -225,7 +229,7 @@ export class RunWorkflowCoordinator {
   }
 
   private scopeId(workflowId: string): string {
-    return workflowId.slice('rr:scope:'.length);
+    return scopeIdFromWorkflowId(workflowId);
   }
 
   private scopeDirective(workflowId: string): ScopeDirective {
@@ -233,6 +237,6 @@ export class RunWorkflowCoordinator {
   }
 
   private replyScope(workflowId: string): Promise<void> {
-    return this.scopes.reply(workflowId, this.scopeDirective(workflowId));
+    return this.directives.reply(workflowId, this.scopeDirective(workflowId));
   }
 }

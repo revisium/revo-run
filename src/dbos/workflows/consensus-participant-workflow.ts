@@ -4,10 +4,8 @@ import {
   classifyNodeExecutionSettlement,
   type ParticipantEffectProvenance,
 } from '../../pipeline/consensus/classify-participant-settlement.js';
-import type {
-  ExecuteNodeEffect,
-  PipelineExecutionContext,
-} from '../../pipeline/interpreter/interpreter-context.js';
+import type { PipelineExecutionContext } from '../../pipeline/interpreter/interpreter-context.js';
+import type { ExecuteNodeEffect } from '../../pipeline/interpreter/task-execution-ports.js';
 import { parseConsensusParticipantWorkflowInput } from '../../validation/consensus-participant-workflow-input.validator.js';
 import { asConsensusVote } from '../../validation/consensus-vote.validator.js';
 import {

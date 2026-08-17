@@ -5,21 +5,21 @@ import type { ConsensusNode, TaskNode } from '../../contracts/pipeline/pipeline-
 import type { ConsensusParticipantWorkflowInput } from '../../contracts/workflow/consensus-participant-workflow-input.js';
 import type { ConsensusResolutionDirective } from '../../contracts/workflow/consensus-resolution.js';
 import type { ParticipantSettlement } from '../../contracts/workflow/participant-settlement.js';
+import type {
+  ConsensusParticipantInstance,
+  ConsensusParticipantRunner,
+  ConsensusWaitRequest,
+  WaitForConsensusResolution,
+} from '../../pipeline/consensus/consensus-participant-runner.js';
 import {
   createAuthoredNodeId,
   createConsensusParticipantScopeId,
   createNodeInstanceId,
 } from '../../pipeline/identity/execution-identity.js';
-import type {
-  ConsensusParticipantInstance,
-  ConsensusParticipantRunner,
-  ConsensusWaitRequest,
-  PipelineExecutionContext,
-  WaitForConsensusResolution,
-} from '../../pipeline/interpreter/interpreter-context.js';
+import type { PipelineExecutionContext } from '../../pipeline/interpreter/interpreter-context.js';
 import { parseParticipantSettlement } from '../../validation/participant-settlement.validator.js';
 import { RunCoordinatorClient } from '../coordination/run-coordinator-client.js';
-import { scopeWorkflowId } from '../workflow-id.js';
+import { isScopeWorkflowId, scopeWorkflowId } from '../workflow-id.js';
 import type { ConsensusParticipantWorkflowProvider } from '../workflows/consensus-participant-workflow-provider.js';
 
 interface ActiveParticipant {
@@ -155,7 +155,7 @@ export class DbosConsensusParticipantRunner implements ConsensusParticipantRunne
     instance: ConsensusParticipantInstance,
   ): Promise<WorkflowHandle<ParticipantSettlement>> {
     const parentWorkflowId = DBOS.workflowID;
-    if (!parentWorkflowId?.startsWith('rr:scope:')) {
+    if (parentWorkflowId === undefined || !isScopeWorkflowId(parentWorkflowId)) {
       throw new Error('Consensus parent has no workflow ID.');
     }
     const startFence = await this.coordinator.admitScope(instance.workflowId);

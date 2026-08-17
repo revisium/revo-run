@@ -186,13 +186,6 @@ export class DbosRunRuntime {
     }
 
     try {
-      const status = await DBOS.getWorkflowStatus(runWorkflowId(runId));
-      if (status === null) {
-        throw new Error('Run disappeared while loading details.');
-      }
-      if (status.workflowName !== runWorkflowName) {
-        return undefined;
-      }
       return await loadRunDetails(run);
     } catch {
       throw new RunManagerError('run_read_failed');

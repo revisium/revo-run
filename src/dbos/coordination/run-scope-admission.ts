@@ -3,6 +3,8 @@ import type {
   ScopeStartFenceReply,
 } from '../../contracts/workflow/run-coordinator-message.js';
 import type { RunEventBudgetFailure } from '../streams/run-event-stream.js';
+import { scopeIdFromWorkflowId } from '../workflow-id.js';
+import type { RunScopeDirectives } from './run-scope-directives.js';
 import type { RunScopeRegistry } from './run-scope-registry.js';
 import type { ScopeCancellationRegistry } from './scope-cancellation-registry.js';
 
@@ -17,6 +19,7 @@ export class RunScopeAdmission {
   constructor(
     private readonly runId: string,
     private readonly scopes: RunScopeRegistry,
+    private readonly directives: RunScopeDirectives,
     private readonly cancellation: ScopeCancellationRegistry,
   ) {}
 
@@ -32,7 +35,7 @@ export class RunScopeAdmission {
       admissionId,
     );
     const reply = this.startFence(message.workflowId, message.requestId, admissionId, fence);
-    await this.scopes.replyAdmission(message.parentWorkflowId, reply);
+    await this.directives.replyAdmission(message.parentWorkflowId, reply);
     if (reply.directive === 'startCancelled') {
       this.cancellation.cancelScope(this.scopeId(message.workflowId));
     }
@@ -79,6 +82,6 @@ export class RunScopeAdmission {
   }
 
   private scopeId(workflowId: string): string {
-    return workflowId.slice('rr:scope:'.length);
+    return scopeIdFromWorkflowId(workflowId);
   }
 }

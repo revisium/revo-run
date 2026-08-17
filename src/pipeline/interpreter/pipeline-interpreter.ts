@@ -9,20 +9,16 @@ import type {
   RepeatIterationRunner,
 } from '../repeat/repeat-iteration-runner.js';
 import { withCancellationEvent } from './cancellation-event-policy.js';
+import type { ConsensusExecutionPorts } from './consensus-execution-ports.js';
 import { ConsensusNodeExecutor } from './consensus-node-executor.js';
+import type { WaitForDelay } from './delay-execution-ports.js';
 import { DelayNodeExecutor } from './delay-node-executor.js';
 import { HumanGateNodeExecutor } from './human-gate-node-executor.js';
+import type { WaitForHumanGate } from './human-gate-ports.js';
 import type { InlineScopeOwnershipRegistrar } from './inline-scope-ownership-registrar.js';
-import type {
-  ConsensusExecutionPorts,
-  ExecuteNodeEffect,
-  PipelineExecutionContext,
-  WaitForDelay,
-  WaitForHumanGate,
-  WaitForRetry,
-  WaitForUnknownOutcome,
-} from './interpreter-context.js';
+import type { PipelineExecutionContext } from './interpreter-context.js';
 import { MapNodeExecutor } from './map-node-executor.js';
+import { ParallelNodeExecutor } from './parallel-node-executor.js';
 import type { PipelineEventSink } from './pipeline-event-sink.js';
 import { PipelineFailureReporter } from './pipeline-failure-reporter.js';
 import { PipelineNodeDispatch } from './pipeline-node-dispatch.js';
@@ -33,7 +29,9 @@ import {
   toMapItemScopeResult,
   toRepeatScopeResult,
 } from './scope-result-mapping.js';
+import type { ExecuteNodeEffect, WaitForRetry } from './task-execution-ports.js';
 import { TaskNodeExecutor } from './task-node-executor.js';
+import type { WaitForUnknownOutcome } from './unknown-outcome-ports.js';
 
 export interface PipelineInterpreterDependencies {
   readonly executeEffect: ExecuteNodeEffect;
@@ -78,7 +76,7 @@ export class PipelineInterpreter {
       humanGates: new HumanGateNodeExecutor(waitForHumanGate),
       maps: new MapNodeExecutor(mapItems, events),
       repeats: new RepeatNodeExecutor(repeatIterations, events),
-      parallel,
+      parallel: new ParallelNodeExecutor(parallel, events),
       consensus: new ConsensusNodeExecutor(consensus),
       failures: this.failures,
       events,

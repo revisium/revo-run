@@ -1,10 +1,7 @@
 import type { HumanGateNode } from '../../contracts/pipeline/pipeline-node.js';
 import { createAuthoredNodeId, createNodeInstanceId } from '../identity/execution-identity.js';
-import type {
-  HumanGateWaitRequest,
-  PipelineExecutionContext,
-  WaitForHumanGate,
-} from './interpreter-context.js';
+import type { HumanGateWaitRequest, WaitForHumanGate } from './human-gate-ports.js';
+import type { PipelineExecutionContext } from './interpreter-context.js';
 import { runtimePath } from './node-path.js';
 import type { NodeExecutionResult } from './pipeline-node-result.js';
 import { continuedExecution, terminalExecution } from './pipeline-node-result.js';

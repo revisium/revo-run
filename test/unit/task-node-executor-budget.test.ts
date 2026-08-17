@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { TaskNode } from '../../src/contracts/pipeline/pipeline-node.js';
+import type { PipelineExecutionContext } from '../../src/pipeline/interpreter/interpreter-context.js';
+import type { PipelineEventSink } from '../../src/pipeline/interpreter/pipeline-event-sink.js';
 import type {
   ExecuteNodeEffect,
-  PipelineExecutionContext,
   WaitForRetry,
-  WaitForUnknownOutcome,
-} from '../../src/pipeline/interpreter/interpreter-context.js';
-import type { PipelineEventSink } from '../../src/pipeline/interpreter/pipeline-event-sink.js';
+} from '../../src/pipeline/interpreter/task-execution-ports.js';
 import { TaskNodeExecutor } from '../../src/pipeline/interpreter/task-node-executor.js';
+import type { WaitForUnknownOutcome } from '../../src/pipeline/interpreter/unknown-outcome-ports.js';
 import { taskExecutionPlan } from '../support/execution-plan.fixture.js';
 
 describe('task node executor budget backstop', () => {

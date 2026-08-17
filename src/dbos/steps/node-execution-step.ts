@@ -1,6 +1,6 @@
 import type { RunExecutorRequest } from '../../contracts/executor/run-executor.js';
 import type { RecoveryPolicy } from '../../contracts/pipeline/task-policy.js';
-import type { ExecuteNodeEffect } from '../../pipeline/interpreter/interpreter-context.js';
+import type { ExecuteNodeEffect } from '../../pipeline/interpreter/task-execution-ports.js';
 import type { ScopeCancellationRegistry } from '../coordination/scope-cancellation-registry.js';
 import type {
   ProviderCallPermit,

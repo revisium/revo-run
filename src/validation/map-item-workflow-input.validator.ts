@@ -1,28 +1,21 @@
-import Schema from 'typebox/schema';
-
 import {
   MapItemWorkflowArgumentsSchema,
   MapItemWorkflowInputSchema,
   type MapItemWorkflowInput,
 } from '../contracts/workflow/map-item-workflow-input.js';
+import {
+  durableWorkflowInputValidator,
+  type DurableWorkflowInputValidator,
+} from './workflow-input-validator.js';
 
-const validator = Schema.Compile(MapItemWorkflowInputSchema);
-const argumentsValidator = Schema.Compile(MapItemWorkflowArgumentsSchema);
+const validator: DurableWorkflowInputValidator<MapItemWorkflowInput> =
+  durableWorkflowInputValidator(
+    MapItemWorkflowInputSchema,
+    MapItemWorkflowArgumentsSchema,
+    'Map item workflow input is invalid.',
+  );
 
-const invalidInput = (): Error => new Error('Map item workflow input is invalid.');
+export const parseMapItemWorkflowInput = (value: unknown): MapItemWorkflowInput =>
+  validator.parse(value);
 
-export const MapItemWorkflowArgumentsParser = {
-  parse(value: unknown): unknown {
-    if (!argumentsValidator.Check(value)) {
-      throw invalidInput();
-    }
-    return value;
-  },
-};
-
-export const parseMapItemWorkflowInput = (value: unknown): MapItemWorkflowInput => {
-  if (!validator.Check(value)) {
-    throw invalidInput();
-  }
-  return value;
-};
+export const MapItemWorkflowArgumentsParser = validator.argumentsParser;

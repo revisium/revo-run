@@ -1,28 +1,21 @@
-import Schema from 'typebox/schema';
-
 import {
   RepeatIterationWorkflowArgumentsSchema,
   RepeatIterationWorkflowInputSchema,
   type RepeatIterationWorkflowInput,
 } from '../contracts/workflow/repeat-iteration-workflow-input.js';
+import {
+  durableWorkflowInputValidator,
+  type DurableWorkflowInputValidator,
+} from './workflow-input-validator.js';
 
-const validator = Schema.Compile(RepeatIterationWorkflowInputSchema);
-const argumentsValidator = Schema.Compile(RepeatIterationWorkflowArgumentsSchema);
+const validator: DurableWorkflowInputValidator<RepeatIterationWorkflowInput> =
+  durableWorkflowInputValidator(
+    RepeatIterationWorkflowInputSchema,
+    RepeatIterationWorkflowArgumentsSchema,
+    'Repeat iteration workflow input is invalid.',
+  );
 
-const invalidInput = (): Error => new Error('Repeat iteration workflow input is invalid.');
+export const parseRepeatIterationWorkflowInput = (value: unknown): RepeatIterationWorkflowInput =>
+  validator.parse(value);
 
-export const parseRepeatIterationWorkflowInput = (value: unknown): RepeatIterationWorkflowInput => {
-  if (!validator.Check(value)) {
-    throw invalidInput();
-  }
-  return value;
-};
-
-export const RepeatIterationWorkflowArgumentsParser = {
-  parse(value: unknown): unknown {
-    if (!argumentsValidator.Check(value)) {
-      throw invalidInput();
-    }
-    return value;
-  },
-};
+export const RepeatIterationWorkflowArgumentsParser = validator.argumentsParser;
