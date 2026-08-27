@@ -30,7 +30,7 @@ export const isUtcTimestamp = (value: unknown): value is string => {
 };
 
 const timestamp = Type.Refine(
-  Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$' }),
+  Type.String({ pattern: String.raw`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$` }),
   isUtcTimestamp,
 );
 
@@ -286,12 +286,12 @@ const isRunEventCursor = (value: unknown): value is string => {
   if (typeof value !== 'string') {
     return false;
   }
-  const match = /^([A-Za-z][A-Za-z0-9._-]{0,127}):([1-9][0-9]*)$/.exec(value);
+  const match = /^([A-Za-z][A-Za-z0-9._-]{0,127}):([1-9]\d*)$/.exec(value);
   return match !== null && Number.isSafeInteger(Number(match[2]));
 };
 
 export const RunEventCursorSchema = Type.Refine(
-  Type.String({ pattern: '^[A-Za-z][A-Za-z0-9._-]{0,127}:[1-9][0-9]*$' }),
+  Type.String({ pattern: String.raw`^[A-Za-z][A-Za-z0-9._-]{0,127}:[1-9]\d*$` }),
   isRunEventCursor,
 );
 

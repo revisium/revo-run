@@ -23,7 +23,7 @@ import { Check } from 'typebox/value';
 import { isAgentInvocationResult } from '../composition/agent-invocation-result.js';
 import type { AgentInvocationResult } from '../composition/agent-port.js';
 import { unavailableAgentPort } from '../composition/agent-port.js';
-import { requireRunComposition } from '../composition/run-composition.js';
+import { requireRunComposition, type RunComposition } from '../composition/run-composition.js';
 import type { AdmittedRunSnapshotV1 } from '../contracts/admitted-run.js';
 import type { JsonValue } from '../contracts/json.js';
 import {
@@ -178,12 +178,7 @@ class RunJournal {
     const operation = this.operations.find(
       (candidate) => candidate.operationId === currentOperationId,
     );
-    if (
-      previous === undefined ||
-      previous.ordinal !== ordinal - 1 ||
-      activity === undefined ||
-      operation === undefined
-    ) {
+    if (previous?.ordinal !== ordinal - 1 || activity === undefined || operation === undefined) {
       throw new Error('Retry attempt has no contiguous operation history.');
     }
     const attempt: RunAttemptSnapshot = {
@@ -728,7 +723,7 @@ const canonicalJson = (value: unknown): string => {
   }
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) {
-      throw new Error('Operation observation event has a non-JSON number.');
+      throw new TypeError('Operation observation event has a non-JSON number.');
     }
     return JSON.stringify(value);
   }
@@ -737,11 +732,21 @@ const canonicalJson = (value: unknown): string => {
   }
   if (typeof value === 'object' && value !== null) {
     return `{${Object.entries(value)
-      .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .toSorted(([left], [right]) => compareCanonicalKeys(left, right))
       .map(([key, member]) => `${JSON.stringify(key)}:${canonicalJson(member)}`)
       .join(',')}}`;
   }
   throw new Error('Operation observation event has a non-JSON value.');
+};
+
+const compareCanonicalKeys = (left: string, right: string): number => {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
 };
 
 export const requireExactPipelineEvent = (actual: PipelineEvent, expected: PipelineEvent): void => {
@@ -1096,18 +1101,49 @@ const withoutHandledCancellation = (
   commands: readonly PipelineCommand[],
 ): readonly PipelineCommand[] => commands.filter((command) => command.kind !== 'cancelPending');
 
-export const runKernelWorkflow = async (
-  snapshot: AdmittedRunSnapshotV1,
-): Promise<KernelRunResult> => {
+interface KernelWorkflowContext {
+  readonly snapshot: AdmittedRunSnapshotV1;
+  readonly composition: RunComposition;
+  readonly journal: RunJournal;
+  readonly rootWorkflowId: string;
+  state: PipelineState;
+  readonly commands: PipelineCommand[];
+  readonly active: Map<string, HostedCommand>;
+  readonly recoveryOperations: Set<string>;
+  readonly receipts: Set<string>;
+  readonly deferredKernelEvents: PipelineEvent[];
+  recoveryPending: boolean;
+}
+
+type ObservationRelay = Extract<
+  RunCoordinatorMessage,
+  { readonly schemaVersion: 'operation-observation-relay/v1' }
+>;
+
+type ObservationDisposition = 'recovery' | 'retrying' | 'settled';
+
+interface ScriptCancellationContext {
+  readonly runtime: KernelWorkflowContext;
+  readonly command: Extract<HostedCommand, { readonly kind: 'dispatchActivity' }>;
+  readonly operation: string;
+  readonly input: ScriptAttemptInput;
+}
+
+const requireCompatibleSnapshot = (snapshot: AdmittedRunSnapshotV1): void => {
   if (
     snapshot.persistenceVersion !== 1 ||
     typeof snapshot.runId !== 'string' ||
     typeof snapshot.admission?.createdAt !== 'string' ||
-    typeof snapshot.admission.token !== 'string' ||
+    typeof snapshot.admission?.token !== 'string' ||
     snapshot.admission.token.length === 0
   ) {
     throw new Error('Run kernel rejected an incompatible admitted snapshot.');
   }
+};
+
+const initializeKernelContext = async (
+  snapshot: AdmittedRunSnapshotV1,
+): Promise<KernelWorkflowContext> => {
   const composition = requireRunComposition();
   await composition.fence.awaitOpen();
   const journal = new RunJournal(snapshot.runId, snapshot.admission.createdAt);
@@ -1115,521 +1151,717 @@ export const runKernelWorkflow = async (
   await journal.setStatus('running');
   await journal.emit({ type: 'run.started' });
   await journal.publishDetails();
-
-  let state = snapshot.initial.state;
-  let commands = [...snapshot.initial.commands];
-  const active = new Map<string, HostedCommand>();
-  const recoveryOperations = new Set<string>();
-  const receipts = new Set<string>();
-  const deferredKernelEvents: PipelineEvent[] = [];
-  let recoveryPending = false;
   const rootWorkflowId = DBOS.workflowID;
   if (rootWorkflowId === undefined) {
     throw new Error('Run kernel is outside of its root workflow.');
   }
+  return {
+    snapshot,
+    composition,
+    journal,
+    rootWorkflowId,
+    state: snapshot.initial.state,
+    commands: [...snapshot.initial.commands],
+    active: new Map(),
+    recoveryOperations: new Set(),
+    receipts: new Set(),
+    deferredKernelEvents: [],
+    recoveryPending: false,
+  };
+};
 
-  const requiresUnavailableAgentRecovery = (): boolean =>
-    composition.agents === unavailableAgentPort &&
-    snapshot.compilation.requirements.entries.some((requirement) => requirement.kind === 'agent');
+const unavailableAgentCommand = (
+  runtime: KernelWorkflowContext,
+): Extract<HostedCommand, { readonly kind: 'dispatchActivity' }> | undefined =>
+  runtime.commands.find(
+    (candidate): candidate is Extract<HostedCommand, { readonly kind: 'dispatchActivity' }> =>
+      candidate.kind === 'dispatchActivity' &&
+      runtime.snapshot.compilation.requirements.entries.some(
+        (requirement) =>
+          requirement.kind === 'agent' && requirement.key === candidate.requirementKey,
+      ),
+  );
 
-  if (requiresUnavailableAgentRecovery()) {
-    const command = commands.find(
-      (candidate): candidate is Extract<HostedCommand, { readonly kind: 'dispatchActivity' }> =>
-        candidate.kind === 'dispatchActivity' &&
-        snapshot.compilation.requirements.entries.some(
-          (requirement) =>
-            requirement.kind === 'agent' && requirement.key === candidate.requirementKey,
-        ),
+const recoverUnavailableAgent = async (
+  runtime: KernelWorkflowContext,
+): Promise<KernelRunResult | null> => {
+  const hasUnavailableAgent =
+    runtime.composition.agents === unavailableAgentPort &&
+    runtime.snapshot.compilation.requirements.entries.some(
+      (requirement) => requirement.kind === 'agent',
     );
-    if (command !== undefined) {
-      const operation = await stageOperation(snapshot, command, journal);
-      const recoveryAt = new Date(await DBOS.now()).toISOString();
-      journal.markRecovery(operation, attemptId(operation, 1), recoveryAt);
-      await journal.setStatus('recovery_required');
-      const recovery = journal.result().details.recovery.at(-1);
-      if (recovery === undefined) {
-        throw new Error('Unavailable agent recovery has no journal observation.');
+  if (!hasUnavailableAgent) {
+    return null;
+  }
+  const command = unavailableAgentCommand(runtime);
+  if (command === undefined) {
+    await runtime.journal.setStatus('recovery_required');
+    await runtime.journal.publishDetails();
+  } else {
+    const operation = await stageOperation(runtime.snapshot, command, runtime.journal);
+    const recoveryAt = new Date(await DBOS.now()).toISOString();
+    runtime.journal.markRecovery(operation, attemptId(operation, 1), recoveryAt);
+    await runtime.journal.setStatus('recovery_required');
+    const recovery = runtime.journal.result().details.recovery.at(-1);
+    if (recovery === undefined) {
+      throw new Error('Unavailable agent recovery has no journal observation.');
+    }
+    await runtime.journal.emit({ type: 'activity.recovery_required', recovery });
+    await runtime.journal.publishDetails();
+  }
+  await DBOS.closeStream(eventStream);
+  return runtime.journal.result();
+};
+
+const dispatchOperation = async (
+  runtime: KernelWorkflowContext,
+  command: HostedCommand,
+): Promise<void> => {
+  const operation = await stageOperation(runtime.snapshot, command, runtime.journal);
+  await DBOS.setEvent(
+    operationOutboxKey(operation),
+    outboxRecord(runtime.snapshot, operation, command),
+  );
+  runtime.active.set(operation, command);
+  await DBOS.startWorkflow(registeredRunOperationWorkflow, {
+    workflowID: operationWorkflowId(operation),
+  })({
+    schemaVersion: 'run-operation-workflow-input/v1',
+    runId: runtime.snapshot.runId,
+    operationId: operation,
+    rootWorkflowId: runtime.rootWorkflowId,
+  });
+};
+
+const sendGenericOperationCancellation = async (operation: string): Promise<void> => {
+  await DBOS.send(
+    operationWorkflowId(operation),
+    { schemaVersion: 'operation-interaction/v1', kind: 'cancel', actorId: 'run-manager' },
+    operationInteractionTopic,
+    `cancel:${operation}`,
+  );
+};
+
+const sendScriptTerminalObservation = async (
+  context: ScriptCancellationContext,
+  result: ScriptTerminalAttemptResult,
+): Promise<void> => {
+  const { command, input, operation, runtime } = context;
+  await requireMatchingTerminalEvent(result, input.attemptOrdinal);
+  const receipt = operationReceiptId(runtime.snapshot.runId, operation, input.attemptOrdinal);
+  await DBOS.send(
+    runtime.rootWorkflowId,
+    {
+      schemaVersion: 'operation-observation-relay/v1',
+      observationReceiptId: receipt,
+      runId: runtime.snapshot.runId,
+      operationId: operation,
+      commandKey: command.key,
+      attemptOrdinal: input.attemptOrdinal,
+      retrying: false,
+      event: deriveScriptTerminalPipelineEvent(command, result),
+      scriptResult: result,
+      agentResult: null,
+      preDispatchCancelled: false,
+    },
+    coordinatorTopic,
+    receipt,
+  );
+};
+
+const sendScriptPreDispatchCancellation = async (
+  context: ScriptCancellationContext,
+): Promise<void> => {
+  const { command, input, operation, runtime } = context;
+  const receipt = operationReceiptId(runtime.snapshot.runId, operation, input.attemptOrdinal);
+  await DBOS.send(
+    runtime.rootWorkflowId,
+    {
+      schemaVersion: 'operation-observation-relay/v1',
+      observationReceiptId: receipt,
+      runId: runtime.snapshot.runId,
+      operationId: operation,
+      commandKey: command.key,
+      attemptOrdinal: input.attemptOrdinal,
+      retrying: false,
+      event: { kind: 'activityCancelled', commandKey: command.key, ref: command.ref },
+      scriptResult: null,
+      agentResult: null,
+      preDispatchCancelled: true,
+    },
+    coordinatorTopic,
+    receipt,
+  );
+};
+
+const recordScriptCancellationRecovery = async (
+  context: ScriptCancellationContext,
+  reasonCode: 'outcome_unknown' | 'reconciliation_failed' = 'outcome_unknown',
+): Promise<void> => {
+  const { input, operation, runtime } = context;
+  runtime.journal.markRecovery(
+    operation,
+    input.attemptId,
+    new Date(await DBOS.now()).toISOString(),
+    reasonCode,
+  );
+  await runtime.journal.setStatus('recovery_required');
+  const recovery = runtime.journal.result().details.recovery.at(-1);
+  if (recovery === undefined) {
+    throw new Error('Script cancellation has no recovery observation.');
+  }
+  await runtime.journal.emit({ type: 'activity.recovery_required', recovery });
+  await runtime.journal.publishDetails();
+  runtime.recoveryOperations.add(operation);
+  runtime.recoveryPending = true;
+};
+
+const reconcileScriptCancellation = async (context: ScriptCancellationContext): Promise<void> => {
+  let reconciliation: ScriptReconciliationResult;
+  try {
+    reconciliation = await DBOS.runStep(
+      async (): Promise<ScriptReconciliationResult> => {
+        const raw = await context.runtime.composition.scripts.reconcileAttempt(context.input, {
+          signal: new AbortController().signal,
+        });
+        const validated = await ScriptReconciliationResultSchema.validate(raw);
+        if (!validated.ok) {
+          throw new Error('Script cancellation reconciliation is invalid.');
+        }
+        return raw;
+      },
+      { name: `script-cancel-reconcile:${context.input.attemptId}`, retriesAllowed: false },
+    );
+  } catch {
+    await recordScriptCancellationRecovery(context, 'reconciliation_failed');
+    return;
+  }
+  if (reconciliation.kind === 'terminal') {
+    await sendScriptTerminalObservation(context, reconciliation.result);
+    return;
+  }
+  await recordScriptCancellationRecovery(context);
+};
+
+const scriptCancellationResult = async (
+  context: ScriptCancellationContext,
+): Promise<AttemptCancellationResult> =>
+  DBOS.runStep(
+    async (): Promise<AttemptCancellationResult> => {
+      try {
+        const raw = await context.runtime.composition.scripts.cancelAttempt(
+          { executionId: context.input.executionId, attemptId: context.input.attemptId },
+          { signal: new AbortController().signal },
+        );
+        const validated = await AttemptCancellationResultSchema.validate(raw);
+        return validated.ok ? raw : { kind: 'unknown' };
+      } catch {
+        return { kind: 'unknown' };
       }
-      await journal.emit({ type: 'activity.recovery_required', recovery });
-      await journal.publishDetails();
-    } else {
-      await journal.setStatus('recovery_required');
-      await journal.publishDetails();
+    },
+    { name: `script-cancel:${context.input.attemptId}`, retriesAllowed: false },
+  );
+
+const applyScriptCancellationResult = async (
+  context: ScriptCancellationContext,
+  cancellation: AttemptCancellationResult,
+): Promise<void> => {
+  switch (cancellation.kind) {
+    case 'acknowledged':
+      await context.runtime.journal.emit({
+        type: 'run.cancellation_acknowledged',
+        operationId: context.operation,
+      });
+      await context.runtime.journal.publishDetails();
+      await reconcileScriptCancellation(context);
+      return;
+    case 'alreadyTerminal':
+      await sendScriptTerminalObservation(context, cancellation.result);
+      return;
+    case 'uncertain':
+      await reconcileScriptCancellation(context);
+      return;
+    case 'notFound':
+    case 'unknown':
+      // dispatch_won excludes a false pre-dispatch cancellation. notFound is
+      // not proof of no physical dispatch, so retain the same identity.
+      await recordScriptCancellationRecovery(context);
+      return;
+    default:
+      cancellation satisfies never;
+      throw new Error('Script cancellation has an unsupported result.');
+  }
+};
+
+const cancelScriptOperation = async (context: ScriptCancellationContext): Promise<void> => {
+  let arbitration;
+  try {
+    arbitration = await arbitrateAttemptDispatch(
+      attemptDispatchArbitrationCandidate(
+        context.input.executionId,
+        context.input.attemptId,
+        'cancel_won',
+      ),
+    );
+  } catch {
+    await recordScriptCancellationRecovery(context);
+    return;
+  }
+  if (arbitration.winner === 'cancel_won') {
+    await sendScriptPreDispatchCancellation(context);
+    return;
+  }
+  await applyScriptCancellationResult(context, await scriptCancellationResult(context));
+};
+
+const requestOperationCancellation = async (
+  runtime: KernelWorkflowContext,
+  command: HostedCommand,
+  operation: string,
+): Promise<void> => {
+  if (command.kind !== 'dispatchActivity') {
+    await sendGenericOperationCancellation(operation);
+    return;
+  }
+  const requirement = runtime.snapshot.compilation.requirements.entries.find(
+    (candidate) => candidate.key === command.requirementKey,
+  );
+  if (requirement?.kind !== 'script') {
+    await sendGenericOperationCancellation(operation);
+    return;
+  }
+  await cancelScriptOperation({
+    runtime,
+    command,
+    operation,
+    input: scriptAttemptInput(
+      runtime.snapshot,
+      command,
+      operation,
+      runtime.journal.activeAttemptOrdinal(operation),
+    ),
+  });
+};
+
+const cancelTargetOperations = async (
+  runtime: KernelWorkflowContext,
+  targets: readonly string[],
+): Promise<void> => {
+  for (const [operation, command] of runtime.active) {
+    if (targets.includes(command.key)) {
+      await requestOperationCancellation(runtime, command, operation);
+    }
+  }
+};
+
+const requestRunCancellation = async (
+  runtime: KernelWorkflowContext,
+  actorId: string,
+): Promise<void> => {
+  if (runtime.journal.result().snapshot.status === 'cancelling') {
+    return;
+  }
+  const requested = await requestCancellationTransition(
+    runtime.snapshot,
+    runtime.state,
+    runtime.journal,
+    actorId,
+  );
+  runtime.state = requested.state;
+  runtime.commands.unshift(...withoutHandledCancellation(requested.commands));
+  const targets = requested.commands.filter(
+    (command): command is Extract<PipelineCommand, { readonly kind: 'cancelPending' }> =>
+      command.kind === 'cancelPending',
+  );
+  for (const target of targets) {
+    await cancelTargetOperations(runtime, target.targets);
+  }
+};
+
+const drainCommands = async (runtime: KernelWorkflowContext): Promise<KernelRunResult | null> => {
+  while (runtime.commands.length > 0) {
+    const command = runtime.commands.shift();
+    if (command === undefined) {
+      return null;
+    }
+    if (runtime.recoveryPending) {
+      throw new Error('Recovery-required run attempted to dispatch a new kernel command.');
+    }
+    const terminal = terminalFor(command);
+    if (terminal !== undefined) {
+      if (runtime.active.size > 0) {
+        throw new Error('Pipeline emitted a terminal command while operations remain active.');
+      }
+      await runtime.journal.finish(terminal);
+      await runtime.journal.publishDetails();
+      await DBOS.closeStream(eventStream);
+      return runtime.journal.result();
+    }
+    if (command.kind === 'cancelPending') {
+      await cancelTargetOperations(runtime, command.targets);
+      continue;
+    }
+    if (!isHostedCommand(command)) {
+      throw new Error(`Pipeline command ${command.kind} cannot be hosted as an operation.`);
+    }
+    await dispatchOperation(runtime, command);
+  }
+  return null;
+};
+
+const handleLiveRelay = async (
+  runtime: KernelWorkflowContext,
+  message: ScriptEventRelayV1,
+): Promise<void> => {
+  if (runtime.receipts.has(message.eventReceiptId)) {
+    return;
+  }
+  if (runtime.recoveryOperations.has(message.operationId)) {
+    runtime.receipts.add(message.eventReceiptId);
+    return;
+  }
+  await drainLiveRelay(runtime.journal, runtime.snapshot.runId, runtime.active, message);
+  runtime.receipts.add(message.eventReceiptId);
+  await runtime.journal.publishDetails();
+};
+
+const handleRetryStartRelay = async (
+  runtime: KernelWorkflowContext,
+  message: OperationRetryStartRelayV1,
+): Promise<void> => {
+  if (runtime.receipts.has(message.retryReceiptId)) {
+    return;
+  }
+  await applyRetryStartRelay(runtime.journal, runtime.snapshot.runId, runtime.active, message);
+  runtime.receipts.add(message.retryReceiptId);
+};
+
+const handleRecoveryRelay = async (
+  runtime: KernelWorkflowContext,
+  message: OperationRecoveryRelayV1,
+): Promise<KernelRunResult | null> => {
+  if (runtime.receipts.has(message.observationReceiptId)) {
+    return null;
+  }
+  await applyRecoveryRelay(runtime.journal, runtime.snapshot.runId, runtime.active, message);
+  runtime.receipts.add(message.observationReceiptId);
+  runtime.active.delete(message.operationId);
+  runtime.recoveryPending = true;
+  if (runtime.active.size > 0) {
+    return null;
+  }
+  await DBOS.closeStream(eventStream);
+  return runtime.journal.result();
+};
+
+const validateObservationRelay = (
+  runtime: KernelWorkflowContext,
+  message: ObservationRelay,
+): HostedCommand | null => {
+  if (
+    message.runId !== runtime.snapshot.runId ||
+    message.observationReceiptId !==
+      operationReceiptId(runtime.snapshot.runId, message.operationId, message.attemptOrdinal ?? 1)
+  ) {
+    throw new Error('Operation observation relay has an invalid durable receipt.');
+  }
+  if (runtime.receipts.has(message.observationReceiptId)) {
+    return null;
+  }
+  const command = runtime.active.get(message.operationId);
+  if (command?.key !== message.commandKey) {
+    throw new Error('Operation observation relay has no matching active command.');
+  }
+  return command;
+};
+
+const requireActivityAttemptOrdinal = (message: ObservationRelay): number => {
+  if (
+    message.attemptOrdinal === null ||
+    !Number.isSafeInteger(message.attemptOrdinal) ||
+    message.attemptOrdinal < 1
+  ) {
+    throw new Error('Activity observation did not include its attempt ordinal.');
+  }
+  return message.attemptOrdinal;
+};
+
+const applyPreDispatchObservation = async (
+  runtime: KernelWorkflowContext,
+  message: ObservationRelay,
+  command: Extract<HostedCommand, { readonly kind: 'dispatchActivity' }>,
+  ordinal: number,
+): Promise<ObservationDisposition> => {
+  if (
+    message.scriptResult !== null ||
+    message.agentResult !== null ||
+    message.retrying ||
+    message.event.kind !== 'activityCancelled'
+  ) {
+    throw new Error('Pre-dispatch script cancellation has an invalid executor result.');
+  }
+  requireExactPipelineEvent(message.event, {
+    kind: 'activityCancelled',
+    commandKey: command.key,
+    ref: command.ref,
+  });
+  await applyScriptPreDispatchCancellation(runtime.journal, message.operationId, ordinal);
+  return 'settled';
+};
+
+const applyScriptRelayObservation = async (
+  runtime: KernelWorkflowContext,
+  message: ObservationRelay,
+  command: Extract<HostedCommand, { readonly kind: 'dispatchActivity' }>,
+  ordinal: number,
+): Promise<ObservationDisposition> => {
+  if (message.preDispatchCancelled) {
+    return await applyPreDispatchObservation(runtime, message, command, ordinal);
+  }
+  if (message.scriptResult === null || message.agentResult !== null) {
+    throw new Error('Script observation did not include only its script result.');
+  }
+  const validation = await ScriptAttemptResultSchema.validate(message.scriptResult);
+  if (!validation.ok || message.scriptResult.kind === 'uncertain') {
+    throw new Error('Script observation does not contain a valid terminal result.');
+  }
+  await requireMatchingTerminalEvent(message.scriptResult, ordinal);
+  requireExactPipelineEvent(
+    message.event,
+    deriveScriptTerminalPipelineEvent(command, message.scriptResult),
+  );
+  if (message.retrying) {
+    if (message.scriptResult.kind !== 'failed' && message.scriptResult.kind !== 'timedOut') {
+      throw new Error('Only a terminal script failure may request a retry.');
+    }
+    await applyScriptObservation(
+      runtime.journal,
+      message.operationId,
+      ordinal,
+      message.scriptResult,
+      true,
+    );
+    return 'retrying';
+  }
+  const disposition = await applyScriptObservation(
+    runtime.journal,
+    message.operationId,
+    ordinal,
+    message.scriptResult,
+  );
+  if (disposition === 'uncertain') {
+    return 'recovery';
+  }
+  runtime.recoveryOperations.delete(message.operationId);
+  if (runtime.recoveryOperations.size === 0) {
+    runtime.recoveryPending = false;
+  }
+  return 'settled';
+};
+
+const applyAgentRelayObservation = async (
+  runtime: KernelWorkflowContext,
+  message: ObservationRelay,
+  command: Extract<HostedCommand, { readonly kind: 'dispatchActivity' }>,
+  ordinal: number,
+  bindingKey: string,
+): Promise<ObservationDisposition> => {
+  if (
+    message.scriptResult !== null ||
+    message.agentResult === null ||
+    message.retrying ||
+    message.preDispatchCancelled
+  ) {
+    throw new Error('Agent observation has an invalid executor result.');
+  }
+  const binding = runtime.snapshot.bindings.agents?.[bindingKey];
+  if (
+    !isAgentInvocationResult(message.agentResult) ||
+    binding === undefined ||
+    message.agentResult.invocationId !== attemptId(message.operationId, ordinal) ||
+    message.agentResult.pin.agentId !== binding.pin.agentId ||
+    message.agentResult.pin.agentVersion !== binding.pin.agentVersion ||
+    message.agentResult.pin.definitionDigest !== binding.pin.definitionDigest
+  ) {
+    throw new Error('Agent observation does not contain its admitted terminal result.');
+  }
+  requireExactPipelineEvent(
+    message.event,
+    deriveAgentTerminalPipelineEvent(command, message.agentResult),
+  );
+  await applyAgentObservation(
+    runtime.journal,
+    message.operationId,
+    attemptId(message.operationId, ordinal),
+    message.agentResult,
+  );
+  return 'settled';
+};
+
+const applyActivityRelayObservation = async (
+  runtime: KernelWorkflowContext,
+  message: ObservationRelay,
+  command: Extract<HostedCommand, { readonly kind: 'dispatchActivity' }>,
+): Promise<ObservationDisposition> => {
+  const ordinal = requireActivityAttemptOrdinal(message);
+  const requirement = runtime.snapshot.compilation.requirements.entries.find(
+    (candidate) => candidate.key === command.requirementKey,
+  );
+  if (requirement?.kind === 'script') {
+    return await applyScriptRelayObservation(runtime, message, command, ordinal);
+  }
+  if (requirement?.kind === 'agent') {
+    return await applyAgentRelayObservation(
+      runtime,
+      message,
+      command,
+      ordinal,
+      requirement.bindingKey,
+    );
+  }
+  throw new Error('Activity observation has no admitted requirement.');
+};
+
+const applyNonActivityRelayObservation = async (
+  runtime: KernelWorkflowContext,
+  message: ObservationRelay,
+  command: Exclude<HostedCommand, { readonly kind: 'dispatchActivity' }>,
+): Promise<ObservationDisposition> => {
+  if (
+    message.scriptResult !== null ||
+    message.agentResult !== null ||
+    message.preDispatchCancelled
+  ) {
+    throw new Error('Non-activity operation included an executor result.');
+  }
+  if (message.attemptOrdinal !== null) {
+    throw new Error('Non-script operation included a script attempt ordinal.');
+  }
+  if (message.retrying) {
+    throw new Error('Non-script operation requested a script retry.');
+  }
+  await applyInteractionObservation(
+    runtime.journal,
+    runtime.snapshot.runId,
+    command,
+    message.event,
+  );
+  return 'settled';
+};
+
+const advanceSettledObservation = async (
+  runtime: KernelWorkflowContext,
+  event: PipelineEvent,
+): Promise<KernelRunResult | null> => {
+  if (runtime.recoveryPending) {
+    // A sibling may seal while another external attempt is uncertain. Its
+    // observation is durable, but advancing around the unknown result would
+    // fabricate ordering. Preserve inbox order until recovery resolves.
+    runtime.deferredKernelEvents.push(event);
+    if (runtime.active.size > 0) {
+      return null;
     }
     await DBOS.closeStream(eventStream);
-    return journal.result();
+    return runtime.journal.result();
   }
+  const events = [...runtime.deferredKernelEvents, event];
+  runtime.deferredKernelEvents.length = 0;
+  for (const pending of events) {
+    const transition = await advance(runtime.snapshot, runtime.state, pending);
+    runtime.state = transition.state;
+    runtime.commands.push(...transition.commands);
+  }
+  return null;
+};
 
-  const dispatch = async (command: HostedCommand): Promise<void> => {
-    const operation = await stageOperation(snapshot, command, journal);
-    const record = outboxRecord(snapshot, operation, command);
-    await DBOS.setEvent(operationOutboxKey(operation), record);
-    active.set(operation, command);
-    await DBOS.startWorkflow(registeredRunOperationWorkflow, {
-      workflowID: operationWorkflowId(operation),
-    })({
-      schemaVersion: 'run-operation-workflow-input/v1',
-      runId: snapshot.runId,
-      operationId: operation,
-      rootWorkflowId,
-    });
-  };
-
-  const requestOperationCancellation = async (command: HostedCommand, operation: string) => {
-    if (command.kind === 'dispatchActivity') {
-      const requirement = snapshot.compilation.requirements.entries.find(
-        (candidate) => candidate.key === command.requirementKey,
-      );
-      if (requirement?.kind !== 'script') {
-        await DBOS.send(
-          operationWorkflowId(operation),
-          {
-            schemaVersion: 'operation-interaction/v1',
-            kind: 'cancel',
-            actorId: 'run-manager',
-          },
-          operationInteractionTopic,
-          `cancel:${operation}`,
-        );
-        return;
-      }
-      const input = scriptAttemptInput(
-        snapshot,
-        command,
-        operation,
-        journal.activeAttemptOrdinal(operation),
-      );
-      const sendTerminalObservation = async (
-        result: ScriptTerminalAttemptResult,
-      ): Promise<void> => {
-        await requireMatchingTerminalEvent(result, input.attemptOrdinal);
-        await DBOS.send(
-          rootWorkflowId,
-          {
-            schemaVersion: 'operation-observation-relay/v1',
-            observationReceiptId: operationReceiptId(
-              snapshot.runId,
-              operation,
-              input.attemptOrdinal,
-            ),
-            runId: snapshot.runId,
-            operationId: operation,
-            commandKey: command.key,
-            attemptOrdinal: input.attemptOrdinal,
-            retrying: false,
-            event: deriveScriptTerminalPipelineEvent(command, result),
-            scriptResult: result,
-            agentResult: null,
-            preDispatchCancelled: false,
-          },
-          coordinatorTopic,
-          operationReceiptId(snapshot.runId, operation, input.attemptOrdinal),
-        );
-      };
-      const sendPreDispatchCancellation = async (): Promise<void> => {
-        await DBOS.send(
-          rootWorkflowId,
-          {
-            schemaVersion: 'operation-observation-relay/v1',
-            observationReceiptId: operationReceiptId(
-              snapshot.runId,
-              operation,
-              input.attemptOrdinal,
-            ),
-            runId: snapshot.runId,
-            operationId: operation,
-            commandKey: command.key,
-            attemptOrdinal: input.attemptOrdinal,
-            retrying: false,
-            event: { kind: 'activityCancelled', commandKey: command.key, ref: command.ref },
-            scriptResult: null,
-            agentResult: null,
-            preDispatchCancelled: true,
-          },
-          coordinatorTopic,
-          operationReceiptId(snapshot.runId, operation, input.attemptOrdinal),
-        );
-      };
-      const recordRecovery = async (
-        reasonCode: 'outcome_unknown' | 'reconciliation_failed' = 'outcome_unknown',
-      ): Promise<void> => {
-        const since = new Date(await DBOS.now()).toISOString();
-        journal.markRecovery(operation, input.attemptId, since, reasonCode);
-        await journal.setStatus('recovery_required');
-        const recovery = journal.result().details.recovery.at(-1);
-        if (recovery === undefined) {
-          throw new Error('Script cancellation has no recovery observation.');
-        }
-        await journal.emit({ type: 'activity.recovery_required', recovery });
-        await journal.publishDetails();
-        recoveryOperations.add(operation);
-        recoveryPending = true;
-      };
-      let arbitration;
-      try {
-        arbitration = await arbitrateAttemptDispatch(
-          attemptDispatchArbitrationCandidate(input.executionId, input.attemptId, 'cancel_won'),
-        );
-      } catch {
-        await recordRecovery();
-        return;
-      }
-      if (arbitration.winner === 'cancel_won') {
-        await sendPreDispatchCancellation();
-        return;
-      }
-      const cancellation = await DBOS.runStep(
-        async (): Promise<AttemptCancellationResult> => {
-          try {
-            const raw = await composition.scripts.cancelAttempt(
-              { executionId: input.executionId, attemptId: input.attemptId },
-              { signal: new AbortController().signal },
-            );
-            const validated = await AttemptCancellationResultSchema.validate(raw);
-            return validated.ok ? raw : { kind: 'unknown' };
-          } catch {
-            return { kind: 'unknown' };
-          }
-        },
-        { name: `script-cancel:${input.attemptId}`, retriesAllowed: false },
-      );
-      const reconcileCancellation = async (): Promise<void> => {
-        let reconciliation: ScriptReconciliationResult;
-        try {
-          reconciliation = await DBOS.runStep(
-            async (): Promise<ScriptReconciliationResult> => {
-              const raw = await composition.scripts.reconcileAttempt(input, {
-                signal: new AbortController().signal,
-              });
-              const validated = await ScriptReconciliationResultSchema.validate(raw);
-              if (!validated.ok) {
-                throw new Error('Script cancellation reconciliation is invalid.');
-              }
-              return raw;
-            },
-            { name: `script-cancel-reconcile:${input.attemptId}`, retriesAllowed: false },
-          );
-        } catch {
-          await recordRecovery('reconciliation_failed');
-          return;
-        }
-        if (reconciliation.kind === 'terminal') {
-          await sendTerminalObservation(reconciliation.result);
-          return;
-        }
-        await recordRecovery();
-      };
-      switch (cancellation.kind) {
-        case 'acknowledged':
-          await journal.emit({ type: 'run.cancellation_acknowledged', operationId: operation });
-          await journal.publishDetails();
-          await reconcileCancellation();
-          return;
-        case 'alreadyTerminal':
-          await sendTerminalObservation(cancellation.result);
-          return;
-        case 'uncertain': {
-          await reconcileCancellation();
-          return;
-        }
-        case 'notFound':
-          // dispatch_won excludes a false pre-dispatch cancellation. notFound
-          // is not proof of no physical dispatch, so retain same identity for
-          // recovery without a terminal or kernel event.
-          await recordRecovery();
-          return;
-        case 'unknown':
-          await recordRecovery();
-          return;
-        default:
-          cancellation satisfies never;
-          throw new Error('Script cancellation has an unsupported result.');
-      }
+const finalizeObservation = async (
+  runtime: KernelWorkflowContext,
+  message: ObservationRelay,
+  disposition: ObservationDisposition,
+): Promise<KernelRunResult | null> => {
+  runtime.receipts.add(message.observationReceiptId);
+  if (disposition === 'retrying') {
+    await runtime.journal.publishDetails();
+    return null;
+  }
+  runtime.active.delete(message.operationId);
+  if (disposition === 'recovery') {
+    runtime.recoveryPending = true;
+    if (runtime.active.size > 0) {
+      return null;
     }
-    await DBOS.send(
-      operationWorkflowId(operation),
-      {
-        schemaVersion: 'operation-interaction/v1',
-        kind: 'cancel',
-        actorId: 'run-manager',
-      },
-      operationInteractionTopic,
-      `cancel:${operation}`,
-    );
-  };
+    await DBOS.closeStream(eventStream);
+    return runtime.journal.result();
+  }
+  return await advanceSettledObservation(runtime, message.event);
+};
 
-  const requestCancellation = async (actorId: string): Promise<void> => {
-    if (journal.result().snapshot.status === 'cancelling') {
-      return;
-    }
-    const requested = await requestCancellationTransition(snapshot, state, journal, actorId);
-    state = requested.state;
-    commands = [...withoutHandledCancellation(requested.commands), ...commands];
-    for (const target of requested.commands.filter(
-      (command): command is Extract<PipelineCommand, { readonly kind: 'cancelPending' }> =>
-        command.kind === 'cancelPending',
-    )) {
-      for (const [operation, activeCommand] of active) {
-        if (target.targets.includes(activeCommand.key)) {
-          await requestOperationCancellation(activeCommand, operation);
-        }
-      }
-    }
-  };
+const handleObservationRelay = async (
+  runtime: KernelWorkflowContext,
+  message: ObservationRelay,
+): Promise<KernelRunResult | null> => {
+  const command = validateObservationRelay(runtime, message);
+  if (command === null) {
+    return null;
+  }
+  const disposition =
+    command.kind === 'dispatchActivity'
+      ? await applyActivityRelayObservation(runtime, message, command)
+      : await applyNonActivityRelayObservation(runtime, message, command);
+  return await finalizeObservation(runtime, message, disposition);
+};
 
+const handleCoordinatorMessage = async (
+  runtime: KernelWorkflowContext,
+  message: RunCoordinatorMessage,
+): Promise<KernelRunResult | null> => {
+  if (message.schemaVersion === 'run-cancellation-request/v1') {
+    if (typeof message.actorId !== 'string' || message.actorId.length === 0) {
+      throw new Error('Run cancellation request has an invalid durable shape.');
+    }
+    await requestRunCancellation(runtime, message.actorId);
+    return null;
+  }
+  if (message.schemaVersion === 'script-event-relay/v1') {
+    await handleLiveRelay(runtime, message);
+    return null;
+  }
+  if (message.schemaVersion === 'operation-retry-start-relay/v1') {
+    await handleRetryStartRelay(runtime, message);
+    return null;
+  }
+  if (message.schemaVersion === 'operation-recovery-relay/v1') {
+    return await handleRecoveryRelay(runtime, message);
+  }
+  if (message.schemaVersion === 'operation-observation-relay/v1') {
+    return await handleObservationRelay(runtime, message);
+  }
+  throw new Error('Coordinator inbox received an unrecognized message.');
+};
+
+const runCoordinator = async (runtime: KernelWorkflowContext): Promise<KernelRunResult> => {
   while (true) {
-    while (commands.length > 0) {
-      const command = commands.shift();
-      if (command === undefined) {
-        break;
-      }
-      if (recoveryPending) {
-        throw new Error('Recovery-required run attempted to dispatch a new kernel command.');
-      }
-      const terminal = terminalFor(command);
-      if (terminal !== undefined) {
-        if (active.size > 0) {
-          throw new Error('Pipeline emitted a terminal command while operations remain active.');
-        }
-        await journal.finish(terminal);
-        await journal.publishDetails();
-        await DBOS.closeStream(eventStream);
-        return journal.result();
-      }
-      if (command.kind === 'cancelPending') {
-        for (const [operation, activeCommand] of active) {
-          if (command.targets.includes(activeCommand.key)) {
-            await requestOperationCancellation(activeCommand, operation);
-          }
-        }
-        continue;
-      }
-      if (!isHostedCommand(command)) {
-        throw new Error(`Pipeline command ${command.kind} cannot be hosted as an operation.`);
-      }
-      await dispatch(command);
+    const terminal = await drainCommands(runtime);
+    if (terminal !== null) {
+      return terminal;
     }
-
     const message = await DBOS.recv<RunCoordinatorMessage>(coordinatorTopic);
     if (message === null) {
       throw new Error('Coordinator inbox unexpectedly returned no message.');
     }
-    if (message.schemaVersion === 'run-cancellation-request/v1') {
-      if (typeof message.actorId !== 'string' || message.actorId.length === 0) {
-        throw new Error('Run cancellation request has an invalid durable shape.');
-      }
-      await requestCancellation(message.actorId);
-      continue;
-    }
-    if (message.schemaVersion === 'script-event-relay/v1') {
-      if (receipts.has(message.eventReceiptId)) {
-        continue;
-      }
-      if (recoveryOperations.has(message.operationId)) {
-        receipts.add(message.eventReceiptId);
-        continue;
-      }
-      await drainLiveRelay(journal, snapshot.runId, active, message);
-      receipts.add(message.eventReceiptId);
-      await journal.publishDetails();
-      continue;
-    }
-    if (message.schemaVersion === 'operation-retry-start-relay/v1') {
-      if (receipts.has(message.retryReceiptId)) {
-        continue;
-      }
-      await applyRetryStartRelay(journal, snapshot.runId, active, message);
-      receipts.add(message.retryReceiptId);
-      continue;
-    }
-    if (message.schemaVersion === 'operation-recovery-relay/v1') {
-      if (receipts.has(message.observationReceiptId)) {
-        continue;
-      }
-      await applyRecoveryRelay(journal, snapshot.runId, active, message);
-      receipts.add(message.observationReceiptId);
-      active.delete(message.operationId);
-      recoveryPending = true;
-      if (active.size === 0) {
-        await DBOS.closeStream(eventStream);
-        return journal.result();
-      }
-      continue;
-    }
-    if (message.schemaVersion !== 'operation-observation-relay/v1') {
-      throw new Error('Coordinator inbox received an unrecognized message.');
-    }
-    if (
-      message.runId !== snapshot.runId ||
-      message.observationReceiptId !==
-        operationReceiptId(snapshot.runId, message.operationId, message.attemptOrdinal ?? 1)
-    ) {
-      throw new Error('Operation observation relay has an invalid durable receipt.');
-    }
-    if (receipts.has(message.observationReceiptId)) {
-      continue;
-    }
-    const command = active.get(message.operationId);
-    if (command === undefined || command.key !== message.commandKey) {
-      throw new Error('Operation observation relay has no matching active command.');
-    }
-    if (command.kind === 'dispatchActivity') {
-      if (
-        message.attemptOrdinal === null ||
-        !Number.isSafeInteger(message.attemptOrdinal) ||
-        message.attemptOrdinal < 1
-      ) {
-        throw new Error('Activity observation did not include its attempt ordinal.');
-      }
-      const requirement = snapshot.compilation.requirements.entries.find(
-        (candidate) => candidate.key === command.requirementKey,
-      );
-      if (requirement?.kind === 'script') {
-        if (message.preDispatchCancelled) {
-          if (
-            message.scriptResult !== null ||
-            message.agentResult !== null ||
-            message.retrying ||
-            message.event.kind !== 'activityCancelled'
-          ) {
-            throw new Error('Pre-dispatch script cancellation has an invalid executor result.');
-          }
-          requireExactPipelineEvent(message.event, {
-            kind: 'activityCancelled',
-            commandKey: command.key,
-            ref: command.ref,
-          });
-          await applyScriptPreDispatchCancellation(
-            journal,
-            message.operationId,
-            message.attemptOrdinal,
-          );
-        } else {
-          if (message.scriptResult === null || message.agentResult !== null) {
-            throw new Error('Script observation did not include only its script result.');
-          }
-          const validation = await ScriptAttemptResultSchema.validate(message.scriptResult);
-          if (!validation.ok || message.scriptResult.kind === 'uncertain') {
-            throw new Error('Script observation does not contain a valid terminal result.');
-          }
-          await requireMatchingTerminalEvent(message.scriptResult, message.attemptOrdinal);
-          requireExactPipelineEvent(
-            message.event,
-            deriveScriptTerminalPipelineEvent(command, message.scriptResult),
-          );
-          if (message.retrying) {
-            if (
-              message.scriptResult.kind !== 'failed' &&
-              message.scriptResult.kind !== 'timedOut'
-            ) {
-              throw new Error('Only a terminal script failure may request a retry.');
-            }
-            await applyScriptObservation(
-              journal,
-              message.operationId,
-              message.attemptOrdinal,
-              message.scriptResult,
-              true,
-            );
-            receipts.add(message.observationReceiptId);
-            await journal.publishDetails();
-            continue;
-          }
-          if (
-            (await applyScriptObservation(
-              journal,
-              message.operationId,
-              message.attemptOrdinal,
-              message.scriptResult,
-            )) === 'uncertain'
-          ) {
-            receipts.add(message.observationReceiptId);
-            active.delete(message.operationId);
-            recoveryPending = true;
-            if (active.size === 0) {
-              await DBOS.closeStream(eventStream);
-              return journal.result();
-            }
-            continue;
-          }
-          recoveryOperations.delete(message.operationId);
-          if (recoveryOperations.size === 0) {
-            recoveryPending = false;
-          }
-        }
-      } else if (requirement?.kind === 'agent') {
-        if (
-          message.scriptResult !== null ||
-          message.agentResult === null ||
-          message.retrying ||
-          message.preDispatchCancelled
-        ) {
-          throw new Error('Agent observation has an invalid executor result.');
-        }
-        const binding = snapshot.bindings.agents?.[requirement.bindingKey];
-        if (
-          !isAgentInvocationResult(message.agentResult) ||
-          binding === undefined ||
-          message.agentResult.invocationId !==
-            attemptId(message.operationId, message.attemptOrdinal) ||
-          message.agentResult.pin.agentId !== binding.pin.agentId ||
-          message.agentResult.pin.agentVersion !== binding.pin.agentVersion ||
-          message.agentResult.pin.definitionDigest !== binding.pin.definitionDigest
-        ) {
-          throw new Error('Agent observation does not contain its admitted terminal result.');
-        }
-        requireExactPipelineEvent(
-          message.event,
-          deriveAgentTerminalPipelineEvent(command, message.agentResult),
-        );
-        await applyAgentObservation(
-          journal,
-          message.operationId,
-          attemptId(message.operationId, message.attemptOrdinal),
-          message.agentResult,
-        );
-      } else {
-        throw new Error('Activity observation has no admitted requirement.');
-      }
-    } else {
-      if (
-        message.scriptResult !== null ||
-        message.agentResult !== null ||
-        message.preDispatchCancelled
-      ) {
-        throw new Error('Non-activity operation included an executor result.');
-      }
-      if (message.attemptOrdinal !== null) {
-        throw new Error('Non-script operation included a script attempt ordinal.');
-      }
-      if (message.retrying) {
-        throw new Error('Non-script operation requested a script retry.');
-      }
-      await applyInteractionObservation(journal, snapshot.runId, command, message.event);
-    }
-    receipts.add(message.observationReceiptId);
-    active.delete(message.operationId);
-    if (recoveryPending) {
-      // A sibling may seal while another external attempt is uncertain. Its
-      // observation is durable and valid, but advancing the kernel around the
-      // unknown result would fabricate ordering. Keep it in inbox order until
-      // the same identity is proven terminal; otherwise return the exact
-      // recovery-required projection without discarding it.
-      deferredKernelEvents.push(message.event);
-      if (active.size === 0) {
-        await DBOS.closeStream(eventStream);
-        return journal.result();
-      }
-      continue;
-    }
-    const eventsToAdvance = [...deferredKernelEvents, message.event];
-    deferredKernelEvents.length = 0;
-    for (const event of eventsToAdvance) {
-      const transition = await advance(snapshot, state, event);
-      state = transition.state;
-      commands.push(...transition.commands);
+    const result = await handleCoordinatorMessage(runtime, message);
+    if (result !== null) {
+      return result;
     }
   }
+};
+
+export const runKernelWorkflow = async (
+  snapshot: AdmittedRunSnapshotV1,
+): Promise<KernelRunResult> => {
+  requireCompatibleSnapshot(snapshot);
+  const runtime = await initializeKernelContext(snapshot);
+  return (await recoverUnavailableAgent(runtime)) ?? (await runCoordinator(runtime));
 };
 
 export const kernelRunWorkflow = DBOS.registerWorkflow(runKernelWorkflow, {

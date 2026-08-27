@@ -189,7 +189,7 @@ const parseCursor = (runId: string, cursor: unknown): CursorParseResult => {
     return { ok: false, reason: 'foreign' };
   }
   const sequence = cursor.slice(separator + 1);
-  if (!/^[1-9][0-9]*$/.test(sequence)) {
+  if (!/^[1-9]\d*$/.test(sequence)) {
     return { ok: false, reason: 'malformed' };
   }
   const parsed = Number(sequence);
@@ -353,6 +353,75 @@ const sendOperationInteraction = async (
   }
 };
 
+const readRunEventsThroughHighWater = async (
+  runId: string,
+  after: number,
+  highWater: number,
+): Promise<RunEvent[]> => {
+  const events: RunEvent[] = [];
+  let observedSequence = 0;
+  try {
+    for await (const event of DBOS.readStream<RunEvent>(runWorkflowId(runId), 'revo-run.events')) {
+      if (!isConsistentRunEvent(event, runId, observedSequence, highWater)) {
+        throw new Error('Persisted run event violates the public contract.');
+      }
+      observedSequence = event.sequence;
+      if (event.sequence > after) {
+        events.push(event);
+      }
+      if (event.sequence >= highWater) {
+        break;
+      }
+    }
+    if (highWater > 0 && observedSequence !== highWater) {
+      throw new Error('Persisted run-event stream ended before its high-water mark.');
+    }
+  } catch {
+    throw new RunManagerError('run_read_failed', { runId, operation: 'get_events' });
+  }
+  return events;
+};
+
+type CompatibilityClient = Awaited<ReturnType<typeof DBOSClient.create>>;
+
+const listCompatibilityPage = async (
+  client: CompatibilityClient,
+  offset: number,
+): Promise<readonly WorkflowStatus[] | null> => {
+  try {
+    return await client.listWorkflows({ offset, limit: 100, loadInput: true });
+  } catch (error) {
+    if (isFreshDbosSystemDatabase(error)) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+const persistedRootRunId = (workflowId: string): string | null =>
+  workflowId.startsWith('revo-run:') ? workflowId.slice('revo-run:'.length) : null;
+
+const assertCompatiblePersistedWorkflow = (workflow: WorkflowStatus): void => {
+  if (isTerminalDbosStatus(workflow.status)) {
+    return;
+  }
+  const persistedRunId = persistedRootRunId(workflow.workflowID);
+  const isCurrentRoot = workflow.workflowName === kernelRunWorkflowName;
+  if (persistedRunId === null && !isCurrentRoot) {
+    return;
+  }
+  const persistedInput = workflow.input?.[0];
+  if (
+    persistedRunId === null ||
+    !Check(RunIdSchema, persistedRunId) ||
+    !isCurrentRoot ||
+    !isCompatiblePersistedRun(persistedInput) ||
+    persistedInput.runId !== persistedRunId
+  ) {
+    throw new Error('A nonterminal revo-run workflow has an incompatible persisted input.');
+  }
+};
+
 export class DefaultRunManager implements RunManager {
   private composition: RunComposition | undefined;
   private lifecycle: 'created' | 'running' | 'stopping' | 'stopped' = 'created';
@@ -504,7 +573,7 @@ export class DefaultRunManager implements RunManager {
   private async getRunInScope(runId: string): Promise<RunSnapshot | undefined> {
     this.requireRunId(runId);
     const status = await this.workflowStatus(runId, 'get_run');
-    if (status === null || status.workflowName !== kernelRunWorkflowName) {
+    if (status?.workflowName !== kernelRunWorkflowName) {
       return undefined;
     }
     if (status.status === 'SUCCESS') {
@@ -534,7 +603,7 @@ export class DefaultRunManager implements RunManager {
   private async getRunDetailsInScope(runId: string): Promise<RunDetails | undefined> {
     this.requireRunId(runId);
     const status = await this.workflowStatus(runId, 'get_details');
-    if (status === null || status.workflowName !== kernelRunWorkflowName) {
+    if (status?.workflowName !== kernelRunWorkflowName) {
       return undefined;
     }
     if (status.status !== 'SUCCESS') {
@@ -654,30 +723,7 @@ export class DefaultRunManager implements RunManager {
     if (after > highWater) {
       throw new RunManagerError('run_event_cursor_invalid', { runId, reason: 'ahead' });
     }
-    const events: RunEvent[] = [];
-    let observedSequence = 0;
-    try {
-      for await (const event of DBOS.readStream<RunEvent>(
-        runWorkflowId(runId),
-        'revo-run.events',
-      )) {
-        if (!isConsistentRunEvent(event, runId, observedSequence, highWater)) {
-          throw new Error('Persisted run event violates the public contract.');
-        }
-        observedSequence = event.sequence;
-        if (event.sequence > after) {
-          events.push(event);
-        }
-        if (event.sequence >= highWater) {
-          break;
-        }
-      }
-      if (highWater > 0 && observedSequence !== highWater) {
-        throw new Error('Persisted run-event stream ended before its high-water mark.');
-      }
-    } catch {
-      throw new RunManagerError('run_read_failed', { runId, operation: 'get_events' });
-    }
+    const events = await readRunEventsThroughHighWater(runId, after, highWater);
     const items = events.slice(0, limit);
     return {
       items,
@@ -856,7 +902,7 @@ export class DefaultRunManager implements RunManager {
     }
     const details = await this.getRunDetails(runId);
     const wait = details?.waits.find((candidate) => candidate.waitId === input.waitId);
-    if (wait === undefined || wait.kind !== 'signal') {
+    if (wait?.kind !== 'signal') {
       throw new RunManagerError('run_wait_not_found', {
         runId,
         waitId: input.waitId,
@@ -890,8 +936,7 @@ export class DefaultRunManager implements RunManager {
       { timeoutSeconds: 0 },
     ).catch(() => null);
     if (
-      configuration === null ||
-      configuration.schemaVersion !== 'run-signal-wait-configuration/v1' ||
+      configuration?.schemaVersion !== 'run-signal-wait-configuration/v1' ||
       typeof configuration.operationId !== 'string' ||
       configuration.operationId.length === 0 ||
       (configuration.payloadSchema !== null &&
@@ -974,8 +1019,7 @@ export class DefaultRunManager implements RunManager {
       { timeoutSeconds: 0 },
     ).catch(() => null);
     if (
-      configuration === null ||
-      configuration.schemaVersion !== 'run-gate-configuration/v1' ||
+      configuration?.schemaVersion !== 'run-gate-configuration/v1' ||
       typeof configuration.operationId !== 'string' ||
       configuration.operationId.length === 0 ||
       !isIdentifierList(configuration.authorizationRequirements) ||
@@ -1100,40 +1144,13 @@ export class DefaultRunManager implements RunManager {
     try {
       let offset = 0;
       while (true) {
-        let workflows: readonly WorkflowStatus[];
-        try {
-          // oxlint-disable-next-line no-await-in-loop -- each page must be inspected before continuing startup.
-          workflows = await client.listWorkflows({
-            offset,
-            limit: 100,
-            loadInput: true,
-          });
-        } catch (error) {
-          if (isFreshDbosSystemDatabase(error)) {
-            return;
-          }
-          throw error;
+        // oxlint-disable-next-line no-await-in-loop -- each page must be inspected before continuing startup.
+        const workflows = await listCompatibilityPage(client, offset);
+        if (workflows === null) {
+          return;
         }
         for (const workflow of workflows) {
-          if (isTerminalDbosStatus(workflow.status)) {
-            continue;
-          }
-          const persistedRunId = workflow.workflowID.startsWith('revo-run:')
-            ? workflow.workflowID.slice('revo-run:'.length)
-            : null;
-          const isCurrentRoot = workflow.workflowName === kernelRunWorkflowName;
-          if (persistedRunId === null && !isCurrentRoot) {
-            continue;
-          }
-          if (
-            persistedRunId === null ||
-            !Check(RunIdSchema, persistedRunId) ||
-            !isCurrentRoot ||
-            !isCompatiblePersistedRun(workflow.input?.[0]) ||
-            workflow.input?.[0].runId !== persistedRunId
-          ) {
-            throw new Error('A nonterminal revo-run workflow has an incompatible persisted input.');
-          }
+          assertCompatiblePersistedWorkflow(workflow);
         }
         if (workflows.length < 100) {
           return;

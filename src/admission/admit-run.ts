@@ -7,8 +7,7 @@ import {
   type ProgramRequirement,
 } from '@revisium/revo-pipeline';
 import { createInitialPipelineState } from '@revisium/revo-pipeline/kernel';
-import type { PreparedScriptBinding } from '@revisium/revo-scripts';
-import type { ScriptIdentityPin } from '@revisium/revo-scripts';
+import type { PreparedScriptBinding, ScriptIdentityPin } from '@revisium/revo-scripts';
 import { Check } from 'typebox/value';
 
 import type { RunComposition } from '../composition/run-composition.js';
@@ -77,8 +76,68 @@ interface ResolvedProfile {
   ][];
 }
 
+type ScriptProgramRequirement = ProgramRequirement & { readonly kind: 'script' };
+
 const profileInvalid = (path: string, reason: string): never => {
   throw new RunManagerError('run_profile_invalid', { path, reason });
+};
+
+const resolveAgentRequirement = (
+  requirement: AgentProgramRequirement,
+  assignments: Readonly<Record<string, AgentAssignment>>,
+  knownKeys: Set<string>,
+): readonly [AgentProgramRequirement, AgentAssignment] => {
+  const bindingKey = requirement.bindingKey;
+  if (knownKeys.has(bindingKey)) {
+    profileInvalid('/bindings/agents', 'duplicate_requirement');
+  }
+  const assignment = assignments[bindingKey];
+  if (assignment === undefined) {
+    throw new RunManagerError('run_requirement_unresolved', {
+      requirementKey: requirement.key,
+      bindingKey,
+      reason: 'missing_agent_assignment',
+    });
+  }
+  if (!isAgentAssignment(assignment)) {
+    profileInvalid(`/bindings/agents/${bindingKey}`, 'invalid_assignment');
+  }
+  knownKeys.add(bindingKey);
+  return [requirement, assignment];
+};
+
+const resolveScriptRequirement = (
+  requirement: ScriptProgramRequirement,
+  assignments: Readonly<Record<string, ScriptAssignment>>,
+  knownKeys: Set<string>,
+): readonly [string, ScriptProgramRequirement, ScriptAssignment] => {
+  const requirementKey = requirement.key;
+  if (knownKeys.has(requirementKey)) {
+    profileInvalid('/bindings/scripts', 'duplicate_requirement');
+  }
+  const assignment = assignments[requirementKey];
+  if (assignment === undefined) {
+    throw new RunManagerError('run_requirement_unresolved', {
+      requirementKey,
+      bindingKey: null,
+      reason: 'missing_script_assignment',
+    });
+  }
+  if (!isScriptAssignment(assignment)) {
+    profileInvalid(`/bindings/scripts/${requirementKey}`, 'invalid_assignment');
+  }
+  knownKeys.add(requirementKey);
+  return [requirementKey, requirement, assignment];
+};
+
+const rejectExtraAssignments = (
+  assignments: Readonly<Record<string, unknown>>,
+  knownKeys: ReadonlySet<string>,
+  path: '/bindings/agents' | '/bindings/scripts',
+): void => {
+  if (Object.keys(assignments).some((key) => !knownKeys.has(key))) {
+    profileInvalid(path, 'extra_assignment');
+  }
 };
 
 const resolveProfile = (
@@ -96,53 +155,13 @@ const resolveProfile = (
   ][] = [];
   for (const requirement of requirements) {
     if (requirement.kind === 'agent') {
-      const bindingKey = requirement.bindingKey;
-      if (knownAgentKeys.has(bindingKey)) {
-        profileInvalid('/bindings/agents', 'duplicate_requirement');
-      }
-      const assignment = agents[bindingKey];
-      if (assignment === undefined) {
-        throw new RunManagerError('run_requirement_unresolved', {
-          requirementKey: requirement.key,
-          bindingKey,
-          reason: 'missing_agent_assignment',
-        });
-      }
-      if (!isAgentAssignment(assignment)) {
-        profileInvalid(`/bindings/agents/${bindingKey}`, 'invalid_assignment');
-      }
-      knownAgentKeys.add(bindingKey);
-      resolvedAgents.push([requirement, assignment]);
+      resolvedAgents.push([...resolveAgentRequirement(requirement, agents, knownAgentKeys)]);
       continue;
     }
-    const requirementKey = requirement.key;
-    if (knownScriptKeys.has(requirementKey)) {
-      profileInvalid('/bindings/scripts', 'duplicate_requirement');
-    }
-    const assignment = scripts[requirementKey];
-    if (assignment === undefined) {
-      throw new RunManagerError('run_requirement_unresolved', {
-        requirementKey,
-        bindingKey: null,
-        reason: 'missing_script_assignment',
-      });
-    }
-    if (!isScriptAssignment(assignment)) {
-      profileInvalid(`/bindings/scripts/${requirementKey}`, 'invalid_assignment');
-    }
-    knownScriptKeys.add(requirementKey);
-    resolvedScripts.push([requirementKey, requirement, assignment]);
+    resolvedScripts.push([...resolveScriptRequirement(requirement, scripts, knownScriptKeys)]);
   }
-  for (const key of Object.keys(agents)) {
-    if (!knownAgentKeys.has(key)) {
-      profileInvalid('/bindings/agents', 'extra_assignment');
-    }
-  }
-  for (const key of Object.keys(scripts)) {
-    if (!knownScriptKeys.has(key)) {
-      profileInvalid('/bindings/scripts', 'extra_assignment');
-    }
-  }
+  rejectExtraAssignments(agents, knownAgentKeys, '/bindings/agents');
+  rejectExtraAssignments(scripts, knownScriptKeys, '/bindings/scripts');
   return Object.freeze({
     agents: Object.freeze(resolvedAgents),
     scripts: Object.freeze(resolvedScripts),

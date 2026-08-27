@@ -159,7 +159,7 @@ export const operationOutboxKey = (operationId: string): string =>
 const admittedSnapshot = async (rootWorkflowId: string): Promise<AdmittedRunSnapshotV1> => {
   const [snapshot] =
     await DBOS.retrieveWorkflow(rootWorkflowId).getWorkflowInputs<[AdmittedRunSnapshotV1]>();
-  if (snapshot === undefined || snapshot.persistenceVersion !== 1) {
+  if (snapshot?.persistenceVersion !== 1) {
     throw new Error('Operation workflow cannot load its admitted run snapshot.');
   }
   return snapshot;
@@ -174,11 +174,7 @@ const outboxRecord = async (
     operationOutboxKey(operationId),
     { timeoutSeconds: 0 },
   );
-  if (
-    record === null ||
-    record.schemaVersion !== 'run-operation-outbox/v1' ||
-    record.operationId !== operationId
-  ) {
+  if (record?.schemaVersion !== 'run-operation-outbox/v1' || record.operationId !== operationId) {
     throw new Error('Operation workflow cannot load its durable outbox record.');
   }
   return record;
@@ -277,16 +273,28 @@ const agentActivityInput = (
     : { prompt: value.prompt, metadata: value.metadata };
 };
 
+interface OperationObservation {
+  readonly event: PipelineEvent;
+  readonly scriptResult: ScriptAttemptResult | null;
+  readonly attemptOrdinal: number | null;
+  readonly retrying: boolean;
+  readonly agentResult?: AgentInvocationResult | null;
+  readonly preDispatchCancelled?: boolean;
+}
+
 const sendObservation = async (
   input: RunOperationWorkflowInput,
   record: OperationOutboxRecordV1,
-  event: PipelineEvent,
-  scriptResult: ScriptAttemptResult | null,
-  attemptOrdinal: number | null,
-  retrying: boolean,
-  agentResult: AgentInvocationResult | null = null,
-  preDispatchCancelled = false,
+  observation: OperationObservation,
 ): Promise<void> => {
+  const {
+    event,
+    scriptResult,
+    attemptOrdinal,
+    retrying,
+    agentResult = null,
+    preDispatchCancelled = false,
+  } = observation;
   const observationReceiptId = operationReceiptId(
     input.runId,
     input.operationId,
@@ -337,20 +345,18 @@ const sendPreDispatchCancellation = async (
   record: OperationOutboxRecordV1,
   attempt: Readonly<{ readonly attemptOrdinal: number }>,
 ): Promise<void> => {
-  await sendObservation(
-    input,
-    record,
-    {
+  await sendObservation(input, record, {
+    event: {
       kind: 'activityCancelled',
       commandKey: record.command.key,
       ref: record.command.ref,
     },
-    null,
-    attempt.attemptOrdinal,
-    false,
-    null,
-    true,
-  );
+    scriptResult: null,
+    attemptOrdinal: attempt.attemptOrdinal,
+    retrying: false,
+    agentResult: null,
+    preDispatchCancelled: true,
+  });
 };
 
 const sendRetryStart = async (
@@ -396,6 +402,19 @@ const recoveryAttempt = async (workflowId: string): Promise<number> => {
   return requireScriptDispatchRecoveryAttempt(status?.recoveryAttempts);
 };
 
+const dispatchIntentStepName = (
+  phase: 'initial' | 'reconcile' | 'reexecute',
+  currentAttemptId: string,
+): string => {
+  if (phase === 'initial') {
+    return `script-dispatch-intent:${currentAttemptId}`;
+  }
+  if (phase === 'reconcile') {
+    return `script-reconcile-dispatch-intent:${currentAttemptId}`;
+  }
+  return `script-reexecute-dispatch-intent:${currentAttemptId}`;
+};
+
 const dispatchIntent = async (
   workflowId: string,
   attempt: ScriptAttemptInput,
@@ -413,12 +432,7 @@ const dispatchIntent = async (
       };
     },
     {
-      name:
-        phase === 'initial'
-          ? `script-dispatch-intent:${attempt.attemptId}`
-          : phase === 'reconcile'
-            ? `script-reconcile-dispatch-intent:${attempt.attemptId}`
-            : `script-reexecute-dispatch-intent:${attempt.attemptId}`,
+      name: dispatchIntentStepName(phase, attempt.attemptId),
       retriesAllowed: false,
     },
   );
@@ -458,6 +472,19 @@ const executeAttempt = async (
   });
   const validated = await ScriptAttemptResultSchema.validate(result);
   return validated.ok ? cloneFrozen(result) : null;
+};
+
+const providerDecisionStepName = (
+  phase: 'initial' | 'reconcile' | 'reexecute',
+  currentAttemptId: string,
+): string => {
+  if (phase === 'initial') {
+    return `script-provider-dispatch:${currentAttemptId}`;
+  }
+  if (phase === 'reconcile') {
+    return `script-reconcile-provider:${currentAttemptId}`;
+  }
+  return `script-reexecute-provider:${currentAttemptId}`;
 };
 
 interface ScriptResolution {
@@ -602,12 +629,7 @@ const providerDecision = async (
       return reconciliation;
     },
     {
-      name:
-        phase === 'initial'
-          ? `script-provider-dispatch:${attempt.attemptId}`
-          : phase === 'reconcile'
-            ? `script-reconcile-provider:${attempt.attemptId}`
-            : `script-reexecute-provider:${attempt.attemptId}`,
+      name: providerDecisionStepName(phase, attempt.attemptId),
       retriesAllowed: false,
     },
   );
@@ -703,14 +725,12 @@ const scriptOperation = async (
     const result = resolution.result;
     if (shouldRetry(attempt, result)) {
       // oxlint-disable-next-line no-await-in-loop -- the prior terminal result is durable before retry.
-      await sendObservation(
-        input,
-        record,
-        scriptPipelineEvent(record.command, result),
-        result,
-        attempt.attemptOrdinal,
-        true,
-      );
+      await sendObservation(input, record, {
+        event: scriptPipelineEvent(record.command, result),
+        scriptResult: result,
+        attemptOrdinal: attempt.attemptOrdinal,
+        retrying: true,
+      });
       const nextAttempt = attemptInput(
         snapshot,
         record.command,
@@ -732,7 +752,12 @@ const scriptOperation = async (
     }
     const event = scriptPipelineEvent(record.command, result);
     // oxlint-disable-next-line no-await-in-loop -- final observation completes this serial attempt lane.
-    await sendObservation(input, record, event, result, attempt.attemptOrdinal, false);
+    await sendObservation(input, record, {
+      event,
+      scriptResult: result,
+      attemptOrdinal: attempt.attemptOrdinal,
+      retrying: false,
+    });
     return;
   }
 };
@@ -927,15 +952,13 @@ const sendAgentResolution = async (
     await sendRecovery(input, record, attempt, 'outcome_unknown');
     return true;
   }
-  await sendObservation(
-    input,
-    record,
-    agentPipelineEvent(record.command, resolution.result),
-    null,
-    1,
-    false,
-    resolution.result,
-  );
+  await sendObservation(input, record, {
+    event: agentPipelineEvent(record.command, resolution.result),
+    scriptResult: null,
+    attemptOrdinal: 1,
+    retrying: false,
+    agentResult: resolution.result,
+  });
   return true;
 };
 
@@ -1028,10 +1051,30 @@ const agentOperation = async (
 
 const receiveInteraction = async (): Promise<OperationInteractionMessage> => {
   const message = await DBOS.recv<OperationInteractionMessage>(operationInteractionTopic);
-  if (message === null || message.schemaVersion !== 'operation-interaction/v1') {
+  if (message?.schemaVersion !== 'operation-interaction/v1') {
     throw new Error('Operation interaction has an invalid durable shape.');
   }
   return message;
+};
+
+const waitInteractionEvent = (
+  command: Extract<PipelineCommand, { readonly kind: 'scheduleWait' }>,
+  message: OperationInteractionMessage,
+  signal: string,
+): PipelineEvent => {
+  if (message.kind === 'cancel') {
+    return { kind: 'waitCancelled', commandKey: command.key, ref: command.ref };
+  }
+  if (message.kind === 'signal' && message.signal === signal) {
+    return {
+      kind: 'signalReceived',
+      commandKey: command.key,
+      ref: command.ref,
+      signal: message.signal,
+      payload: message.payload ?? null,
+    };
+  }
+  return failInteraction('wait');
 };
 
 const waitOperation = async (
@@ -1048,23 +1091,21 @@ const waitOperation = async (
       message.kind === 'cancel'
         ? { kind: 'waitCancelled', commandKey: record.command.key, ref: record.command.ref }
         : { kind: 'waitCompleted', commandKey: record.command.key, ref: record.command.ref };
-    await sendObservation(input, record, event, null, null, false);
+    await sendObservation(input, record, {
+      event,
+      scriptResult: null,
+      attemptOrdinal: null,
+      retrying: false,
+    });
     return;
   }
   const message = await receiveInteraction();
-  const event: PipelineEvent =
-    message.kind === 'cancel'
-      ? { kind: 'waitCancelled', commandKey: record.command.key, ref: record.command.ref }
-      : message.kind === 'signal' && message.signal === record.command.wait.signal
-        ? {
-            kind: 'signalReceived',
-            commandKey: record.command.key,
-            ref: record.command.ref,
-            signal: message.signal,
-            payload: message.payload ?? null,
-          }
-        : failInteraction('wait');
-  await sendObservation(input, record, event, null, null, false);
+  await sendObservation(input, record, {
+    event: waitInteractionEvent(record.command, message, record.command.wait.signal),
+    scriptResult: null,
+    attemptOrdinal: null,
+    retrying: false,
+  });
 };
 
 const durationInteraction = async (durationMs: number): Promise<OperationInteractionMessage> => {
@@ -1080,6 +1121,42 @@ const durationInteraction = async (durationMs: number): Promise<OperationInterac
   return message;
 };
 
+const gateInteractionEvent = (
+  command: Extract<PipelineCommand, { readonly kind: 'openHumanGate' }>,
+  message: OperationInteractionMessage,
+): PipelineEvent => {
+  if (message.kind === 'cancel') {
+    return { kind: 'gateCancelled', commandKey: command.key, ref: command.ref };
+  }
+  if (message.kind === 'signal' && message.actorId === 'timer') {
+    return {
+      kind: 'gateResolved',
+      commandKey: command.key,
+      ref: command.ref,
+      resolution: { kind: 'deadline' },
+    };
+  }
+  if (
+    message.kind === 'gate' &&
+    message.answer !== undefined &&
+    command.answers.includes(message.answer) &&
+    command.authorizationRequirements.every((group) => message.actorGroups?.includes(group))
+  ) {
+    return {
+      kind: 'gateResolved',
+      commandKey: command.key,
+      ref: command.ref,
+      resolution: {
+        kind: 'answer',
+        answer: message.answer,
+        actorRef: message.actorId,
+        payload: message.payload ?? null,
+      },
+    };
+  }
+  return failInteraction('gate');
+};
+
 const gateOperation = async (
   input: RunOperationWorkflowInput,
   record: OperationOutboxRecordV1,
@@ -1092,35 +1169,12 @@ const gateOperation = async (
     record.command.deadline === null
       ? await receiveInteraction()
       : await durationInteraction(record.command.deadline.afterMs);
-  const event: PipelineEvent =
-    message.kind === 'cancel'
-      ? { kind: 'gateCancelled', commandKey: record.command.key, ref: record.command.ref }
-      : message.kind === 'signal' && message.actorId === 'timer'
-        ? {
-            kind: 'gateResolved',
-            commandKey: record.command.key,
-            ref: record.command.ref,
-            resolution: { kind: 'deadline' },
-          }
-        : message.kind === 'gate' &&
-            message.answer !== undefined &&
-            record.command.answers.includes(message.answer) &&
-            record.command.authorizationRequirements.every((group) =>
-              message.actorGroups?.includes(group),
-            )
-          ? {
-              kind: 'gateResolved',
-              commandKey: record.command.key,
-              ref: record.command.ref,
-              resolution: {
-                kind: 'answer',
-                answer: message.answer,
-                actorRef: message.actorId,
-                payload: message.payload ?? null,
-              },
-            }
-          : failInteraction('gate');
-  await sendObservation(input, record, event, null, null, false);
+  await sendObservation(input, record, {
+    event: gateInteractionEvent(record.command, message),
+    scriptResult: null,
+    attemptOrdinal: null,
+    retrying: false,
+  });
 };
 
 const failInteraction = (kind: string): never => {
