@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "rn1-observation-vectors/v1",
+  "vectors": [
+    {
+      "code": "invalid_create_run_input",
+      "details": { "path": "/input", "reason": "invalid_type" }
+    },
+    {
+      "code": "run_read_failed",
+      "details": { "runId": "run_vectors", "operation": "get_details" }
+    },
+    {
+      "code": "run_interaction_failed",
+      "details": { "runId": "run_vectors", "operation": "signal" }
+    },
+    {
+      "code": "run_recovery_required",
+      "details": {
+        "runId": "run_vectors",
+        "attempts": [{ "operationId": "op_1", "attemptId": "att_1" }]
+      }
+    },
+    {
+      "code": "manager_not_started",
+      "details": { "lifecycle": "stopped" }
+    }
+  ],
+  "negativeVectors": [
+    {
+      "code": "invalid_create_run_input",
+      "details": { "path": "/input", "reason": "invalid_type", "extra": true }
+    },
+    { "code": "run_read_failed", "details": { "runId": null, "operation": null } },
+    { "code": "run_interaction_failed", "details": null },
+    {
+      "code": "run_recovery_required",
+      "details": { "runId": "run_vectors", "attempts": [], "extra": true }
+    },
+    { "code": "manager_not_started", "details": { "lifecycle": null } }
+  ]
+}

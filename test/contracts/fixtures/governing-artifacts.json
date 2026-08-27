@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "rn1-governing-artifacts/v1",
+  "artifacts": {
+    "observation/run-snapshots.json": "sha256:f2d2b099033071f3b7a4b5598ce86d9d556b424af24c417361299ea1b757dc25",
+    "observation/run-details.json": "sha256:440b36e6e52bf636b2cd19d43ad0e6db2db0ecbb4b3888a2788a91e8823317c8",
+    "observation/run-events.json": "sha256:76f3163eb8efbf45a39adfcebce7adfe70c93c52ba2cfa6d93d193009c8279fb",
+    "observation/pages.json": "sha256:8935d93288a4e4cf43ef0c1e7ded1027b07386ed7f9701fc06add0fa6a6a6342",
+    "observation/error-details.json": "sha256:69fe0812a42b0ad6d976eafa9db251fadd5e0027c05a22ba54c6cd7f29a4a4a6",
+    "identities/operation-attempt-wait-gate.json": "sha256:3bf3e8ef07573a6f082280a73091fb2155f0e8c4decf7032f357aabd770f4b4d",
+    "identities/attempt-dispatch-arbitration.json": "sha256:e0f6061382c91bab0fdb671a96b8864609762f0baa66375a1010aed13418c786",
+    "identities/script-event-relay-receipts.json": "sha256:3dc37d0c2500081399034c89f8041b027bf3b6bcf018314cd0db8b9b4fb9f953",
+    "scripts/cancellation-result-mapping.json": "sha256:3efd5cf993989ff4949cd50724b0fd160c001943b1069df40fe36704e2ae0bff",
+    "integration/recovery/d1-d9.json": "sha256:309a5cd4acfcffd712cc6a3be3b4dc5a658b2901e1a4f1708d6421f31bc0f5a1",
+    "package/root-consumer/raw-create-run.ts": "sha256:2893232cb1ef65bcefc6c022d9fcc90094c6cc56ce4f5fc48ad138eb002c5086"
+  }
+}

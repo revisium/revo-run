@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "rn1-public-error-golden/v1",
+  "malformedScriptFailure": {
+    "input": {
+      "code": "",
+      "message": "/tmp/private secret",
+      "details": { "raw": true }
+    },
+    "output": {
+      "code": "revo.run.execution_failed",
+      "message": "Run execution failed.",
+      "path": null,
+      "details": null
+    }
+  },
+  "malformedPipelineFailure": {
+    "input": "",
+    "output": {
+      "code": "revo.run.execution_failed",
+      "message": "Run execution failed.",
+      "path": null,
+      "details": null
+    }
+  }
+}

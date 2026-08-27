@@ -1,3 +1,6 @@
 packages: []
 allowBuilds:
   esbuild: true
+minimumReleaseAgeExclude:
+  - '@revisium/revo-pipeline@0.2.0-alpha.3'
+  - '@revisium/revo-scripts@0.1.0-alpha.1'

@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "rn1-observation-vectors/v1",
+  "vectors": [
+    {
+      "schemaVersion": "run-details/v1",
+      "runId": "run_vectors",
+      "status": "pending",
+      "createdAt": "2026-08-27T00:00:00.000Z",
+      "updatedAt": "2026-08-27T00:00:00.000Z",
+      "terminal": null,
+      "activities": [],
+      "operations": [],
+      "attempts": [],
+      "waits": [],
+      "gates": [],
+      "recovery": []
+    },
+    {
+      "schemaVersion": "run-details/v1",
+      "runId": "run_vectors",
+      "status": "running",
+      "createdAt": "2026-08-27T00:00:00.000Z",
+      "updatedAt": "2026-08-27T00:00:01.000Z",
+      "terminal": null,
+      "activities": [],
+      "operations": [],
+      "attempts": [],
+      "waits": [],
+      "gates": [],
+      "recovery": []
+    },
+    {
+      "schemaVersion": "run-details/v1",
+      "runId": "run_vectors",
+      "status": "cancelling",
+      "createdAt": "2026-08-27T00:00:00.000Z",
+      "updatedAt": "2026-08-27T00:00:02.000Z",
+      "terminal": null,
+      "activities": [],
+      "operations": [],
+      "attempts": [],
+      "waits": [],
+      "gates": [],
+      "recovery": []
+    },
+    {
+      "schemaVersion": "run-details/v1",
+      "runId": "run_vectors",
+      "status": "recovery_required",
+      "createdAt": "2026-08-27T00:00:00.000Z",
+      "updatedAt": "2026-08-27T00:00:03.000Z",
+      "terminal": null,
+      "activities": [],
+      "operations": [],
+      "attempts": [],
+      "waits": [],
+      "gates": [],
+      "recovery": []
+    },
+    {
+      "schemaVersion": "run-details/v1",
+      "runId": "run_vectors",
+      "status": "succeeded",
+      "createdAt": "2026-08-27T00:00:00.000Z",
+      "updatedAt": "2026-08-27T00:00:04.000Z",
+      "terminal": { "kind": "succeeded", "outcome": "ok", "output": { "approved": true } },
+      "activities": [],
+      "operations": [],
+      "attempts": [],
+      "waits": [],
+      "gates": [],
+      "recovery": []
+    },
+    {
+      "schemaVersion": "run-details/v1",
+      "runId": "run_vectors",
+      "status": "failed",
+      "createdAt": "2026-08-27T00:00:00.000Z",
+      "updatedAt": "2026-08-27T00:00:05.000Z",
+      "terminal": {
+        "kind": "failed",
+        "error": {
+          "code": "revo.run.execution_failed",
+          "message": "The activity failed.",
+          "path": null,
+          "details": null
+        }
+      },
+      "activities": [],
+      "operations": [],
+      "attempts": [],
+      "waits": [],
+      "gates": [],
+      "recovery": []
+    },
+    {
+      "schemaVersion": "run-details/v1",
+      "runId": "run_vectors",
+      "status": "cancelled",
+      "createdAt": "2026-08-27T00:00:00.000Z",
+      "updatedAt": "2026-08-27T00:00:06.000Z",
+      "terminal": { "kind": "cancelled", "reasonCode": "run.cancel_requested" },
+      "activities": [],
+      "operations": [],
+      "attempts": [],
+      "waits": [],
+      "gates": [],
+      "recovery": []
+    }
+  ]
+}

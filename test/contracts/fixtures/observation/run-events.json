@@ -1,0 +1,246 @@
+{
+  "schemaVersion": "rn1-observation-vectors/v1",
+  "vectors": [
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 1,
+      "cursor": "run_vectors:1",
+      "occurredAt": "2026-08-27T00:00:00.000Z",
+      "payload": { "type": "run.admitted" }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 2,
+      "cursor": "run_vectors:2",
+      "occurredAt": "2026-08-27T00:00:01.000Z",
+      "payload": { "type": "run.started" }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 3,
+      "cursor": "run_vectors:3",
+      "occurredAt": "2026-08-27T00:00:02.000Z",
+      "payload": { "type": "run.status_changed", "from": "pending", "to": "running" }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 4,
+      "cursor": "run_vectors:4",
+      "occurredAt": "2026-08-27T00:00:03.000Z",
+      "payload": {
+        "type": "run.terminal",
+        "terminal": { "kind": "succeeded", "outcome": "ok", "output": { "approved": true } }
+      }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 5,
+      "cursor": "run_vectors:5",
+      "occurredAt": "2026-08-27T00:00:04.000Z",
+      "payload": {
+        "type": "activity.operation_created",
+        "activity": {
+          "operationId": "op_1",
+          "kind": "script",
+          "requirementKey": "echo",
+          "status": "running",
+          "output": null,
+          "failure": null
+        }
+      }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 6,
+      "cursor": "run_vectors:6",
+      "occurredAt": "2026-08-27T00:00:05.000Z",
+      "payload": {
+        "type": "activity.operation_finished",
+        "activity": {
+          "operationId": "op_1",
+          "kind": "script",
+          "requirementKey": "echo",
+          "status": "succeeded",
+          "output": { "message": "done" },
+          "failure": null
+        }
+      }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 7,
+      "cursor": "run_vectors:7",
+      "occurredAt": "2026-08-27T00:00:06.000Z",
+      "payload": {
+        "type": "activity.attempt_started",
+        "attempt": {
+          "attemptId": "att_1",
+          "operationId": "op_1",
+          "executor": "script",
+          "ordinal": 1,
+          "status": "running",
+          "startedAt": "2026-08-27T00:00:06.000Z",
+          "finishedAt": null,
+          "failure": null
+        }
+      }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 8,
+      "cursor": "run_vectors:8",
+      "occurredAt": "2026-08-27T00:00:07.000Z",
+      "payload": {
+        "type": "activity.attempt_finished",
+        "attempt": {
+          "attemptId": "att_1",
+          "operationId": "op_1",
+          "executor": "script",
+          "ordinal": 1,
+          "status": "succeeded",
+          "startedAt": "2026-08-27T00:00:06.000Z",
+          "finishedAt": "2026-08-27T00:00:07.000Z",
+          "failure": null
+        }
+      }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 9,
+      "cursor": "run_vectors:9",
+      "occurredAt": "2026-08-27T00:00:08.000Z",
+      "payload": {
+        "type": "activity.recovery_required",
+        "recovery": {
+          "operationId": "op_1",
+          "attemptId": "att_1",
+          "executor": "script",
+          "reasonCode": "outcome_unknown",
+          "since": "2026-08-27T00:00:08.000Z"
+        }
+      }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 10,
+      "cursor": "run_vectors:10",
+      "occurredAt": "2026-08-27T00:00:09.000Z",
+      "payload": {
+        "type": "script.event",
+        "operationId": "op_1",
+        "attemptId": "att_1",
+        "emissionOrdinal": 1,
+        "event": { "name": "consumer.progress", "details": { "percent": 50 } }
+      }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 11,
+      "cursor": "run_vectors:11",
+      "occurredAt": "2026-08-27T00:00:10.000Z",
+      "payload": {
+        "type": "wait.opened",
+        "wait": {
+          "waitId": "wait_1",
+          "operationId": "op_1",
+          "kind": "signal",
+          "status": "pending",
+          "signal": "continue",
+          "openedAt": "2026-08-27T00:00:10.000Z",
+          "deadlineAt": null
+        }
+      }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 12,
+      "cursor": "run_vectors:12",
+      "occurredAt": "2026-08-27T00:00:11.000Z",
+      "payload": {
+        "type": "wait.resolved",
+        "wait": {
+          "waitId": "wait_1",
+          "operationId": "op_1",
+          "kind": "signal",
+          "status": "completed",
+          "signal": "continue",
+          "openedAt": "2026-08-27T00:00:10.000Z",
+          "deadlineAt": null
+        }
+      }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 13,
+      "cursor": "run_vectors:13",
+      "occurredAt": "2026-08-27T00:00:12.000Z",
+      "payload": {
+        "type": "gate.opened",
+        "gate": {
+          "gateId": "gate_1",
+          "operationId": "op_1",
+          "subject": "Approve",
+          "answers": ["approved"],
+          "openedAt": "2026-08-27T00:00:12.000Z",
+          "deadlineAt": null,
+          "status": "pending",
+          "resolution": null
+        }
+      }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 14,
+      "cursor": "run_vectors:14",
+      "occurredAt": "2026-08-27T00:00:13.000Z",
+      "payload": {
+        "type": "gate.resolved",
+        "gate": {
+          "gateId": "gate_1",
+          "operationId": "op_1",
+          "subject": "Approve",
+          "answers": ["approved"],
+          "openedAt": "2026-08-27T00:00:12.000Z",
+          "deadlineAt": null,
+          "status": "answered",
+          "resolution": {
+            "kind": "answer",
+            "answer": "approved",
+            "actorId": "reviewer_1",
+            "payload": null
+          }
+        }
+      }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 15,
+      "cursor": "run_vectors:15",
+      "occurredAt": "2026-08-27T00:00:14.000Z",
+      "payload": { "type": "run.cancellation_requested", "actorId": "operator_1" }
+    },
+    {
+      "schemaVersion": "run-event/v1",
+      "runId": "run_vectors",
+      "sequence": 16,
+      "cursor": "run_vectors:16",
+      "occurredAt": "2026-08-27T00:00:15.000Z",
+      "payload": { "type": "run.cancellation_acknowledged", "operationId": "op_1" }
+    }
+  ]
+}

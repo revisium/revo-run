@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "rn1-relay-receipt-vectors/v1",
+  "input": {
+    "runId": "run_vectors",
+    "operationId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+    "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4"
+  },
+  "expected": {
+    "eventReceiptId": "evr_zCk3QGdkQ67tKT8kEIU3EjfaFggRvnKErL0dmzxjpVs",
+    "operationReceiptId": "opr_8TPE1DIpfsQCPoNK0zsjR0xlw57vo76Z4wjiD1AIsYs",
+    "recoveryReceiptId": "orr_g9wQGHbISa9sdwNEnnP4ot54tUJrXkkQDMz9ddAQmZw",
+    "retryStartReceiptId": "ors_caeXVCwaCWXKsUP42i4cUcK_h63wCwf62rYXORlw1Ms"
+  },
+  "emissionOrdinal": 1,
+  "nextAttemptOrdinal": 2,
+  "distinctness": ["terminal_vs_recovery", "retry_start_vs_terminal", "emission_ordinal"]
+}

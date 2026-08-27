@@ -18,8 +18,6 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
       - name: Check out repository
@@ -27,6 +25,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -50,22 +49,39 @@ jobs:
         if: ${{ always() }}
         run: pnpm db:test:down
 
+      - name: Require Sonar provider access
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error title=Sonar provider unavailable::SONAR_TOKEN is required for the mandatory Sonar quality gate and issue inspection."
+            exit 1
+          fi
+
       - name: SonarQube branch scan
-        if: ${{ env.SONAR_TOKEN != '' && github.event_name != 'pull_request' }}
+        if: ${{ github.event_name != 'pull_request' }}
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         env:
-          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: SonarQube PR Quality Gate
-        if: ${{ env.SONAR_TOKEN != '' && github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' }}
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         with:
           args: >-
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
+            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
+            -Dsonar.pullrequest.branch=${{ github.event.pull_request.head.ref }}
+            -Dsonar.pullrequest.base=${{ github.event.pull_request.base.ref }}
+            -Dsonar.scm.revision=${{ github.event.pull_request.head.sha }}
         env:
-          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Inspect Sonar open issues
-        if: ${{ env.SONAR_TOKEN != '' && github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          SONAR_EXPECTED_REVISION: ${{ github.event.pull_request.head.sha }}
+          SONAR_PR_KEY: ${{ github.event.pull_request.number }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: pnpm sonar:issues:local

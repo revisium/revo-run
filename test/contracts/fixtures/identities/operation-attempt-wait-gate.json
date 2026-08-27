@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "rn1-identity-vectors/v1",
+  "tuple": ["revo-run-operation/v1", "run_vectors", "cmd_vectors"],
+  "expected": {
+    "operationId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+    "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4",
+    "waitId": "wait_AZRL9yTgMIurQjydSnqaozNO2xOdqFysPB1Eu7LCVLU",
+    "gateId": "gate_0gja9eiEEAKTqmjPEDXQhEzfREXk2UzRJ_ei1srb6J4",
+    "eventReceiptId": "evr_zCk3QGdkQ67tKT8kEIU3EjfaFggRvnKErL0dmzxjpVs",
+    "operationReceiptId": "opr_8TPE1DIpfsQCPoNK0zsjR0xlw57vo76Z4wjiD1AIsYs",
+    "recoveryReceiptId": "orr_g9wQGHbISa9sdwNEnnP4ot54tUJrXkkQDMz9ddAQmZw",
+    "retryStartReceiptId": "ors_caeXVCwaCWXKsUP42i4cUcK_h63wCwf62rYXORlw1Ms"
+  }
+}

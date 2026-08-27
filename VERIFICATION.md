@@ -1,17 +1,30 @@
 # Verification Contract
 
-Run before requesting review:
+Before review, run the complete clean-registry gate:
 
 ```bash
-pnpm db:test:up
-pnpm verify
-pnpm db:test:down
+corepack pnpm db:test:up
+corepack pnpm verify
+corepack pnpm db:test:down
 ```
 
-This checks formatting, strict types, type-aware lint, build output, shell syntax, the packed
-tarball (publint, Are the Types Wrong, isolated consumer), and the real DBOS lifecycle against
-the disposable PostgreSQL configured in `.env.test`. Release-train and npm-publish run the same
-`db:test:up` / `verify` / `db:test:down` sequence because `pnpm verify` needs that database.
+The disposable PostgreSQL instance in `.env.test` is required for DBOS workflow,
+event-lane, interaction, and recovery tests. The listed checks cover formatting,
+strict types, type-aware lint, build output, test coverage, and shell/package
+surface scans.
 
-Disabled tests are allowed only in `test/acceptance/` and must remain type-safe. Disabled tests
-anywhere else fail lint.
+RN1 pins compatible pipeline and script alpha artifacts as exact registry
+dependencies. A clean install and the package consumer gate must not use
+`file:`, `link:`, workspace, Git, URL, or temporary tarball dependencies.
+
+Every change to the host must keep the readiness preflight, keyed live-relay
+preflight, raw admission, interaction, public-schema, and fresh-process recovery
+evidence applicable. Run `git diff --check` after verification.
+
+For workflow changes, run `actionlint` when it is available. Pull-request CI
+waits for the Sonar Quality Gate, verifies that the analysis belongs to the exact
+PR head, and rejects every open issue. On `master` and `release/**` pushes, CI
+uploads analysis without scanner-side waiting or branch issue API polling. The
+provider-owned `SonarCloud Code Analysis` check must exist and pass on the exact
+branch SHA before merge, tagging, or publication; a missing, pending, failed, or
+mismatched-SHA provider check blocks the operation.
