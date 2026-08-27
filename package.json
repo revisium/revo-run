@@ -45,7 +45,7 @@
     "test:package": "dotenv -e .env.test -- vitest run test/package",
     "verify:shell": "bash -n scripts/*.sh && bash scripts/verify-shell.sh",
     "verify:package": "pnpm exec publint && pnpm exec attw --pack . --profile esm-only && node --experimental-strip-types scripts/verify-package.mjs",
-    "verify": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run test:cov && pnpm run verify:shell && pnpm run verify:package",
+    "verify": "pnpm run format:check && pnpm run build && pnpm run typecheck && pnpm run lint && pnpm run test:cov && pnpm run verify:shell && pnpm run verify:package",
     "sonar:issues:local": "bash scripts/sonar-issues-local.sh",
     "prepack": "pnpm run build"
   },
