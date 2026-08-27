@@ -1,0 +1,117 @@
+{
+  "schemaVersion": "rn1-arbitration-vectors/v1",
+  "workflowPrefix": "arg_",
+  "tokenPrefix": "art_",
+  "tuple": [
+    "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+    "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4"
+  ],
+  "tupleJson": "[\"op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8\",\"att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4\"]",
+  "input": {
+    "executionId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+    "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4"
+  },
+  "expected": {
+    "workflowId": "arg_kJ2fPdvflWM7kRxJCk9qTYTSBnJ0I_6aG1ylrIEJ3ZI",
+    "identityToken": "art_GYXwVhHvu9sE5_m_m-aPqxErcTledTW_8x_Ju4jzkws",
+    "candidates": [
+      {
+        "schemaVersion": "attempt-dispatch-arbitration/v1",
+        "executionId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+        "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4",
+        "identityToken": "art_GYXwVhHvu9sE5_m_m-aPqxErcTledTW_8x_Ju4jzkws",
+        "winner": "dispatch_won"
+      },
+      {
+        "schemaVersion": "attempt-dispatch-arbitration/v1",
+        "executionId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+        "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4",
+        "identityToken": "art_GYXwVhHvu9sE5_m_m-aPqxErcTledTW_8x_Ju4jzkws",
+        "winner": "cancel_won"
+      }
+    ],
+    "firstInput": {
+      "schemaVersion": "attempt-dispatch-arbitration/v1",
+      "executionId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+      "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4",
+      "identityToken": "art_GYXwVhHvu9sE5_m_m-aPqxErcTledTW_8x_Ju4jzkws",
+      "winner": "dispatch_won"
+    },
+    "result": {
+      "schemaVersion": "attempt-dispatch-arbitration/v1",
+      "executionId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+      "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4",
+      "identityToken": "art_GYXwVhHvu9sE5_m_m-aPqxErcTledTW_8x_Ju4jzkws",
+      "winner": "dispatch_won"
+    }
+  },
+  "negativeRecords": [
+    {
+      "name": "malformed_candidate_null",
+      "target": "candidate",
+      "record": null,
+      "expectedError": "Attempt dispatch arbitration candidate is invalid."
+    },
+    {
+      "name": "foreign_execution_identity",
+      "target": "candidate",
+      "record": {
+        "schemaVersion": "attempt-dispatch-arbitration/v1",
+        "executionId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx0",
+        "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4",
+        "identityToken": "art_GYXwVhHvu9sE5_m_m-aPqxErcTledTW_8x_Ju4jzkws",
+        "winner": "dispatch_won"
+      },
+      "expectedError": "Attempt dispatch arbitration candidate is invalid."
+    },
+    {
+      "name": "foreign_attempt_identity",
+      "target": "candidate",
+      "record": {
+        "schemaVersion": "attempt-dispatch-arbitration/v1",
+        "executionId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+        "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l0",
+        "identityToken": "art_GYXwVhHvu9sE5_m_m-aPqxErcTledTW_8x_Ju4jzkws",
+        "winner": "dispatch_won"
+      },
+      "expectedError": "Attempt dispatch arbitration candidate is invalid."
+    },
+    {
+      "name": "invalid_identity_token",
+      "target": "candidate",
+      "record": {
+        "schemaVersion": "attempt-dispatch-arbitration/v1",
+        "executionId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+        "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4",
+        "identityToken": "art_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+        "winner": "dispatch_won"
+      },
+      "expectedError": "Attempt dispatch arbitration candidate is invalid."
+    },
+    {
+      "name": "invalid_candidate_winner",
+      "target": "candidate",
+      "record": {
+        "schemaVersion": "attempt-dispatch-arbitration/v1",
+        "executionId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+        "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4",
+        "identityToken": "art_GYXwVhHvu9sE5_m_m-aPqxErcTledTW_8x_Ju4jzkws",
+        "winner": "unknown"
+      },
+      "expectedError": "Attempt dispatch arbitration candidate is invalid."
+    },
+    {
+      "name": "malformed_result_extra_member",
+      "target": "result",
+      "record": {
+        "schemaVersion": "attempt-dispatch-arbitration/v1",
+        "executionId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+        "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4",
+        "identityToken": "art_GYXwVhHvu9sE5_m_m-aPqxErcTledTW_8x_Ju4jzkws",
+        "winner": "dispatch_won",
+        "extra": true
+      },
+      "expectedValid": false
+    }
+  ]
+}

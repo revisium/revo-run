@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "rn1-script-cancellation-mapping/v1",
+  "attempt": {
+    "executionId": "op_hV1TFIH8lsQJwtFepSnXt9lJeAwPv6SOeJ-312fPFx8",
+    "attemptId": "att_vQkIAPCA3yMOCu8BgOKYnXmTpOahvUlyPTYqaGbu-l4",
+    "attemptOrdinal": 1,
+    "input": { "message": "recovery" }
+  },
+  "mappings": [
+    {
+      "variant": "acknowledged",
+      "action": "reconcile_same_attempt",
+      "result": { "kind": "acknowledged" },
+      "expected": {
+        "kernelEvent": null,
+        "terminal": false,
+        "retryCreated": false,
+        "newAttempt": false,
+        "reconciliationCount": 1,
+        "preTerminalRecoveryCount": 0,
+        "terminalStatus": "cancelled"
+      }
+    },
+    {
+      "variant": "alreadyTerminal",
+      "action": "seal_once",
+      "result": {
+        "kind": "alreadyTerminal",
+        "result": { "kind": "cancelled" }
+      },
+      "expected": {
+        "kernelEvent": {
+          "kind": "activityCancelled",
+          "commandKey": "sha256:5fb7bbdf142546cc96e9b25e7ad0fe89a7693bf34d37f1b10de33de80f894b05",
+          "ref": {
+            "programDigest": "sha256:d583f3bcdf3a1ca8497a9269ceef5fa01e0738c2edd5deb12a3127a4d37b2ad3",
+            "frameKey": "sha256:0714a133f5c7d5e4c297b9135860a2012d2510a4056ad416138d60df44d15793",
+            "nodeId": "sha256:7388e9d9d2d01d94be0ebfed33faf046f9ad740d839fb27ad18c65a10335def2"
+          }
+        },
+        "terminal": true,
+        "retryCreated": false,
+        "newAttempt": false,
+        "reconciliationCount": 0,
+        "preTerminalRecoveryCount": 0,
+        "terminalStatus": "cancelled"
+      }
+    },
+    {
+      "variant": "uncertain",
+      "action": "recovery_required",
+      "result": {
+        "kind": "uncertain",
+        "result": { "kind": "uncertain", "trigger": "timeout", "stage": "handler" }
+      },
+      "expected": {
+        "kernelEvent": null,
+        "terminal": false,
+        "retryCreated": false,
+        "newAttempt": false,
+        "reconciliationCount": 1,
+        "preTerminalRecoveryCount": 1,
+        "terminalStatus": "cancelled"
+      }
+    },
+    {
+      "variant": "notFound",
+      "action": "recovery_required_after_dispatch",
+      "result": { "kind": "notFound" },
+      "expected": {
+        "kernelEvent": null,
+        "terminal": false,
+        "retryCreated": false,
+        "newAttempt": false,
+        "reconciliationCount": 0,
+        "recoveryCount": 1,
+        "status": "recovery_required",
+        "terminalEventCount": 0
+      }
+    },
+    {
+      "variant": "unknown",
+      "action": "recovery_required",
+      "result": { "kind": "unknown" },
+      "expected": {
+        "kernelEvent": null,
+        "terminal": false,
+        "retryCreated": false,
+        "newAttempt": false,
+        "reconciliationCount": 0,
+        "preTerminalRecoveryCount": 1,
+        "terminalStatus": "cancelled"
+      }
+    }
+  ]
+}

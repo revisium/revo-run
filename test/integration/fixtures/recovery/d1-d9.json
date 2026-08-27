@@ -1,0 +1,182 @@
+{
+  "schemaVersion": "rn1-durable-recovery-matrix/v1",
+  "scenarios": [
+    {
+      "id": "D1",
+      "input": { "runId": "rn1-recovery-d1", "crashPoint": "before_admission_commit" },
+      "expected": {
+        "state": "absent",
+        "status": "absent",
+        "runExists": false,
+        "operationExists": false,
+        "events": { "script": 0, "kernel": 0 },
+        "calls": { "execute": 0, "reconcile": 0, "cancel": 0 }
+      },
+      "negative": { "recoveryCreatesRun": false, "newAttempt": false }
+    },
+    {
+      "id": "D2",
+      "input": {
+        "runId": "rn1-recovery-d2",
+        "commandKey": "script:recovery",
+        "attemptOrdinal": 1,
+        "crashPoint": "after_outbox_before_arbitration_claim"
+      },
+      "expected": {
+        "state": "terminal",
+        "status": "cancelled",
+        "executionId": "op_LCttvl2xmcf8YekRRJBjt0gEkcHd16MxD2RC7UrDR18",
+        "attemptId": "att_xAJwD1vNp_IguEauwmBcgBSYi_HF56tU84-s2mhNV3s",
+        "winner": "cancel_won",
+        "events": { "script": 0, "kernel": 1 },
+        "calls": { "execute": 0, "reconcile": 0, "cancel": 0 },
+        "preDispatchCancellationEvents": 1
+      },
+      "negative": { "newAttempt": false, "terminalRecoveryEvent": false }
+    },
+    {
+      "id": "D3",
+      "input": {
+        "runId": "rn1-recovery-d3",
+        "commandKey": "script:recovery",
+        "attemptOrdinal": 1,
+        "crashPoint": "after_dispatch_won_before_provider_result_commit"
+      },
+      "expected": {
+        "state": "terminal",
+        "status": "succeeded",
+        "executionId": "op_AEqgi5SZUNCWz9igliTgqkt4SWEEkRAul1dixLdVCPs",
+        "attemptId": "att_SZXzbnrYPbTfESpmx5VmYYoKJO4KsLOpQB1SQKXZWCM",
+        "winner": "dispatch_won",
+        "events": { "script": 1, "kernel": 1 },
+        "calls": { "execute": 1, "reconcile": 1, "cancel": 0 },
+        "sameAttempt": true
+      },
+      "negative": { "preDispatchCancellation": false, "newAttempt": false }
+    },
+    {
+      "id": "D4",
+      "input": {
+        "runId": "rn1-recovery-d4",
+        "commandKey": "script:recovery",
+        "attemptOrdinal": 1,
+        "crashPoint": "after_sealed_terminal_pair_before_kernel_event"
+      },
+      "expected": {
+        "state": "terminal",
+        "status": "succeeded",
+        "executionId": "op_i1Hv2z39V46nx3ZsOipqXGD4-7NPpR4CuP7e75Pnfwk",
+        "attemptId": "att_ioSmGLb1a6OBh8JEqLeNRq7HQVK2hGHdY6677124Rw4",
+        "resultKind": "succeeded",
+        "terminalEventName": "revo.script.succeeded",
+        "events": { "script": 1, "kernel": 1 },
+        "calls": { "execute": 1, "reconcile": 0, "cancel": 0 },
+        "kernelTerminalEvents": 1
+      },
+      "negative": { "providerReexecute": false, "terminalPairSplit": false }
+    },
+    {
+      "id": "D5",
+      "input": {
+        "runId": "rn1-recovery-d5",
+        "commandKey": "script:recovery",
+        "attemptOrdinal": 1,
+        "crashPoint": "after_next_outbox_commit"
+      },
+      "expected": {
+        "state": "terminal",
+        "status": "succeeded",
+        "executionId": "op_ok_XpgOTRZkuCoyrK2YJwaYsAyubwFtiCHme1W7ZZAc",
+        "attemptId": "att_tds3alGD1Nebq2rBWcMHWOofibthdFXkfvGrQp5yGjM",
+        "nextOutboxCommand": "kernel_event",
+        "events": { "script": 2, "kernel": 1 },
+        "calls": { "execute": 2, "reconcile": 0, "cancel": 0 },
+        "kernelTransitions": 1
+      },
+      "negative": { "providerReexecute": false, "duplicateKernelTransition": false }
+    },
+    {
+      "id": "D6",
+      "input": {
+        "runId": "rn1-recovery-d6",
+        "commandKey": "script:recovery",
+        "attemptOrdinal": 1,
+        "crashPoint": "while_wait_signal_gate_or_parallel_pending"
+      },
+      "expected": {
+        "state": "pending",
+        "status": "running",
+        "executionId": "op_DFnG2d4jdyMZJ1U2O1K5aRnjvlKI36nopJXJJy1iIzg",
+        "attemptId": "att_Z8vbyE-MMiJsOvvANaqiZdTrpQxkEwL7ulYm3onxZD8",
+        "pendingIdentityPreserved": true,
+        "events": { "script": 0, "kernel": 0 },
+        "calls": { "execute": 0, "reconcile": 0, "cancel": 0 },
+        "resumedBranches": 1
+      },
+      "negative": { "duplicateInteraction": false, "newAttempt": false }
+    },
+    {
+      "id": "D7",
+      "input": {
+        "runId": "rn1-recovery-d7",
+        "commandKey": "script:recovery",
+        "attemptOrdinal": 1,
+        "crashPoint": "after_reconciliation_limit_unknown"
+      },
+      "expected": {
+        "state": "recovery_required",
+        "status": "recovery_required",
+        "executionId": "op_cQJrlqGSkfS1xI-JwtJamgznepF9cNqpFST9cKfTXzs",
+        "attemptId": "att_vyKkcm-3tjy3bldvWYipiV_w3lX8B79OZmk4YFk9JPk",
+        "runStatus": "recovery_required",
+        "terminalEvents": 0,
+        "events": { "script": 0, "kernel": 0 },
+        "calls": { "execute": 1, "reconcile": 1, "cancel": 0 },
+        "reconciliationCalls": 1
+      },
+      "negative": { "newAttempt": false, "newRunEvent": false }
+    },
+    {
+      "id": "D8",
+      "input": {
+        "runId": "rn1-recovery-d8",
+        "commandKey": "script:recovery",
+        "attemptOrdinal": 1,
+        "crashPoint": "after_live_relay_before_root_receive"
+      },
+      "expected": {
+        "state": "terminal",
+        "status": "succeeded",
+        "executionId": "op_qBS1PQliJOZ4_Yv_VvxOhQX0zqxBD49TUm_E3Xp09YQ",
+        "attemptId": "att_MF35Ws2Eyg1Kp69FMd3IxsAFBC4p6z5oN7YUcO9YKls",
+        "liveEventReceipts": 1,
+        "rootPublishedEvents": 1,
+        "events": { "script": 1, "kernel": 1 },
+        "calls": { "execute": 1, "reconcile": 0, "cancel": 0 },
+        "handlerExecutions": 1
+      },
+      "negative": { "eventResendReexecutesHandler": false, "liveEventProvesTerminal": false }
+    },
+    {
+      "id": "D9",
+      "input": {
+        "runId": "rn1-recovery-d9",
+        "commandKey": "script:recovery",
+        "attemptOrdinal": 1,
+        "crashPoint": "after_uncertain_before_late_reconciliation"
+      },
+      "expected": {
+        "state": "terminal",
+        "status": "succeeded",
+        "executionId": "op_hBpeV3r_khrJtXm-XgQJODRRCPF9c_Cv-WkutRvhSiw",
+        "attemptId": "att_Q-bJ7wzKYCbzfiGEDnFxgaBVhydOSYz2ISsLkprCmxI",
+        "lateResultKind": "succeeded",
+        "terminalEventName": "revo.script.succeeded",
+        "events": { "script": 1, "kernel": 1 },
+        "calls": { "execute": 1, "reconcile": 1, "cancel": 0 },
+        "sameAttempt": true
+      },
+      "negative": { "newAttempt": false, "terminalBeforeProvenReconciliation": false }
+    }
+  ]
+}

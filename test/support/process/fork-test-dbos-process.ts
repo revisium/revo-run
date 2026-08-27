@@ -9,13 +9,8 @@ export const forkTestDbosProcess = (worker: string, options: ForkTestDbosProcess
   if (options.applicationVersion.trim().length === 0) {
     throw new Error('A DBOS test process application version is required.');
   }
-
   return fork(worker, {
-    env: {
-      ...process.env,
-      ...options.env,
-      DBOS__APPVERSION: options.applicationVersion,
-    },
+    env: { ...process.env, ...options.env, DBOS__APPVERSION: options.applicationVersion },
     execArgv: ['--import', 'tsx'],
     silent: true,
   });
