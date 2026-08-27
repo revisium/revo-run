@@ -402,10 +402,9 @@ const recoveryAttempt = async (workflowId: string): Promise<number> => {
   return requireScriptDispatchRecoveryAttempt(status?.recoveryAttempts);
 };
 
-const dispatchIntentStepName = (
-  phase: 'initial' | 'reconcile' | 'reexecute',
-  currentAttemptId: string,
-): string => {
+type ScriptDecisionPhase = 'initial' | 'reconcile' | 'reexecute';
+
+const dispatchIntentStepName = (phase: ScriptDecisionPhase, currentAttemptId: string): string => {
   if (phase === 'initial') {
     return `script-dispatch-intent:${currentAttemptId}`;
   }
@@ -418,7 +417,7 @@ const dispatchIntentStepName = (
 const dispatchIntent = async (
   workflowId: string,
   attempt: ScriptAttemptInput,
-  phase: 'initial' | 'reconcile' | 'reexecute' = 'initial',
+  phase: ScriptDecisionPhase = 'initial',
 ) =>
   await DBOS.runStep(
     async (): Promise<ScriptDispatchIntentV1> => {
@@ -474,10 +473,7 @@ const executeAttempt = async (
   return validated.ok ? cloneFrozen(result) : null;
 };
 
-const providerDecisionStepName = (
-  phase: 'initial' | 'reconcile' | 'reexecute',
-  currentAttemptId: string,
-): string => {
+const providerDecisionStepName = (phase: ScriptDecisionPhase, currentAttemptId: string): string => {
   if (phase === 'initial') {
     return `script-provider-dispatch:${currentAttemptId}`;
   }
@@ -566,7 +562,7 @@ const providerDecision = async (
   workflowId: string,
   attempt: ScriptAttemptInput,
   intent: ScriptDispatchIntentV1,
-  phase: 'initial' | 'reconcile' | 'reexecute',
+  phase: ScriptDecisionPhase,
 ): Promise<ScriptResolution> => {
   // The child does not write an arbitration record until the host is ready.
   // Every durable provider-decision generation reads or claims the winner
