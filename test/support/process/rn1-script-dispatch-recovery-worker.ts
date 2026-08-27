@@ -299,6 +299,24 @@ const send = (kind: string, extra: Readonly<Record<string, unknown>> = {}): void
   process.send?.({ kind, ...extra });
 };
 
+const sendAndWait = async (
+  kind: string,
+  extra: Readonly<Record<string, unknown>> = {},
+): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    const accepted = process.send?.({ kind, ...extra }, (error) => {
+      if (error === null) {
+        resolve();
+      } else {
+        reject(error);
+      }
+    });
+    if (accepted === undefined) {
+      reject(new Error('RN1 recovery worker IPC channel is unavailable.'));
+    }
+  });
+};
+
 const scripts: RevoScripts = {
   prepareBinding: async () => binding,
   executeAttempt: async (input, context) => {
@@ -529,13 +547,15 @@ try {
       scriptEventNames.push(event.payload.event.name);
     }
   }
-  send('terminal', { result, eventTypes, scriptEventNames });
+  await sendAndWait('terminal', { result, eventTypes, scriptEventNames });
   await DBOS.shutdown();
   clearRunComposition(composition);
   composition = undefined;
   process.exit(0);
 } catch (error) {
-  send('error', { message: error instanceof Error ? error.message : String(error) });
+  await sendAndWait('error', {
+    message: error instanceof Error ? error.message : String(error),
+  }).catch(() => undefined);
   await DBOS.shutdown().catch(() => undefined);
   if (composition !== undefined) {
     clearRunComposition(composition);

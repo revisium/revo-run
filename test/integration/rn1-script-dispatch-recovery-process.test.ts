@@ -42,6 +42,14 @@ interface WorkerMessage {
   readonly workflowId?: string;
 }
 
+interface WaitableWorker {
+  readonly messages: readonly WorkerMessage[];
+  readonly process: {
+    readonly exitCode: number | null;
+    readonly signalCode: NodeJS.Signals | null;
+  };
+}
+
 const workerPath = fileURLToPath(
   new URL('../support/process/rn1-script-dispatch-recovery-worker.ts', import.meta.url),
 );
@@ -73,7 +81,7 @@ const startWorker = (
 };
 
 const waitFor = async (
-  child: ReturnType<typeof startWorker>,
+  child: WaitableWorker,
   kind: WorkerMessage['kind'],
   timeoutMs = 10_000,
 ): Promise<WorkerMessage> => {
@@ -83,14 +91,14 @@ const waitFor = async (
     if (error !== undefined) {
       throw new Error(`Recovery worker failed: ${error.message ?? 'unknown error'}`);
     }
+    const message = child.messages.find((candidate) => candidate.kind === kind);
+    if (message !== undefined) {
+      return message;
+    }
     if (child.process.exitCode !== null || child.process.signalCode !== null) {
       throw new Error(
         `Recovery worker exited before ${kind}: ${child.process.exitCode ?? child.process.signalCode}.`,
       );
-    }
-    const message = child.messages.find((candidate) => candidate.kind === kind);
-    if (message !== undefined) {
-      return message;
     }
     // oxlint-disable-next-line no-await-in-loop -- bounded IPC polling is the process-test protocol.
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
@@ -265,6 +273,19 @@ describe('RN1 script dispatch recovery', () => {
   afterEach(async () => {
     await kill(first);
     await kill(recovered);
+  });
+
+  it('retains a terminal IPC message that was buffered before a clean worker exit', async () => {
+    const terminal: WorkerMessage = {
+      kind: 'terminal',
+      result: { snapshot: { status: 'succeeded' } },
+    };
+    const child = {
+      messages: [terminal],
+      process: { exitCode: 0, signalCode: null },
+    };
+
+    await expect(waitFor(child, 'terminal')).resolves.toBe(terminal);
   });
 
   it('reconciles the same accepted script identity after SIGKILL before the provider step commits', async () => {
