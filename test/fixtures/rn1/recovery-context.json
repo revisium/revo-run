@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "rn1-recovery-context/v1",
+  "outcomes": {
+    "reconciliationUncertain": {
+      "status": "recovery_required",
+      "reasonCode": "outcome_unknown",
+      "terminalEventCount": 0
+    },
+    "reconciliationFailure": {
+      "status": "recovery_required",
+      "reasonCode": "reconciliation_failed",
+      "terminalEventCount": 0
+    },
+    "lateSealedTerminal": {
+      "status": "cancelled",
+      "recoveryCount": 0
+    }
+  }
+}

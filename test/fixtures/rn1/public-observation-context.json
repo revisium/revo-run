@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "rn1-public-observation-context/v1",
+  "terminal": {
+    "status": "succeeded",
+    "terminalKind": "succeeded",
+    "activityCount": 0,
+    "waitCount": 1,
+    "gateCount": 0,
+    "recoveryCount": 0
+  },
+  "durationWait": {
+    "status": "succeeded",
+    "waitStatus": "completed"
+  },
+  "deadlineGate": {
+    "status": "succeeded",
+    "gateStatus": "deadline"
+  }
+}

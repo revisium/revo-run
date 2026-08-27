@@ -1,29 +1,51 @@
 # Repository Contract
 
-`src/index.ts` is the only public entrypoint. `src/contracts` owns Revo public and durable value
-contracts, while private schemas for provider-owned DBOS envelopes live in `src/validation`.
-Boundary validation stays in `src/validation`, and the public manager facade stays in `src/manager`.
-Approved in-memory contracts may use TypeScript `Date` and `AbortSignal` types; they do not become
-serialized durable DTOs merely to satisfy JSON-schema conventions.
+`src/index.ts` is the only public entrypoint. It exports the run-manager facade,
+closed public schemas, derived types, and the owning pipeline/script types needed
+at the root boundary. Deep imports are unsupported.
 
-Deterministic pipeline interpretation and data resolution live in `src/pipeline` and must not
-import DBOS. All DBOS SDK calls, workflow registration, durable steps, streams, and DBOS-backed
-read models live in `src/dbos`.
+## Ownership and layout
 
-## Navigation
+- `src/admission`: validates raw `pipeline`/`profile`/`input`, compiles exactly
+  once, resolves the fixed script bindings, and builds the private admitted
+  snapshot.
+- `src/contracts`: public JSON schemas, public error catalog, profile contracts,
+  and private portable snapshot values. Public timestamps are strings; public or
+  durable values never contain `Date`, paths, secrets, or live handles.
+- `src/composition`: process-local host composition and the startup readiness
+  fence.
+- `src/operations`: deterministic operation, attempt, wait, gate, and relay
+  receipt identities.
+- `src/dbos`: the durable kernel host, DBOS workflows, streams, interaction
+  records, and recovery/read-model boundary. It may host pipeline command kinds
+  but may not interpret pipeline control-flow semantics.
+- `src/manager`: consumer lifecycle, creation, observation, and interaction
+  facade.
+- `test/contracts`: root schemas, admission, IDs, and failure normalization.
+- `test/integration`: real DBOS/PostgreSQL behavior, readiness and relay
+  preflights, and raw pipeline flows.
 
-- `src/manager`: consumer-facing lifecycle and run operations;
-- `src/pipeline/interpreter`: deterministic graph traversal and node semantics; wait and effect ports live in dedicated `*-ports.ts` modules so DBOS adapters do not import executor classes;
-- `src/pipeline/parallel`: DBOS-independent parallel join and remaining-branch settlement semantics and branch port;
-- `src/pipeline/data`: input and output reference resolution;
-- `src/dbos/coordination`: durable run messages, event ordering, and total-execution admission;
-- `src/dbos/parallel`: child-branch scheduling and settlement action interpretation behind the pipeline branch port;
-- `src/dbos/workflows`: durable workflow entrypoints;
-- `src/dbos/steps`: checkpointed external effects;
-- `src/dbos/streams`: durable run events;
-- `src/dbos/read-model`: DBOS records mapped to public run views;
-- `test/support`: fixtures grouped by acceptance, executor, and process harness responsibility;
-- `test/package`: public-surface consumer tests; import only `src/index.ts`; run with `pnpm test:package`;
-- `examples/quick-start.ts`: tracked consumer example imported only as `@revisium/revo-run`;
-- `scripts/packed-consumer.ts`: isolated packed-surface assertions imported only as `@revisium/revo-run`;
-- `scripts/verify-package.mjs`: pack contents, publint, attw, and isolated tarball consumer.
+`revo-run` does not contain a lowered-plan public boundary, a consumer-provided
+executor, a second pipeline interpreter, manually resolved unknown outcomes, or a
+consumer-provided runner map. Pipeline control flow remains in
+`@revisium/revo-pipeline`; scripts remain in `@revisium/revo-scripts`.
+
+## Durable rules
+
+DBOS/PostgreSQL is the sole durable store. Do not add a package database, Prisma
+table, or second scheduler. Immutable workflow input carries the admitted snapshot;
+workflow history carries state transitions, operation observations, and public
+stream events.
+
+Every externally visible transition is validated at its owning package boundary.
+The root host validates relay ownership before publication and does not expose raw
+pipeline state, commands, provider errors, or source documents in public details.
+
+The readiness fence is closed before `DBOS.launch()` and checked before external
+work so recovered workflows cannot dispatch before the host composition exists.
+
+## Verification
+
+Use [VERIFICATION.md](VERIFICATION.md). Package/consumer checks import only the
+packed root entrypoint. Tests that require DBOS use the disposable database from
+`.env.test`.

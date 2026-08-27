@@ -1,8 +1,7 @@
 export const testDatabaseUrl = (): string => {
-  const databaseUrl = process.env['DATABASE_URL'];
-  if (databaseUrl === undefined) {
+  const value = process.env['DATABASE_URL'];
+  if (value === undefined) {
     throw new Error('DATABASE_URL is required.');
   }
-
-  return databaseUrl;
+  return value;
 };

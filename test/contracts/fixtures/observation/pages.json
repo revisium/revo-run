@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "rn1-observation-vectors/v1",
+  "runPages": [
+    { "items": [], "nextOffset": null },
+    { "items": [], "nextOffset": 0 }
+  ],
+  "eventPageInputs": [{}, { "after": "run_vectors:1", "limit": 100 }],
+  "eventPages": [
+    { "items": [], "nextCursor": null, "hasMore": false },
+    { "items": [], "nextCursor": "run_vectors:16", "hasMore": true }
+  ],
+  "cursorFailures": ["malformed", "foreign", "ahead", "gap", "regression"]
+}
