@@ -46,9 +46,10 @@ const startWorker = (mode: 'recover' | 'start', workflowId: string, applicationV
       REVO_RUN_RN1_PREFLIGHT_WORKFLOW_ID: workflowId,
     },
   });
+  const exited = once(process, 'exit');
   const messages: WorkerMessage[] = [];
   process.on('message', (message: WorkerMessage) => messages.push(message));
-  return { messages, process };
+  return { exited, messages, process };
 };
 
 describe('RN1 DBOS recovery readiness preflight', () => {
@@ -64,7 +65,7 @@ describe('RN1 DBOS recovery readiness preflight', () => {
       await waitFor(first.messages, 'started');
       await waitFor(first.messages, 'dispatch');
       first.process.kill('SIGKILL');
-      await once(first.process, 'exit');
+      await first.exited;
 
       recovered = startWorker('recover', workflowId, applicationVersion);
       await waitFor(recovered.messages, 'launched');
@@ -76,10 +77,11 @@ describe('RN1 DBOS recovery readiness preflight', () => {
         result: { status: 'dispatched' },
       });
       expect(recovered.messages.filter(({ kind }) => kind === 'dispatch')).toHaveLength(1);
-      await once(recovered.process, 'exit');
+      await recovered.exited;
     } finally {
       first.process.kill('SIGKILL');
       recovered?.process.kill('SIGKILL');
+      await Promise.all([first.exited, ...(recovered === undefined ? [] : [recovered.exited])]);
     }
   }, 30_000);
 });
