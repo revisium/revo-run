@@ -286,7 +286,7 @@ const startPendingScriptCancellation = async (
     readonly binding?: PreparedScriptBinding;
     readonly beforePending?: ScriptAttemptResult;
     readonly pendingAttemptOrdinal?: number;
-    readonly waitForPendingAttempt?: boolean;
+    readonly waitForScheduledAttempt?: boolean;
     readonly expectScriptCancellation?: boolean;
   }> = {},
 ): Promise<{
@@ -353,16 +353,19 @@ const startPendingScriptCancellation = async (
   );
   const rootWorkflowId = runWorkflowId(runId);
   await DBOS.startWorkflow(kernelRunWorkflow, { workflowID: rootWorkflowId })(admitted);
-  if (options.waitForPendingAttempt) {
+  if (options.waitForScheduledAttempt) {
     await expect
       .poll(
-        async () =>
-          (
-            await DBOS.getEvent<KernelRunResult['details']>(rootWorkflowId, 'revo-run.details')
-          )?.attempts.find(({ ordinal }) => ordinal === options.pendingAttemptOrdinal)?.status,
+        async () => ({
+          retryRecorded:
+            (
+              await DBOS.getEvent<KernelRunResult['details']>(rootWorkflowId, 'revo-run.details')
+            )?.attempts.some(({ ordinal }) => ordinal === options.pendingAttemptOrdinal) ?? false,
+          physicalDispatches: attempts.length,
+        }),
         { timeout: 10_000, interval: 20 },
       )
-      .toBe('pending');
+      .toStrictEqual({ retryRecorded: true, physicalDispatches: 1 });
   } else {
     await expect
       .poll(() => attempts.length, { timeout: 10_000, interval: 20 })
@@ -1402,7 +1405,7 @@ describe('RN1 private script recovery boundary', () => {
         binding: delayedRetryBinding,
         beforePending: retryableFailure(1),
         pendingAttemptOrdinal: 2,
-        waitForPendingAttempt: true,
+        waitForScheduledAttempt: true,
         expectScriptCancellation: false,
       },
     );
