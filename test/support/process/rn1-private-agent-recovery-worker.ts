@@ -6,8 +6,8 @@ import { createInitialPipelineState } from '@revisium/revo-pipeline/kernel';
 import { createRevoScripts } from '@revisium/revo-scripts';
 
 import type {
-  AgentInvocationResult,
-  StartAgentInvocation,
+  AgentRuntimeStartInput,
+  AgentTerminalResult,
   PreparedAgentBinding,
 } from '../../../src/composition/agent-port.js';
 import { RunHostReadinessFence } from '../../../src/composition/readiness-fence.js';
@@ -82,7 +82,6 @@ const pipeline: PipelineSourcePackage = {
 };
 const binding: PreparedAgentBinding = {
   schemaVersion: 'prepared-agent-binding/v1',
-  definition: { schemaVersion: 'prepared-agent-definition-snapshot/v1', value: { kind: 'fake' } },
   pin: {
     agentId: 'reviewer',
     agentVersion: '1.0.0',
@@ -91,26 +90,12 @@ const binding: PreparedAgentBinding = {
   parameters: {},
   permissions: {},
   workspaceRef: '/trusted/recovery',
-  credentials: {},
 };
 
-const succeededResult = (input: StartAgentInvocation): AgentInvocationResult => ({
-  schemaVersion: 'agent-invocation-result/v1',
+const succeededResult = (input: AgentRuntimeStartInput): AgentTerminalResult => ({
+  schemaVersion: 'agent-terminal-result/v1',
   invocationId: input.invocationId,
   pin: binding.pin,
-  launch: { executable: 'private-test-agent', reportedVersion: '1.0.0' },
-  acceptedAt: '2026-01-01T00:00:00.000Z',
-  startedAt: '2026-01-01T00:00:00.000Z',
-  finishedAt: '2026-01-01T00:00:00.000Z',
-  durationMs: 0,
-  exit: { code: 0, signal: null },
-  files: {
-    directory: input.output.directory,
-    events: 'events.ndjson',
-    stdout: 'stdout.log',
-    stderr: 'stderr.log',
-    result: 'result.json',
-  },
   status: 'succeeded',
   value: { decision: 'approved' },
 });
@@ -180,13 +165,15 @@ try {
   const port = {
     ...fake.port,
     start: async (...args: Parameters<typeof fake.port.start>) => {
-      const handle = await fake.port.start(...args);
-      send('start', { invocationId: handle.invocationId });
+      const outcome = await fake.port.start(...args);
+      send('start', {
+        invocationId: outcome.status === 'accepted' ? outcome.handle.invocationId : 'not-accepted',
+      });
       if (mode === 'start') {
         send('accepted');
         await new Promise<void>(() => undefined);
       }
-      return handle;
+      return outcome;
     },
     getResult: (...args: Parameters<typeof fake.port.getResult>) => {
       send('lookup', { invocationId: args[0] });

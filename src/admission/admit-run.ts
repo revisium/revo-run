@@ -10,6 +10,7 @@ import { createInitialPipelineState } from '@revisium/revo-pipeline/kernel';
 import type { PreparedScriptBinding, ScriptIdentityPin } from '@revisium/revo-scripts';
 import { Check } from 'typebox/value';
 
+import { CODEX_AGENT_REF } from '../composition/agents/codex/codex-definition.js';
 import type { RunComposition } from '../composition/run-composition.js';
 import type { AdmittedRunSnapshotV1 } from '../contracts/admitted-run.js';
 import { isJsonValue, type JsonValue } from '../contracts/json.js';
@@ -27,6 +28,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0;
+
+const logicalWorkspaceRefPattern = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
+
+const isLogicalWorkspaceRef = (value: unknown): value is string =>
+  typeof value === 'string' && logicalWorkspaceRefPattern.test(value);
 
 const isStringRecord = (value: unknown): value is Readonly<Record<string, string>> =>
   isRecord(value) && Object.values(value).every(isNonEmptyString);
@@ -52,7 +58,7 @@ const isAgentAssignment = (value: unknown): value is AgentAssignment =>
   isNonEmptyString(value.definition.version) &&
   isJsonRecord(value.parameters) &&
   isJsonRecord(value.permissions) &&
-  isNonEmptyString(value.workspaceRef) &&
+  isLogicalWorkspaceRef(value.workspaceRef) &&
   (value.credentials === undefined || isStringRecord(value.credentials));
 
 const isValidEnvelope = (input: CreateRunInput): boolean =>
@@ -80,6 +86,18 @@ type ScriptProgramRequirement = ProgramRequirement & { readonly kind: 'script' }
 
 const profileInvalid = (path: string, reason: string): never => {
   throw new RunManagerError('run_profile_invalid', { path, reason });
+};
+
+const rejectInvalidAgentWorkspaceRefs = (assignments: Readonly<Record<string, unknown>>): void => {
+  for (const [bindingKey, assignment] of Object.entries(assignments)) {
+    if (
+      isRecord(assignment) &&
+      Object.hasOwn(assignment, 'workspaceRef') &&
+      !isLogicalWorkspaceRef(assignment.workspaceRef)
+    ) {
+      profileInvalid(`/bindings/agents/${bindingKey}/workspaceRef`, 'logical_reference_grammar');
+    }
+  }
 };
 
 const resolveAgentRequirement = (
@@ -188,6 +206,11 @@ const scriptPin = (value: { readonly id: string; readonly version: number }): Sc
 const isScriptIdentity = (value: string): value is `script:${string}` =>
   value.startsWith('script:');
 
+const isSupportedAgentAssignment = (assignment: AgentAssignment): boolean =>
+  assignment.definition.id === CODEX_AGENT_REF.id &&
+  assignment.definition.version === CODEX_AGENT_REF.version &&
+  assignment.credentials === undefined;
+
 export const admitRun = async (
   input: CreateRunInput,
   composition: RunComposition,
@@ -204,6 +227,8 @@ export const admitRun = async (
   if (!Check(RunIdSchema, input.runId)) {
     throw new RunManagerError('invalid_run_id', { path: '/runId', reason: 'grammar' });
   }
+
+  rejectInvalidAgentWorkspaceRefs(input.profile.bindings.agents);
 
   const compilation = compilationOrThrow(input);
   const initial = createInitialPipelineState(
@@ -224,11 +249,26 @@ export const admitRun = async (
     input.profile.bindings.agents,
     input.profile.bindings.scripts,
   );
-  if (assignments.agents.length > 0) {
+  if (assignments.agents.some(([, assignment]) => !isSupportedAgentAssignment(assignment))) {
+    throw new RunManagerError('agent_runtime_unavailable');
+  }
+  if (assignments.agents.length > 0 && process.platform !== 'linux') {
     throw new RunManagerError('agent_runtime_unavailable');
   }
 
   const controller = new AbortController();
+  const agentBindings: Record<
+    string,
+    Awaited<ReturnType<RunComposition['agents']['prepareBinding']>>
+  > = {};
+  for (const [requirement, assignment] of assignments.agents) {
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- first failed requirement must be deterministic at admission.
+      agentBindings[requirement.bindingKey] = await composition.agents.prepareBinding(assignment);
+    } catch {
+      throw new RunManagerError('agent_runtime_unavailable');
+    }
+  }
   const bindings: Record<string, PreparedScriptBinding> = {};
   for (const [requirementKey, requirement, assignment] of assignments.scripts) {
     try {
@@ -266,7 +306,10 @@ export const admitRun = async (
       materializationDigest: compilation.materializationDigest,
       programDigest: compilation.programDigest,
     }),
-    bindings: Object.freeze({ scripts: Object.freeze(bindings) }),
+    bindings: Object.freeze({
+      scripts: Object.freeze(bindings),
+      ...(Object.keys(agentBindings).length === 0 ? {} : { agents: Object.freeze(agentBindings) }),
+    }),
     initial: Object.freeze({ state: initial.state, commands: initial.commands }),
     admission: Object.freeze({ createdAt: new Date().toISOString(), token: randomUUID() }),
   });

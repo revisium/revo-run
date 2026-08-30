@@ -1,32 +1,32 @@
 import type {
   AgentInvocationHandle,
-  AgentInvocationResult,
   AgentInvocationSnapshot,
   AgentResultLookup,
   AgentBindingInput,
-  StartAgentInvocation,
+  AgentRuntimeStartInput,
+  AgentTerminalResult,
   CancelInvocationResult,
   AgentRuntimePort,
 } from '../../../src/composition/agent-port.js';
 
 export interface FakeAgentPort {
   readonly port: AgentRuntimePort;
-  readonly starts: readonly StartAgentInvocation[];
+  readonly starts: readonly AgentRuntimeStartInput[];
   readonly lookups: readonly string[];
   readonly cancellations: readonly string[];
 }
 
 export const createFakeAgentPort = (
-  resultFor: (input: StartAgentInvocation) => AgentInvocationResult,
+  resultFor: (input: AgentRuntimeStartInput) => AgentTerminalResult,
   options: Readonly<{ readonly deferCompletionUntilCancel?: boolean }> = {},
 ): FakeAgentPort => {
-  const starts: StartAgentInvocation[] = [];
+  const starts: AgentRuntimeStartInput[] = [];
   const lookups: string[] = [];
   const cancellations: string[] = [];
-  const completed = new Map<string, AgentInvocationResult>();
+  const completed = new Map<string, AgentTerminalResult>();
   const pending = new Map<
     string,
-    Readonly<{ readonly input: StartAgentInvocation; readonly result: AgentInvocationResult }>
+    Readonly<{ readonly input: AgentRuntimeStartInput; readonly result: AgentTerminalResult }>
   >();
   const port: AgentRuntimePort = {
     initialize: async () => undefined,
@@ -50,7 +50,7 @@ export const createFakeAgentPort = (
           result,
         }),
       };
-      return handle;
+      return Object.freeze({ status: 'accepted', handle });
     },
     getResult: (invocationId): AgentResultLookup => {
       lookups.push(invocationId);
@@ -66,9 +66,6 @@ export const createFakeAgentPort = (
         invocationId,
         pin: active.result.pin,
         status: 'running',
-        acceptedAt: active.result.acceptedAt,
-        ...(active.result.startedAt === undefined ? {} : { startedAt: active.result.startedAt }),
-        outputDirectory: active.input.output.directory,
       };
       return { state: 'running', invocation };
     },

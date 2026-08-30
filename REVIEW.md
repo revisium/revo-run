@@ -14,14 +14,48 @@ database, or external-progress table. The admitted snapshot, command observation
 and root stream must remain sufficient for recovery without recompilation.
 
 Review all public/durable values as closed runtime schemas. They must not expose a
-raw pipeline, kernel command/state/event, source profile, secret, absolute path,
-live handle, raw provider error, or stack. Public failure values are normalized and
-bounded before journal projection.
+raw pipeline, kernel command/state/event, source profile, secret, atom-started
+absolute POSIX/drive/UNC/device/file-URI token, live handle, raw provider error,
+or stack. A non-file URL remains valid only when its full RFC3986 candidate ends
+at end-of-text, whitespace, control, or the deterministically selected rightmost
+full-valid external wrapper closer. Unknown grammar invalidates the whole
+candidate and exposes its first slash. Wrapper characters that are RFC data
+remain data unless selected as the maximal valid envelope boundary. Require one
+forward O(n) parse with bounded state; reject candidate replay or work multiplied
+by wrapper-closer count.
+Public failure values are normalized and bounded before journal projection.
 
 The startup readiness fence is a required safety boundary: DBOS recovery must not
 reach a resolver, script provider, timer delivery, or interaction application before
-the composition is initialized. Agent-bearing runs fail closed until the separate
-agent adapter is approved.
+the composition is initialized. Unsupported, mixed, or wrongly versioned agent
+assignments must fail before workspace acquisition, script preparation, or DBOS
+admission. Unknown active agent lookups become `recovery_required`; they never
+launch a replacement process.
+
+The production Codex definition is Linux-only and has no CLI version constraint.
+Its argv starts with root-scoped `--ask-for-approval=never`, then `exec` and
+exec-scoped `--ignore-user-config`; it ends with `--`, `-` and receives
+byte-exact prompt content through stdin. Ambient `HOME` and `CODEX_HOME` are
+captured immediately before every invocation and remain invocation-scoped
+secret/redaction inputs. Reject a port-lifetime auth snapshot, every supplied
+credentials object, and every path-shaped durable workspace reference.
+
+After whole-set profile resolution, any run containing Codex must reject
+non-Linux before agent binding preparation, workspace acquisition, script
+binding preparation, process launch, or DBOS admission. Do not apply that guard
+to script-only runs.
+
+The private active-invocation registry is one closed, versioned document in the
+DBOS system database. Reject a process-local-only sink, a second table/store, a
+write that does not await DBOS acknowledgement, or startup that opens readiness
+before registry load and runtime identity cleanup. Review terminal success and
+failure values through the shared recursive sanitizer; raw faults and rejected
+data must not become durable diagnostics.
+
+Graceful manager stop must close and drain public calls, shut agents down and
+await active-registry removal while DBOS remains available, and only then shut
+DBOS down. Reject cleanup that first closes DBOS or can return with an orphaned
+child.
 
 Root workflow event order and DBOS function IDs are intentional. The exact
 `no-await-in-loop` exception for `src/dbos/kernel-run-workflow.ts` preserves that

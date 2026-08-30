@@ -54,6 +54,7 @@ import {
 } from '../contracts/public-schemas.js';
 import { RunManagerError } from '../contracts/run-manager-error.js';
 import { RunProfileSchema } from '../contracts/run-profile.js';
+import { loadAgentActiveInvocationSnapshots } from '../dbos/agent-active-invocation-registry.js';
 import {
   gateConfigurationKey,
   runEventHighWaterKey,
@@ -76,6 +77,8 @@ import { operationWorkflowId, runWorkflowId } from '../dbos/workflow-id.js';
 const applicationName = 'revo-run';
 const interactionDeliveryAttempts = 300;
 const interactionDeliveryDelayMs = 50;
+
+export const runManagerStopOrder = Object.freeze(['agents.shutdown', 'dbos.shutdown'] as const);
 
 const timestamp = (value: number | undefined): string =>
   new Date(value ?? Date.now()).toISOString();
@@ -265,6 +268,20 @@ const isPreparedScriptBinding = (value: unknown): boolean => {
   );
 };
 
+const isPreparedAgentBinding = (value: unknown): boolean =>
+  isRecord(value) &&
+  isJsonValue(value) &&
+  hasExactKeys(value, ['schemaVersion', 'pin', 'parameters', 'permissions', 'workspaceRef']) &&
+  value.schemaVersion === 'prepared-agent-binding/v1' &&
+  isRecord(value.pin) &&
+  hasExactKeys(value.pin, ['agentId', 'agentVersion', 'definitionDigest']) &&
+  isNonEmptyString(value.pin.agentId) &&
+  isNonEmptyString(value.pin.agentVersion) &&
+  isNonEmptyString(value.pin.definitionDigest) &&
+  isRecord(value.parameters) &&
+  isRecord(value.permissions) &&
+  isNonEmptyString(value.workspaceRef);
+
 const isCompatiblePersistedRun = (value: unknown): value is AdmittedRunSnapshotV1 => {
   if (
     !isRecord(value) ||
@@ -316,7 +333,11 @@ const isCompatiblePersistedRun = (value: unknown): value is AdmittedRunSnapshotV
   ) {
     return false;
   }
-  return value.bindings.agents === undefined || isRecord(value.bindings.agents);
+  return (
+    value.bindings.agents === undefined ||
+    (isRecord(value.bindings.agents) &&
+      Object.values(value.bindings.agents).every(isPreparedAgentBinding))
+  );
 };
 
 const hasAdmissionToken = (value: unknown, token: string): value is AdmittedRunSnapshotV1 =>
@@ -444,15 +465,20 @@ export class DefaultRunManager implements RunManager {
     try {
       DBOS.setConfig({ name: applicationName, systemDatabaseUrl: this.options.database.url });
       await this.assertPersistedRunsCompatible();
-      await composition.agents.initialize([]);
       installRunComposition(composition);
       launchStarted = true;
       await DBOS.launch();
+      const activeInvocations = await loadAgentActiveInvocationSnapshots();
+      await composition.agents.initialize(activeInvocations);
       composition.fence.open();
       this.composition = composition;
       this.lifecycle = 'running';
     } catch {
       clearRunComposition(composition);
+      await composition.agents.shutdown('run_manager_start_failed').catch(() => undefined);
+      if (launchStarted) {
+        await DBOS.shutdown().catch(() => undefined);
+      }
       throw new RunManagerError('manager_start_failed', {
         operation: launchStarted ? 'dbos_launch' : 'host_initialization',
       });
@@ -477,17 +503,17 @@ export class DefaultRunManager implements RunManager {
   private async stopAfterPublicCallsDrain(): Promise<void> {
     await this.waitForPublicCallsToDrain();
     let failure: 'dbos_shutdown' | 'agent_shutdown' | undefined;
-    try {
-      await DBOS.shutdown();
-    } catch {
-      failure = 'dbos_shutdown';
-    }
     if (this.composition !== undefined) {
       try {
         await this.composition.agents.shutdown('run_manager_stop');
       } catch {
-        failure ??= 'agent_shutdown';
+        failure = 'agent_shutdown';
       }
+    }
+    try {
+      await DBOS.shutdown();
+    } catch {
+      failure ??= 'dbos_shutdown';
     }
     if (this.composition !== undefined) {
       clearRunComposition(this.composition);

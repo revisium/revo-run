@@ -7,12 +7,15 @@ const closed = <T extends Record<string, import('typebox').TSchema>>(properties:
   Type.Object(properties, { additionalProperties: false });
 
 const identifier = Type.String({ minLength: 1, maxLength: 256 });
+const logicalWorkspaceRef = Type.String({
+  pattern: '^[A-Za-z][A-Za-z0-9._-]{0,127}$',
+});
 
 export const AgentAssignmentSchema = closed({
   definition: closed({ id: identifier, version: identifier }),
   parameters: Type.Record(Type.String(), JsonValueSchema),
   permissions: Type.Record(Type.String(), JsonValueSchema),
-  workspaceRef: identifier,
+  workspaceRef: logicalWorkspaceRef,
   credentials: Type.Optional(Type.Record(Type.String(), identifier)),
 });
 

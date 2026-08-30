@@ -116,7 +116,9 @@ describe('RN1 governing design artifacts', () => {
         ? new URL(path.slice('package/'.length), packageRoot)
         : path.startsWith('integration/')
           ? new URL(`../../integration/fixtures/${path.slice('integration/'.length)}`, artifactRoot)
-          : new URL(path, artifactRoot);
+          : path.startsWith('docs/') || path.startsWith('test/')
+            ? new URL(`../../../${path}`, artifactRoot)
+            : new URL(path, artifactRoot);
       expect(sha256(readFileSync(url, 'utf8'))).toBe(expectedDigest);
       if (url.pathname.endsWith('.json')) {
         if (!isRecord(parseJson(url))) {

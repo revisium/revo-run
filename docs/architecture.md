@@ -7,13 +7,14 @@ revo-core
   -> revo-run manager: raw pipeline, profile, input, host resolvers
        -> revo-pipeline: compile, initial state, commands, transitions
        -> revo-scripts: binding preparation, one physical script attempt
+       -> revo-agent-runtime: one Codex process invocation and terminal result
        -> DBOS/PostgreSQL: admission snapshot, operation history, events
 ```
 
 The consumer supplies only the raw `PipelineSourcePackage`, `RunProfile`, JSON
-input, and host resolvers. `createRun()` compiles once, prepares script bindings,
-and starts a DBOS root workflow. The admitted snapshot is immutable; recovery
-does not recompile or reselect profile values.
+input, and host resolvers. `createRun()` compiles once, prepares script bindings
+and supported agent bindings, and starts a DBOS root workflow. The admitted
+snapshot is immutable; recovery does not recompile or reselect profile values.
 
 ## Durable operation boundary
 
@@ -52,14 +53,52 @@ closed public schemas, public run values, raw pipeline/profile types, and host
 resolver types. It does not export a lowered plan, pipeline kernel, admitted
 snapshot, DBOS record, prepared binding, or a deep import surface.
 
-Agent-bearing public admission remains fail-closed with `agent_runtime_unavailable`
-until the separate agent adapter is approved. Repository-only fixtures exercise
-the private port's pinned result validation and same-identity cancel/lookup path;
-they are not a production adapter or consumer option.
+The private production adapter recognizes only `codex@definition-v1`. The
+definition version is independent of the installed Codex CLI version and does not
+pin one. The definition supports Linux only. A profile must explicitly provide a
+regex-safe `model`, `allowAmbientLogin: true`, and a logical workspace reference;
+any credentials property and unsupported, mixed, or wrong agent references fail
+before host work or DBOS admission. After whole-set resolution, a profile with
+Codex also rejects non-Linux before agent or script preparation; script-only
+profiles remain portable. The adapter starts the real argv with root-scoped
+`--ask-for-approval=never`, then `exec` and exec-scoped
+`--ignore-user-config`, ends it with `--`, `-`, and delivers the prompt
+byte-for-byte over stdin. It creates an exclusive sibling output leaf and
+captures `HOME` and `CODEX_HOME` afresh immediately before each start, passing
+them only through that invocation's runtime secret environment/redaction path.
+
+Only a minimal prepared binding and sanitized terminal carrier enter durable
+history. Raw environment, metadata, launch evidence, files, output paths, and
+process handles remain process-local. A shared recursive sanitizer rejects
+secret-shaped and normalized acronym credential keys and captured secret values.
+Its lexical token scanner rejects atom-started POSIX absolutes including root and
+punctuation-leading segments, drive absolutes, backslash UNC/device paths, and
+file URI tokens anywhere in success or failure text. A non-file URL exemption
+requires full RFC3986 consumption to end, whitespace, control, or a
+deterministically selected rightmost full-valid external wrapper closer.
+Unknown or out-of-grammar input invalidates the whole candidate and exposes its
+first slash. Wrapper characters that are RFC data remain data unless selected
+as the maximal valid envelope boundary. RFC URL and maximal-valid wrapper
+recognition uses one forward O(n) parse with bounded state; closer count does not
+multiply parsing work.
+
+The active invocation registry is a closed, versioned document in the DBOS
+system database. Runtime running/cancelling saves and removes await DBOS
+acknowledgement. Startup launches DBOS with readiness closed, loads the registry,
+and calls runtime initialization to identity-check and reap recorded detached
+process groups before opening readiness. The durable operation then observes an
+unknown result as `recovery_required` and never relaunches it. A terminal DBOS
+result survives manager restart without executing Codex again. The pinned
+runtime still has a spawn-before-save SIGKILL window; unregistered orphans in
+that window are not claimed as recoverable.
+
+Graceful stop first closes and drains public calls, then shuts agents down while
+DBOS and the active registry can acknowledge process cleanup, and only then
+shuts DBOS down.
 
 ## Release fence
 
-RN1 pins the compatible PL1 and SC1 alphas as exact registry dependencies.
+RN1 pins the compatible AG1, PL1, and SC1 alphas as exact registry dependencies.
 `verify-package` refuses to compensate by linking undeclared runtime
 dependencies, and no local, workspace, Git, URL, or tarball dependency is an
 acceptable substitute.
@@ -73,8 +112,8 @@ event to the one serialized root lane:
 | Source semantics                                     | RN1 evidence                                                                                        |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `script`                                             | `raw-kernel-run.test.ts` and `rn1-script-recovery.test.ts`                                          |
-| `agent` single                                       | private known-v1 fixture in `rn1-private-agent-port.test.ts`                                        |
-| `consensus` / three agent participants               | same private fixture; public admission remains fail-closed                                          |
+| `agent` single                                       | Codex adapter, DBOS restart, active-process recovery, and private-port conformance                  |
+| `consensus` / three agent participants               | private-port conformance; mixed or unsupported production assignments fail before preparation       |
 | `choice`, `call`, `parallel`, `repeat`, `map`, `end` | `rn1-control-flow-conformance.test.ts`                                                              |
 | duration and signal `wait`                           | `rn1-control-flow-conformance.test.ts`, `raw-kernel-run.test.ts`, and fresh-process signal recovery |
 | `humanGate` answer, deadline, cancellation           | `raw-kernel-run.test.ts`                                                                            |
