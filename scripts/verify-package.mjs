@@ -52,6 +52,11 @@ const assertPackedProductionHasNoTestHooks = async (directory) => {
       /WorkflowProbe|reachWorkflowProbe|\.probe(?:\?\.)?\.reach/u,
       `Packed production artifact contains a workflow probe: ${path}`,
     );
+    assert.doesNotMatch(
+      content,
+      /codex-fixture-parser|installed-codex-parser-smoke/u,
+      `Packed production artifact contains the test-only Codex parser: ${path}`,
+    );
   }
 };
 

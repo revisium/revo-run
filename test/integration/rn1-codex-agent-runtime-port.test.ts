@@ -104,16 +104,6 @@ describe('RN1 Codex agent-runtime adapter', () => {
       throw new Error('CTX-ARGV-STDIN has invalid input.');
     }
     const { model, prompt } = context.input;
-    const acceptedProbe = spawnSync(
-      'codex',
-      ['--ask-for-approval=never', 'exec', '--ignore-user-config', '--help'],
-      { encoding: 'utf8' },
-    );
-    const rejectedProbe = spawnSync(
-      'codex',
-      ['exec', '--ignore-user-config', '--ask-for-approval=never', '--help'],
-      { encoding: 'utf8' },
-    );
     const value = await fixture('success', { version: '1.2.3' });
     const binding = await prepareCodexBinding(value, {
       ...codexBindingInput,
@@ -145,7 +135,18 @@ describe('RN1 Codex agent-runtime adapter', () => {
     expect(value.acquire).toHaveBeenCalledOnce();
     const calls = await waitForFakeCodexCalls(value, 2);
     expect(calls[0]?.args).toStrictEqual(['--version']);
-    const actualArguments = [...(calls[1]?.args ?? [])];
+    const renderedArguments = [...(calls[1]?.args ?? [])];
+    const legacyArguments = [
+      renderedArguments[1] ?? '',
+      renderedArguments[2] ?? '',
+      renderedArguments[0] ?? '',
+      ...renderedArguments.slice(3),
+    ];
+    const legacyProbe = spawnSync(value.executable, legacyArguments, {
+      encoding: 'utf8',
+      input: prompt,
+    });
+    const actualArguments = [...renderedArguments];
     actualArguments[5] = '<runtime-result-schema-file>';
     const actualPrompt = Buffer.from(calls[1]?.stdinBase64 ?? '', 'base64').toString('utf8');
     expect({
@@ -153,9 +154,11 @@ describe('RN1 Codex agent-runtime adapter', () => {
       stdin: actualPrompt,
       promptPresentInArgv: actualArguments.includes(prompt),
       hostCredentialCalls: 0,
-      parserProbe: {
-        acceptedExitCode: acceptedProbe.status,
-        rejectedExitCode: rejectedProbe.status,
+      repoParser: {
+        correctAccepted: result.status === 'succeeded',
+        legacyRejected:
+          legacyProbe.status === 2 &&
+          legacyProbe.stderr === 'codex-fixture-parser:root_option_in_exec\n',
       },
     }).toStrictEqual(context.expected);
     expect(await readdir(value.workspace)).toStrictEqual([]);

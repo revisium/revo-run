@@ -4,20 +4,20 @@
   "artifacts": [
     {
       "path": "docs/conformance/rn1-codex-approved-architecture.json",
-      "digest": "5f0b16b868074768a224edd1f72d5cefa0395531466380691477bbe351413080"
+      "digest": "f1b0caac79dfc368c4fa7f5582265e3c06a14995b9eeb4115185783cc962a2b6"
     },
     {
       "path": "docs/conformance/rn1-codex-source-requirements.json",
-      "digest": "2dea01c2d3ebd69fd7e5860000c17238f7a2b4c2eaa44da0f24284272f060572"
+      "digest": "b74b256a18724954416b4dd1353bd87dcb80f4df16594733680f1cd77e254d02"
     },
     {
       "path": "test/fixtures/conformance/rn1-codex-context-vectors.json",
-      "digest": "f90c6a981bee91f8b3411a0932a43a3ace8a6c619eafd9972b69218dae398459"
+      "digest": "0371c4800588ca4caf1cec7cb1dca71717335c919eef92fed86e06973b2e4b18"
     },
     {
       "path": "test/fixtures/conformance/rn1-codex-golden-vectors.json",
       "digest": "cd844addb75a03b2bdae48c94210a94c8876b66de88708e623be2342c6a1a337"
     }
   ],
-  "governingArtifactsDigest": "e477890ffb38301273955223b6ed17c0b8ae7cf51eb3f8f2cd611b43520410a6"
+  "governingArtifactsDigest": "18ef90214f49ba28d1b518153b778f320467f2094089db6b8e51b4891f8f1064"
 }

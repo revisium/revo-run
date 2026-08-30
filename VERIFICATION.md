@@ -28,8 +28,17 @@ observations, validate the governing SHA-256 manifest under `docs/conformance/`,
 and keep the fresh-process active-identity reap/no-replay proof green. Operational
 route gates and source-backed exclusions are separate evidence classes, not
 pseudo-vectors. Terminal URL checks include equal-byte ambiguous-wrapper work and
-near-limit valid/malformed completion evidence. Live Codex/provider calls are
-manual and excluded from `verify`.
+near-limit valid/malformed completion evidence.
+
+Every `verify` run must launch the actual adapter-rendered Codex argv through the
+independent repo-owned executable scope parser and keep its counterfactual scope
+rejections green. A separate installed-Codex parser smoke runs only the two
+zero-cost `--help` probes. It reports `not_available: executable_not_found` only
+for a spawn-level `ENOENT`; an available executable returning different exits,
+a permission error, signal, timeout, or missing exit status fails. Generic CI
+does not claim host Codex availability. No parser check pins a CLI version or
+sends a model prompt/provider request. Live provider calls remain manual and are
+excluded from `verify`.
 
 For workflow changes, run `actionlint` when it is available. Pull-request CI
 waits for the Sonar Quality Gate, verifies that the analysis belongs to the exact

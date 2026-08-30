@@ -136,7 +136,7 @@
         "stdin": "-leading\nПривет $(echo must-not-run); --model evil",
         "promptPresentInArgv": false,
         "hostCredentialCalls": 0,
-        "parserProbe": { "acceptedExitCode": 0, "rejectedExitCode": 2 }
+        "repoParser": { "correctAccepted": true, "legacyRejected": true }
       },
       "requirements": [
         "SR-IO-001",
@@ -648,6 +648,15 @@
       "reason": "definition-v1 is the consumer definition contract, not a CLI release.",
       "sourceIds": ["SRC-APPROVED-ARCH", "SRC-ADR-0003", "SRC-ADR-0004"],
       "requirements": ["SR-EXCLUSION-001"]
+    },
+    {
+      "id": "EX-HOST-CODEX-AVAILABILITY",
+      "evidenceClass": "source-backed-exclusion",
+      "excluded": "claim that generic CI has a host Codex executable",
+      "requiredEvidence": "mandatory repo parser plus explicit conditional installed-Codex smoke status",
+      "reason": "CLI scope compatibility is always executable in-repo; host executable availability is environment-specific and only ENOENT is non-blocking.",
+      "sourceIds": ["SRC-APPROVED-ARCH", "SRC-VERIFICATION", "SRC-ADR-0003", "SRC-ADR-0004"],
+      "requirements": ["SR-EXCLUSION-002"]
     }
   ]
 }

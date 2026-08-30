@@ -66,6 +66,12 @@ profiles remain portable. The adapter starts the real argv with root-scoped
 byte-for-byte over stdin. It creates an exclusive sibling output leaf and
 captures `HOME` and `CODEX_HOME` afresh immediately before each start, passing
 them only through that invocation's runtime secret environment/redaction path.
+Every verification run sends the actual adapter-rendered argv through an
+independent repo-owned executable parser that enforces root and exec option
+scopes. A separate zero-cost installed-Codex `--help` smoke is conditional: an
+absent executable is reported explicitly, while an available executable with
+different parser behavior fails verification. Neither layer pins a CLI version
+or sends a provider request.
 
 Only a minimal prepared binding and sanitized terminal carrier enter durable
 history. Raw environment, metadata, launch evidence, files, output paths, and

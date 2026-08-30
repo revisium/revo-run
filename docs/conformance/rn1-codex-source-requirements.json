@@ -1,13 +1,13 @@
 {
   "schemaVersion": "rn1-codex-source-requirements/v3",
-  "artifactRevision": "repo:rn1-codex-source-requirements:2026-08-30:v8",
+  "artifactRevision": "repo:rn1-codex-source-requirements:2026-08-30:v9",
   "sources": [
     {
       "id": "SRC-APPROVED-ARCH",
       "locator": "docs/conformance/rn1-codex-approved-architecture.json#/constraints",
       "immutablePin": {
         "kind": "normalized-sha256",
-        "value": "9ee22a1bbe97706fbf5e9fa32aab1ac338df8f1315c28a846c03255a0903f536"
+        "value": "0ecad38de5c7ad4f6a4ed03c31d7c768d719e58a57482a4161157971ffbe7571"
       }
     },
     {
@@ -87,7 +87,7 @@
       "locator": "REVIEW.md",
       "immutablePin": {
         "kind": "file-sha256",
-        "value": "884e9090e58c11ddfbef8dfcc65e24d53fd7734ec523b46e5d10019b1c95389c"
+        "value": "7c619a457313f2380e38005ab382523a95f7e7572b62847ab88c3d9ab5d89f38"
       }
     },
     {
@@ -95,7 +95,7 @@
       "locator": "VERIFICATION.md",
       "immutablePin": {
         "kind": "file-sha256",
-        "value": "c4d0a3776e089c03576f6655638a15ec0d0f93d85dac3816accda2fef3b40c03"
+        "value": "e74c8f9b91288319023d07d63be98dea63e8c1d354c63f70f5aaabb622bef430"
       }
     },
     {
@@ -127,7 +127,7 @@
       "locator": "docs/architecture.md",
       "immutablePin": {
         "kind": "file-sha256",
-        "value": "8a38c129e3c04f5a70b6c4e58118491759a5bee8e7fd18c9b1ee273ec0517689"
+        "value": "5a020e18afd94ef8ece328c50603f11a8bdd522ea234000887c6758ee83123bb"
       }
     },
     {
@@ -165,6 +165,12 @@
       "evidenceClass": "route-gate",
       "command": "same-command execution against SRC-BASE when claiming a pre-existing failure",
       "requirements": ["SR-VERIFY-004"]
+    },
+    {
+      "id": "GATE-CODEX-CLI-PARSER",
+      "evidenceClass": "route-gate",
+      "command": "mandatory repo-owned executable scope parser and conditional installed Codex --help smoke",
+      "requirements": ["SR-VERIFY-001"]
     }
   ],
   "requirements": [
@@ -428,11 +434,18 @@
       "text": "Darwin live execution and automatic live-provider calls remain explicit source-backed exclusions."
     },
     {
+      "id": "SR-EXCLUSION-002",
+      "evidenceClass": "source-backed-exclusion",
+      "sourceId": "SRC-VERIFICATION",
+      "locator": "/codex-parser-evidence",
+      "text": "Generic CI does not claim an installed Codex executable; the mandatory repo-owned executable parser always proves CLI scopes, while the conditional installed Codex help smoke reports only executable absence as not_available and fails every available mismatch."
+    },
+    {
       "id": "SR-VERIFY-001",
       "evidenceClass": "route-gate",
       "sourceId": "SRC-VERIFICATION",
       "locator": "/complete-clean-registry-gate",
-      "text": "Targeted suites precede full disposable-DB pnpm verify and git diff --check."
+      "text": "Targeted suites include the mandatory independent repo-owned executable CLI scope parser against actual adapter argv and precede full disposable-DB pnpm verify and git diff --check; the conditional installed Codex help smoke explicitly reports executable absence and fails every available parser mismatch."
     },
     {
       "id": "SR-VERIFY-002",

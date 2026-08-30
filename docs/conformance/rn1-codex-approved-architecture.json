@@ -1,13 +1,13 @@
 {
   "schemaVersion": "rn1-codex-approved-architecture/v3",
-  "artifactRevision": "repo:rn1-codex-approved-architecture:2026-08-30:v8",
+  "artifactRevision": "repo:rn1-codex-approved-architecture:2026-08-30:v9",
   "normalization": {
     "encoding": "UTF-8",
     "separator": "LF",
     "terminalNewline": false,
     "form": "<ordinal>. <text>, joined by LF in ordinal order"
   },
-  "normalizedTextSha256": "9ee22a1bbe97706fbf5e9fa32aab1ac338df8f1315c28a846c03255a0903f536",
+  "normalizedTextSha256": "0ecad38de5c7ad4f6a4ed03c31d7c768d719e58a57482a4161157971ffbe7571",
   "constraints": [
     {
       "ordinal": 1,
@@ -92,7 +92,7 @@
     {
       "ordinal": 17,
       "id": "ARCH-VERIFICATION",
-      "text": "Required gates are targeted conformance/admission/adapter/sanitizer/manager-stop/fresh-process DBOS suites, the disposable-database clean-registry pnpm verify and packed root-consumer gates, git diff --check, applicable actionlint, exact-head CI/Sonar checks, and same-command base proof for any claimed pre-existing failure; live-provider smoke is conditional on explicit human authorization and ambient login."
+      "text": "Required gates are targeted conformance/admission/adapter/sanitizer/manager-stop/fresh-process DBOS suites, a mandatory repo-owned executable CLI scope parser against the actual adapter-rendered argv, the disposable-database clean-registry pnpm verify and packed root-consumer gates, git diff --check, applicable actionlint, exact-head CI/Sonar checks, and same-command base proof for any claimed pre-existing failure; a zero-cost installed Codex help smoke is conditional, reports not_available only when the executable is absent, and fails for an available parser mismatch, while live-provider smoke remains conditional on explicit human authorization and ambient login."
     }
   ]
 }

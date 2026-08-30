@@ -44,18 +44,60 @@ import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2);
 const directory = dirname(fileURLToPath(import.meta.url));
+const rejectArguments = (classification) => {
+  process.stderr.write('codex-fixture-parser:' + classification + '\\n');
+  process.exit(2);
+};
+const requireArgument = (cursor, expected, classification) => {
+  if (args[cursor] !== expected) {
+    rejectArguments(classification);
+  }
+  return cursor + 1;
+};
+const requireValue = (cursor, classification) => {
+  if (cursor >= args.length || args[cursor].length === 0 || args[cursor].startsWith('--')) {
+    rejectArguments(classification);
+  }
+  return cursor + 1;
+};
+const parseExecutionArguments = () => {
+  let cursor = 0;
+  if (args[cursor] === '--ignore-user-config') {
+    rejectArguments('exec_option_in_root');
+  }
+  if (args[cursor] !== '--ask-for-approval=never') {
+    rejectArguments(
+      args[cursor] === 'exec' && args.includes('--ask-for-approval=never')
+        ? 'root_option_in_exec'
+        : 'missing_root_option',
+    );
+  }
+  cursor += 1;
+  cursor = requireArgument(cursor, 'exec', 'missing_exec');
+  cursor = requireArgument(cursor, '--ignore-user-config', 'missing_ignore_user_config');
+  cursor = requireArgument(cursor, '--json', 'missing_json');
+  cursor = requireArgument(cursor, '--output-schema', 'missing_output_schema');
+  cursor = requireValue(cursor, 'missing_output_schema_value');
+  cursor = requireArgument(cursor, '--sandbox=read-only', 'missing_permission_mode');
+  cursor = requireArgument(cursor, '--config', 'missing_permission_config');
+  cursor = requireArgument(
+    cursor,
+    'sandbox_workspace_write.network_access=false',
+    'invalid_permission_config',
+  );
+  cursor = requireArgument(cursor, '--model', 'missing_model');
+  cursor = requireValue(cursor, 'missing_model_value');
+  cursor = requireArgument(cursor, '--', 'missing_terminator');
+  cursor = requireArgument(cursor, '-', 'missing_stdin_prompt_marker');
+  if (cursor !== args.length) {
+    rejectArguments('unexpected_argument');
+  }
+};
 if (args.length === 1 && args[0] === '--version') {
   appendFileSync(join(directory, 'calls.ndjson'), JSON.stringify({ args, pid: process.pid, environment: Object.keys(process.env).sort() }) + '\\n');
   process.stdout.write('codex-cli ${version}\\n');
 } else {
-  if (
-    args[0] !== '--ask-for-approval=never' ||
-    args[1] !== 'exec' ||
-    args[2] !== '--ignore-user-config'
-  ) {
-    process.stderr.write('Usage: codex exec [OPTIONS] [PROMPT]\\n');
-    process.exit(2);
-  }
+  parseExecutionArguments();
   const stdin = readFileSync(0);
   appendFileSync(
     join(directory, 'calls.ndjson'),
@@ -109,6 +151,7 @@ type AcquireWorkspace = (
 export interface FakeCodexFixture {
   readonly root: string;
   readonly workspace: string;
+  readonly executable: string;
   readonly callsPath: string;
   readonly home: string;
   readonly codexHome: string;
@@ -133,9 +176,9 @@ export const createFakeCodexFixture = async (
   await mkdir(workspace);
   await mkdir(binaryDirectory);
   if (options.installBinary !== false) {
-    const binary = join(binaryDirectory, 'codex');
-    await writeFile(binary, fakeCodexSource(options.version ?? '1.2.3', mode));
-    await chmod(binary, 0o755);
+    const executable = join(binaryDirectory, 'codex');
+    await writeFile(executable, fakeCodexSource(options.version ?? '1.2.3', mode));
+    await chmod(executable, 0o755);
   }
   vi.stubEnv('PATH', binaryDirectory);
   vi.stubEnv('HOME', home);
@@ -183,7 +226,16 @@ export const createFakeCodexFixture = async (
     activeStateSink,
   );
   await port.initialize([]);
-  return { root, workspace, callsPath, home, codexHome, acquire, port };
+  return {
+    root,
+    workspace,
+    executable: join(binaryDirectory, 'codex'),
+    callsPath,
+    home,
+    codexHome,
+    acquire,
+    port,
+  };
 };
 
 export const removeFakeCodexFixture = async (fixture: FakeCodexFixture): Promise<void> => {
