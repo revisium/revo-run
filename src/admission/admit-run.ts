@@ -211,13 +211,9 @@ const isSupportedAgentAssignment = (assignment: AgentAssignment): boolean =>
   assignment.definition.version === CODEX_AGENT_REF.version &&
   assignment.credentials === undefined;
 
-export const admitRun = async (
-  input: CreateRunInput,
-  composition: RunComposition,
-): Promise<AdmittedRunSnapshotV1> => {
-  // The caller may have combined an invalid run ID with another malformed
-  // field.  Extract and classify the ID before inspecting the rest of the
-  // envelope so admission never reaches compilation or host preparation.
+const validateCreateRunInput = (input: CreateRunInput): void => {
+  // Classify an invalid run ID before the rest of a malformed envelope so no
+  // host preparation can observe the input.
   if (isRecord(input) && typeof input.runId === 'string' && !Check(RunIdSchema, input.runId)) {
     throw new RunManagerError('invalid_run_id', { path: '/runId', reason: 'grammar' });
   }
@@ -227,10 +223,13 @@ export const admitRun = async (
   if (!Check(RunIdSchema, input.runId)) {
     throw new RunManagerError('invalid_run_id', { path: '/runId', reason: 'grammar' });
   }
-
   rejectInvalidAgentWorkspaceRefs(input.profile.bindings.agents);
+};
 
-  const compilation = compilationOrThrow(input);
+const initialStateOrThrow = (
+  input: CreateRunInput,
+  compilation: Extract<PipelineCompileResult, { readonly ok: true }>,
+): ReturnType<typeof createInitialPipelineState> => {
   const initial = createInitialPipelineState(
     { program: compilation.program, programDigest: compilation.programDigest },
     input.input,
@@ -241,34 +240,42 @@ export const admitRun = async (
       reason: 'entry_schema',
     });
   }
-  if (!Check(RunProfileSchema, input.profile)) {
-    profileInvalid('/profile', 'invalid_profile');
-  }
-  const assignments = resolveProfile(
-    compilation.requirements.entries,
-    input.profile.bindings.agents,
-    input.profile.bindings.scripts,
-  );
+  return initial;
+};
+
+const validateAgentAssignments = (assignments: ResolvedProfile): void => {
   if (assignments.agents.some(([, assignment]) => !isSupportedAgentAssignment(assignment))) {
     throw new RunManagerError('agent_runtime_unavailable');
   }
   if (assignments.agents.length > 0 && process.platform !== 'linux') {
     throw new RunManagerError('agent_runtime_unavailable');
   }
+};
 
-  const controller = new AbortController();
-  const agentBindings: Record<
+const prepareAgentBindings = async (
+  assignments: ResolvedProfile,
+  composition: RunComposition,
+): Promise<Record<string, Awaited<ReturnType<RunComposition['agents']['prepareBinding']>>>> => {
+  const bindings: Record<
     string,
     Awaited<ReturnType<RunComposition['agents']['prepareBinding']>>
   > = {};
   for (const [requirement, assignment] of assignments.agents) {
     try {
       // oxlint-disable-next-line no-await-in-loop -- first failed requirement must be deterministic at admission.
-      agentBindings[requirement.bindingKey] = await composition.agents.prepareBinding(assignment);
+      bindings[requirement.bindingKey] = await composition.agents.prepareBinding(assignment);
     } catch {
       throw new RunManagerError('agent_runtime_unavailable');
     }
   }
+  return bindings;
+};
+
+const prepareScriptBindings = async (
+  assignments: ResolvedProfile,
+  composition: RunComposition,
+): Promise<Record<string, PreparedScriptBinding>> => {
+  const controller = new AbortController();
   const bindings: Record<string, PreparedScriptBinding> = {};
   for (const [requirementKey, requirement, assignment] of assignments.scripts) {
     try {
@@ -289,6 +296,27 @@ export const admitRun = async (
       });
     }
   }
+  return bindings;
+};
+
+export const admitRun = async (
+  input: CreateRunInput,
+  composition: RunComposition,
+): Promise<AdmittedRunSnapshotV1> => {
+  validateCreateRunInput(input);
+  const compilation = compilationOrThrow(input);
+  const initial = initialStateOrThrow(input, compilation);
+  if (!Check(RunProfileSchema, input.profile)) {
+    profileInvalid('/profile', 'invalid_profile');
+  }
+  const assignments = resolveProfile(
+    compilation.requirements.entries,
+    input.profile.bindings.agents,
+    input.profile.bindings.scripts,
+  );
+  validateAgentAssignments(assignments);
+  const agentBindings = await prepareAgentBindings(assignments, composition);
+  const bindings = await prepareScriptBindings(assignments, composition);
 
   return Object.freeze({
     persistenceVersion: 1,

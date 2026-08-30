@@ -60,13 +60,56 @@ const forbiddenJoinedKeySuffixes = Object.freeze([
 
 const forbiddenJoinedKeyInfixes = Object.freeze(['accesskey', 'apikey', 'privatekey', 'secretkey']);
 
-const keySegments = (key: string): readonly string[] =>
-  key
-    .replaceAll(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
-    .replaceAll(/([a-z0-9])([A-Z])/g, '$1_$2')
-    .toLowerCase()
-    .split(/[^a-z0-9]+/u)
-    .filter((segment) => segment.length > 0);
+const asciiUpper = (value: string | undefined): boolean =>
+  value !== undefined && value >= 'A' && value <= 'Z';
+const asciiLower = (value: string | undefined): boolean =>
+  value !== undefined && value >= 'a' && value <= 'z';
+const asciiNumber = (value: string | undefined): boolean =>
+  value !== undefined && value >= '0' && value <= '9';
+const asciiAlphanumeric = (value: string | undefined): boolean =>
+  asciiUpper(value) || asciiLower(value) || asciiNumber(value);
+
+const startsKeySegment = (points: readonly string[], cursor: number): boolean => {
+  const point = points[cursor];
+  const previous = points[cursor - 1];
+  const next = points[cursor + 1];
+  return (
+    asciiUpper(point) &&
+    (asciiLower(previous) || asciiNumber(previous) || (asciiUpper(previous) && asciiLower(next)))
+  );
+};
+
+const appendLowercasePoint = (original: string, current: string, segments: string[]): string => {
+  let segment = current;
+  for (const point of Array.from(original.toLowerCase())) {
+    if (asciiAlphanumeric(point)) {
+      segment += point;
+      continue;
+    }
+    if (segment.length > 0) {
+      segments.push(segment);
+      segment = '';
+    }
+  }
+  return segment;
+};
+
+const keySegments = (key: string): readonly string[] => {
+  const points = Array.from(key);
+  const segments: string[] = [];
+  let segment = '';
+  for (let cursor = 0; cursor < points.length; cursor += 1) {
+    if (segment.length > 0 && startsKeySegment(points, cursor)) {
+      segments.push(segment);
+      segment = '';
+    }
+    segment = appendLowercasePoint(points[cursor] ?? '', segment, segments);
+  }
+  if (segment.length > 0) {
+    segments.push(segment);
+  }
+  return segments;
+};
 
 const isForbiddenKey = (key: string): boolean => {
   const segments = keySegments(key);

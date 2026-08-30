@@ -242,10 +242,7 @@ export const createCodexAgentRuntimePort = (
       return rejectedStart(input, closing);
     }
     const descriptor = manager.getAgent(CODEX_AGENT_REF);
-    if (
-      descriptor === undefined ||
-      descriptor.definitionDigest !== input.binding.pin.definitionDigest
-    ) {
+    if (descriptor?.definitionDigest !== input.binding.pin.definitionDigest) {
       return unknownStart();
     }
     const owned = createPendingStart();

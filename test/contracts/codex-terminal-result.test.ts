@@ -88,6 +88,94 @@ const isGenericFailure = (value: unknown): boolean => {
 };
 
 const carrierNames = ['direct', 'lookup', 'cancel', 'handle.result', 'handle.cancel'] as const;
+const unicodeCredentialKeyVectors = [
+  ['joined API Kelvin key', 'apiKey'],
+  ['joined access Kelvin key', 'accessKey'],
+  ['joined private Kelvin key', 'privateKey'],
+  ['prefixed camel Kelvin key', 'clientAPIKey'],
+  ['acronym Kelvin key', 'APIKey'],
+  ['dotted-I private key', 'PRİVATEKEY'],
+] as const;
+
+const legacyAsciiUpper = (value: string | undefined): boolean =>
+  value !== undefined && value >= 'A' && value <= 'Z';
+const legacyAsciiLower = (value: string | undefined): boolean =>
+  value !== undefined && value >= 'a' && value <= 'z';
+const legacyAsciiDigit = (value: string | undefined): boolean =>
+  value !== undefined && value >= '0' && value <= '9';
+const legacyCamelBoundary = (points: readonly string[], cursor: number): boolean =>
+  legacyAsciiUpper(points[cursor]) &&
+  (legacyAsciiLower(points[cursor - 1]) ||
+    legacyAsciiDigit(points[cursor - 1]) ||
+    (legacyAsciiUpper(points[cursor - 1]) && legacyAsciiLower(points[cursor + 1])));
+
+const legacyKeySegments = (key: string): readonly string[] => {
+  const original = Array.from(key);
+  let separated = '';
+  for (let cursor = 0; cursor < original.length; cursor += 1) {
+    if (legacyCamelBoundary(original, cursor)) {
+      separated += '_';
+    }
+    separated += original[cursor] ?? '';
+  }
+  const segments: string[] = [];
+  let segment = '';
+  for (const point of Array.from(separated.toLowerCase())) {
+    if (legacyAsciiLower(point) || legacyAsciiDigit(point)) {
+      segment += point;
+      continue;
+    }
+    if (segment.length > 0) {
+      segments.push(segment);
+      segment = '';
+    }
+  }
+  if (segment.length > 0) {
+    segments.push(segment);
+  }
+  return segments;
+};
+
+const legacyForbiddenKey = (key: string): boolean => {
+  const segments = legacyKeySegments(key);
+  const joined = segments.join('');
+  return (
+    segments.some((segment) =>
+      [
+        'auth',
+        'authentication',
+        'authorization',
+        'credential',
+        'credentials',
+        'env',
+        'environment',
+        'key',
+        'keys',
+        'password',
+        'secret',
+        'secrets',
+        'token',
+      ].includes(segment),
+    ) ||
+    [
+      'auth',
+      'authentication',
+      'authorization',
+      'credential',
+      'credentials',
+      'environment',
+      'password',
+      'secret',
+      'secrets',
+      'token',
+      'tokens',
+    ].some((suffix) => joined.endsWith(suffix)) ||
+    ['accesskey', 'apikey', 'privatekey', 'secretkey'].some((infix) => joined.includes(infix))
+  );
+};
+
+const productionForbiddenKey = (key: string): boolean =>
+  isGenericFailure(sanitizeAgentTerminalResult(runtimeSuccess({ [key]: 'value' })));
 
 const sanitizeAcrossCarriers = async (
   runtimeResult: AgentInvocationResult,
@@ -200,6 +288,40 @@ describe('Codex terminal sanitizer', () => {
     expect(
       isGenericFailure(sanitizeAgentTerminalResult(runtimeSuccess(value), ['captured-secret'])),
     ).toBe(true);
+  });
+
+  it.each(unicodeCredentialKeyVectors)('rejects the %s Unicode lowercase sibling', (_name, key) => {
+    expect(productionForbiddenKey(key)).toBe(true);
+  });
+
+  it('rejects every Unicode lowercase sibling through every terminal carrier', async () => {
+    for (const [, key] of unicodeCredentialKeyVectors) {
+      // oxlint-disable-next-line no-await-in-loop -- each key must traverse the stable carrier order.
+      const carriers = await sanitizeAcrossCarriers(runtimeSuccess({ [key]: 'value' }));
+      expect(carriers.map(({ carrier }) => carrier)).toStrictEqual(carrierNames);
+      for (const carrier of carriers) {
+        expect(isGenericFailure(carrier.result)).toBe(true);
+      }
+    }
+  });
+
+  it('matches the legacy key normalization across ASCII and the approved Unicode folds', () => {
+    const ascii = Array.from({ length: 128 }, (_value, code) => String.fromCodePoint(code));
+    const keys = new Set<string>(unicodeCredentialKeyVectors.map(([, key]) => key));
+    for (const point of ascii) {
+      keys.add(point);
+      keys.add(`api${point}key`);
+      keys.add(`access${point}key`);
+      keys.add(`private${point}key`);
+      keys.add(`client${point}APIKey`);
+      keys.add(`${point}Token`);
+    }
+    for (const key of keys) {
+      expect({ key, forbidden: productionForbiddenKey(key) }).toStrictEqual({
+        key,
+        forbidden: legacyForbiddenKey(key),
+      });
+    }
   });
 
   it('CTX-TERMINAL-EMBEDDED-PATHS scans success and failure text without relative-path false positives', async () => {
