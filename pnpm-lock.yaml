@@ -11,6 +11,9 @@ importers:
       '@dbos-inc/dbos-sdk':
         specifier: 4.25.14
         version: 4.25.14
+      '@revisium/revo-agent-runtime':
+        specifier: 0.1.0-alpha.0
+        version: 0.1.0-alpha.0
       '@revisium/revo-pipeline':
         specifier: 0.2.0-alpha.3
         version: 0.2.0-alpha.3
@@ -560,6 +563,10 @@ packages:
   '@publint/pack@0.1.6':
     resolution: {integrity: sha512-3uVNyGcVplhPZSLVyeIpL7+cIRn1YCSNHLG/rUIlBQMVH8YuN9++YF+5+UDIIO9RW98dujiUoTltO7RDB5bFJA==}
     engines: {node: '>=18'}
+
+  '@revisium/revo-agent-runtime@0.1.0-alpha.0':
+    resolution: {integrity: sha512-UeL2eP+fmCf6zpnkwYWE7z7XX1UMIihtvIAQOup7sAME9Bi0cqQbzGCv/q1PL/FKkEK23f8RooRpPxkKiK6vPg==}
+    engines: {node: '>=24.11.1 <25'}
 
   '@revisium/revo-pipeline@0.2.0-alpha.3':
     resolution: {integrity: sha512-r+lBnr/SD5Q6SfbKtkjf0uuPZfK4noGUuzoGu+50KRbeFPtdFFXBoZMX1+8L1OG5nORi1auK+p4dZ4hZZmjGLg==}
@@ -1845,6 +1852,12 @@ snapshots:
   '@publint/pack@0.1.6':
     dependencies:
       tinyexec: 1.3.0
+
+  '@revisium/revo-agent-runtime@0.1.0-alpha.0':
+    dependencies:
+      ajv: 8.20.0
+      canonicalize: 3.0.0
+      zod: 4.4.3
 
   '@revisium/revo-pipeline@0.2.0-alpha.3':
     dependencies:

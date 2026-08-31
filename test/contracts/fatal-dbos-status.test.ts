@@ -267,6 +267,7 @@ describe('RN1 fatal DBOS workflow projection', () => {
     vi.spyOn(client, 'listWorkflows').mockRejectedValue(missingWorkflowTable);
     vi.spyOn(DBOSClient, 'create').mockResolvedValue(client);
     const launch = vi.spyOn(DBOS, 'launch').mockResolvedValue(undefined);
+    vi.spyOn(DBOS, 'getEventDispatchState').mockResolvedValue(undefined);
     vi.spyOn(DBOS, 'shutdown').mockResolvedValue(undefined);
     const value = new DefaultRunManager({ ...options, database: { url: databaseUrl } });
 

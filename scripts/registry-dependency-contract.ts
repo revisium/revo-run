@@ -17,6 +17,16 @@ type RegistryDependencyFiles = {
 };
 
 export const registryRuntimeDependencies = Object.freeze({
+  '@revisium/revo-agent-runtime': Object.freeze({
+    integrity:
+      'sha512-UeL2eP+fmCf6zpnkwYWE7z7XX1UMIihtvIAQOup7sAME9Bi0cqQbzGCv/q1PL/FKkEK23f8RooRpPxkKiK6vPg==',
+    snapshotDependencies: Object.freeze({
+      ajv: '8.20.0',
+      canonicalize: '3.0.0',
+      zod: '4.4.3',
+    }),
+    version: '0.1.0-alpha.0',
+  }),
   '@revisium/revo-pipeline': Object.freeze({
     integrity:
       'sha512-r+lBnr/SD5Q6SfbKtkjf0uuPZfK4noGUuzoGu+50KRbeFPtdFFXBoZMX1+8L1OG5nORi1auK+p4dZ4hZZmjGLg==',
@@ -162,7 +172,7 @@ export const assertRegistryDependencyContract = ({
     Object.entries(registryRuntimeDependencies).map(
       ([packageName, expected]) => `${packageName}@${expected.version}`,
     ),
-    'minimumReleaseAgeExclude must contain only the two approved exact registry versions.',
+    'minimumReleaseAgeExclude must contain only approved exact registry versions.',
   );
 
   assertNoForbiddenReferences(lock, 'pnpm-lock.yaml');

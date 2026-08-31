@@ -13,13 +13,32 @@ event-lane, interaction, and recovery tests. The listed checks cover formatting,
 strict types, type-aware lint, build output, test coverage, and shell/package
 surface scans.
 
-RN1 pins compatible pipeline and script alpha artifacts as exact registry
-dependencies. A clean install and the package consumer gate must not use
+RN1 has exactly three pinned Revisium runtime dependencies: agent-runtime,
+pipeline, and scripts. They are exact registry versions. A clean install and the
+package consumer gate must not use
 `file:`, `link:`, workspace, Git, URL, or temporary tarball dependencies.
 
 Every change to the host must keep the readiness preflight, keyed live-relay
 preflight, raw admission, interaction, public-schema, and fresh-process recovery
 evidence applicable. Run `git diff --check` after verification.
+
+Codex changes must execute every golden and all 19 context vectors by stable ID
+through production code or the package verifier, strictly compare normalized
+observations, validate the governing SHA-256 manifest under `docs/conformance/`,
+and keep the fresh-process active-identity reap/no-replay proof green. Operational
+route gates and source-backed exclusions are separate evidence classes, not
+pseudo-vectors. Terminal URL checks include equal-byte ambiguous-wrapper work and
+near-limit valid/malformed completion evidence.
+
+Every `verify` run must launch the actual adapter-rendered Codex argv through the
+independent repo-owned executable scope parser and keep its counterfactual scope
+rejections green. A separate installed-Codex parser smoke runs only the two
+zero-cost `--help` probes. It reports `not_available: executable_not_found` only
+for a spawn-level `ENOENT`; an available executable returning different exits,
+a permission error, signal, timeout, or missing exit status fails. Generic CI
+does not claim host Codex availability. No parser check pins a CLI version or
+sends a model prompt/provider request. Live provider calls remain manual and are
+excluded from `verify`.
 
 For workflow changes, run `actionlint` when it is available. Pull-request CI
 waits for the Sonar Quality Gate, verifies that the analysis belongs to the exact

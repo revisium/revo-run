@@ -30,7 +30,6 @@ export interface AdmittedRunSnapshotV1 {
   }>;
   readonly bindings: Readonly<{
     readonly scripts: Readonly<Record<string, PreparedScriptBinding>>;
-    /** Test-only admitted snapshots may carry a simulated private agent binding. */
     readonly agents?: Readonly<Record<string, PreparedAgentBinding>>;
   }>;
   readonly initial: Readonly<{

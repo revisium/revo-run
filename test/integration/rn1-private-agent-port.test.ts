@@ -11,8 +11,10 @@ import { createRevoScripts } from '@revisium/revo-scripts';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type {
-  AgentInvocationResult,
-  StartAgentInvocation,
+  AgentRuntimePort,
+  AgentRuntimeStartInput,
+  AgentStartOutcome,
+  AgentTerminalResult,
   PreparedAgentBinding,
 } from '../../src/composition/agent-port.js';
 import { unavailableAgentPort } from '../../src/composition/agent-port.js';
@@ -23,12 +25,14 @@ import {
   type RunComposition,
 } from '../../src/composition/run-composition.js';
 import type { AdmittedRunSnapshotV1 } from '../../src/contracts/admitted-run.js';
+import { isJsonObject } from '../../src/contracts/json.js';
 import type { KernelRunResult } from '../../src/dbos/kernel-run-workflow.js';
 import { kernelRunWorkflow } from '../../src/dbos/kernel-run-workflow.js';
 import { coordinatorTopic } from '../../src/dbos/operation-workflow.js';
 import { operationWorkflowId, runWorkflowId } from '../../src/dbos/workflow-id.js';
 import { attemptId, operationId, operationReceiptId } from '../../src/operations/identities.js';
 import { createFakeAgentPort } from '../support/agent-runtime/fake-agent-port.js';
+import { codexContextCase } from '../support/codex-conformance.js';
 import { testDatabaseUrl } from '../support/test-environment.js';
 
 const emptySchema = {
@@ -154,10 +158,6 @@ const consensusPipeline: PipelineSourcePackage = {
 
 const bindingFor = (agentId: string): PreparedAgentBinding => ({
   schemaVersion: 'prepared-agent-binding/v1',
-  definition: {
-    schemaVersion: 'prepared-agent-definition-snapshot/v1',
-    value: { kind: 'repository-fake' },
-  },
   pin: {
     agentId,
     agentVersion: '1.0.0',
@@ -166,127 +166,55 @@ const bindingFor = (agentId: string): PreparedAgentBinding => ({
   parameters: {},
   permissions: {},
   workspaceRef: `/trusted/${agentId}`,
-  credentials: {},
 });
 
 const succeededResult = (
-  input: StartAgentInvocation,
+  input: AgentRuntimeStartInput,
   pin: PreparedAgentBinding['pin'],
   value: Readonly<Record<string, string>>,
-): AgentInvocationResult => ({
-  schemaVersion: 'agent-invocation-result/v1',
+): AgentTerminalResult => ({
+  schemaVersion: 'agent-terminal-result/v1',
   invocationId: input.invocationId,
   pin,
-  launch: { executable: 'private-test-agent', reportedVersion: '1.0.0' },
-  acceptedAt: '2026-01-01T00:00:00.000Z',
-  startedAt: '2026-01-01T00:00:00.000Z',
-  finishedAt: '2026-01-01T00:00:00.000Z',
-  durationMs: 0,
-  exit: { code: 0, signal: null },
-  files: {
-    directory: input.output.directory,
-    events: 'events.ndjson',
-    stdout: 'stdout.log',
-    stderr: 'stderr.log',
-    result: 'result.json',
-  },
   status: 'succeeded',
   value,
 });
 
 const cancelledResult = (
-  input: StartAgentInvocation,
+  input: AgentRuntimeStartInput,
   pin: PreparedAgentBinding['pin'],
-): AgentInvocationResult => ({
-  schemaVersion: 'agent-invocation-result/v1',
+): AgentTerminalResult => ({
+  schemaVersion: 'agent-terminal-result/v1',
   invocationId: input.invocationId,
   pin,
-  launch: { executable: 'private-test-agent', reportedVersion: '1.0.0' },
-  acceptedAt: '2026-01-01T00:00:00.000Z',
-  startedAt: '2026-01-01T00:00:00.000Z',
-  finishedAt: '2026-01-01T00:00:00.000Z',
-  durationMs: 0,
-  exit: { code: 0, signal: null },
-  files: {
-    directory: input.output.directory,
-    events: 'events.ndjson',
-    stdout: 'stdout.log',
-    stderr: 'stderr.log',
-    result: 'result.json',
-  },
   status: 'cancelled',
-  error: {
-    code: 'revo.agent.cancelled',
-    message: 'Cancelled.',
-    phase: 'running',
-    retryable: false,
-  },
 });
 
 const hostileTerminalAgentResult = (
   status: 'succeeded' | 'failed' | 'cancelled' | 'timed_out',
   invocationId: string,
-): AgentInvocationResult => {
+): AgentTerminalResult => {
   const common = {
-    schemaVersion: 'agent-invocation-result/v1' as const,
+    schemaVersion: 'agent-terminal-result/v1' as const,
     invocationId,
     pin: bindingFor('reviewer').pin,
-    launch: { executable: 'private-test-agent', reportedVersion: '1.0.0' },
-    acceptedAt: '2026-01-01T00:00:00.000Z',
-    startedAt: '2026-01-01T00:00:00.000Z',
-    finishedAt: '2026-01-01T00:00:00.010Z',
-    durationMs: 10,
   };
   if (status === 'succeeded') {
     return {
       ...common,
-      exit: { code: 0, signal: null },
-      files: {
-        directory: '/trusted/reviewer',
-        events: 'events.ndjson',
-        stdout: 'stdout.log',
-        stderr: 'stderr.log',
-        result: 'result.json',
-      },
       status,
       value: { decision: 'approved' },
     };
   }
-  if (status === 'failed') {
-    return {
-      ...common,
-      exit: { code: 1, signal: null },
-      files: {
-        directory: '/trusted/reviewer',
-        events: 'events.ndjson',
-        stdout: 'stdout.log',
-        stderr: 'stderr.log',
-      },
-      status,
-      error: {
-        code: 'revo.agent.internal',
-        message: 'Failed.',
-        phase: 'running',
-        retryable: false,
-      },
-    };
+  if (status === 'cancelled') {
+    return { ...common, status };
   }
   return {
     ...common,
-    exit: { code: null, signal: status === 'timed_out' ? 'SIGTERM' : null },
-    files: {
-      directory: '/trusted/reviewer',
-      events: 'events.ndjson',
-      stdout: 'stdout.log',
-      stderr: 'stderr.log',
-      result: 'result.json',
-    },
     status,
     error: {
-      code: status === 'timed_out' ? 'revo.agent.timeout' : 'revo.agent.cancelled',
-      message: status === 'timed_out' ? 'Timed out.' : 'Cancelled.',
-      phase: 'running',
-      retryable: false,
+      code: status === 'timed_out' ? 'revo.agent.timeout' : 'revo.agent.internal',
+      message: status === 'timed_out' ? 'Timed out.' : 'Failed.',
     },
   };
 };
@@ -306,24 +234,26 @@ const runKnownAgentSnapshot = async (
   selections: PipelineSelections,
   output: Readonly<Record<string, string>>,
   useUnavailablePort = false,
-  resultFor?: (input: StartAgentInvocation) => AgentInvocationResult,
+  resultFor?: (input: AgentRuntimeStartInput) => AgentTerminalResult,
   deferCompletionUntilCancel = false,
   afterWorkflowStart?: (runId: string) => Promise<void>,
   runIdOverride?: string,
+  agentPortOverride?: AgentRuntimePort,
+  reuseLaunchedDbos = false,
 ): Promise<{
   readonly result: KernelRunResult;
   readonly starts: readonly { readonly invocationId: string; readonly prompt: string }[];
   readonly cancellations: readonly string[];
 }> => {
   const fake = createFakeAgentPort(
-    (input) => resultFor?.(input) ?? succeededResult(input, bindingFor(input.agent.id).pin, output),
+    (input) => resultFor?.(input) ?? succeededResult(input, input.binding.pin, output),
     { deferCompletionUntilCancel },
   );
   const fence = new RunHostReadinessFence();
   fence.open();
   composition = {
     fence,
-    agents: useUnavailablePort ? unavailableAgentPort : fake.port,
+    agents: useUnavailablePort ? unavailableAgentPort : (agentPortOverride ?? fake.port),
     scripts: createRevoScripts({
       host: {
         resources: { inspect: async () => undefined },
@@ -343,8 +273,10 @@ const runKnownAgentSnapshot = async (
     }),
   };
   installRunComposition(composition);
-  DBOS.setConfig({ name: 'revo-run-private-agent-test', systemDatabaseUrl: testDatabaseUrl() });
-  await DBOS.launch();
+  if (!reuseLaunchedDbos) {
+    DBOS.setConfig({ name: 'revo-run-private-agent-test', systemDatabaseUrl: testDatabaseUrl() });
+    await DBOS.launch();
+  }
   const compilation = compilePipeline(pipeline, selections);
   if (!compilation.ok) {
     throw new Error(`Agent fixture did not compile: ${JSON.stringify(compilation.diagnostics)}`);
@@ -414,7 +346,126 @@ const runKnownAgentSnapshot = async (
   return { result, starts: fake.starts, cancellations: fake.cancellations };
 };
 
+const classificationPort = (
+  variant: string,
+  startCalls: AgentRuntimeStartInput[],
+): AgentRuntimePort => {
+  let acceptedInput: AgentRuntimeStartInput | undefined;
+  const terminal = (
+    input: AgentRuntimeStartInput,
+    status: 'failed' | 'cancelled',
+  ): AgentTerminalResult =>
+    status === 'cancelled'
+      ? cancelledResult(input, input.binding.pin)
+      : {
+          schemaVersion: 'agent-terminal-result/v1',
+          invocationId: input.invocationId,
+          pin: input.binding.pin,
+          status: 'failed',
+          error: { code: 'revo.run.execution_failed', message: 'Agent execution failed.' },
+        };
+  const start = async (input: AgentRuntimeStartInput): Promise<AgentStartOutcome> => {
+    startCalls.push(input);
+    acceptedInput = input;
+    if (variant === 'known-agent-manager-rejection') {
+      return { status: 'rejected', result: terminal(input, 'failed') };
+    }
+    if (variant === 'preaccept-abort') {
+      return { status: 'rejected', result: terminal(input, 'cancelled') };
+    }
+    if (variant === 'unexpected-runtime-start-throw') {
+      throw new Error('unexpected runtime start fault');
+    }
+    const mismatch = variant === 'mismatched-handle';
+    const result = succeededResult(input, input.binding.pin, { decision: 'approved' });
+    return {
+      status: 'accepted',
+      handle: {
+        invocationId: mismatch ? `${input.invocationId}-mismatch` : input.invocationId,
+        pin: input.binding.pin,
+        result: async () => result,
+        cancel: async () => ({ state: 'already_completed', result }),
+      },
+    };
+  };
+  return {
+    initialize: async () => undefined,
+    prepareBinding: async () => {
+      throw new Error('Classification fixture does not prepare bindings.');
+    },
+    start,
+    getResult: (invocationId) => {
+      if (variant !== 'mismatched-lookup' || acceptedInput === undefined) {
+        return { state: 'unknown' };
+      }
+      return {
+        state: 'completed',
+        result: succeededResult(
+          { ...acceptedInput, invocationId: `${invocationId}-mismatch` },
+          acceptedInput.binding.pin,
+          { decision: 'approved' },
+        ),
+      };
+    },
+    cancel: async () => ({ state: 'unknown' }),
+    shutdown: async () => undefined,
+  };
+};
+
 describe('RN1 private agent-runtime port', () => {
+  it('CTX-START-CLASSIFICATION executes every start outcome without replacement', async () => {
+    const context = await codexContextCase('CTX-START-CLASSIFICATION');
+    if (
+      !isJsonObject(context.input) ||
+      !Array.isArray(context.input.variants) ||
+      !context.input.variants.every((variant) => typeof variant === 'string')
+    ) {
+      throw new Error('CTX-START-CLASSIFICATION has invalid input.');
+    }
+    const inputVariants = context.input.variants;
+    const statuses: string[] = [];
+    let totalStartCalls = 0;
+    for (const [variantIndex, variant] of inputVariants.entries()) {
+      const starts: AgentRuntimeStartInput[] = [];
+      let result: KernelRunResult | undefined;
+      try {
+        // oxlint-disable-next-line no-await-in-loop -- the vector fixes durable variant order.
+        ({ result } = await runKnownAgentSnapshot(
+          singleAgentPipeline,
+          {
+            review: {
+              strategy: 'single',
+              participant: { key: 'reviewer', bindingKey: 'reviewer' },
+            },
+          },
+          { decision: 'approved' },
+          false,
+          undefined,
+          false,
+          undefined,
+          `rn1-start-classification-${variant}-${randomUUID()}`,
+          classificationPort(variant, starts),
+          variantIndex > 0,
+        ));
+      } finally {
+        if (composition !== undefined) {
+          clearRunComposition(composition);
+        }
+        composition = undefined;
+      }
+      if (result === undefined) {
+        throw new Error(`Start classification variant ${variant} produced no result.`);
+      }
+      totalStartCalls += starts.length;
+      statuses.push(result.details.activities[0]?.status ?? 'missing');
+    }
+
+    expect({
+      statuses,
+      replacementInvocationCalls: totalStartCalls - inputVariants.length,
+    }).toStrictEqual(context.expected);
+  });
+
   it('keeps the production unavailable port side-effect free only for initialize([])', async () => {
     await expect(unavailableAgentPort.initialize([])).resolves.toBeUndefined();
     await expect(
@@ -475,7 +526,7 @@ describe('RN1 private agent-runtime port', () => {
       { review: { strategy: 'single', participant: { key: 'reviewer', bindingKey: 'reviewer' } } },
       { decision: 'approved' },
       false,
-      (input) => cancelledResult(input, bindingFor(input.agent.id).pin),
+      (input) => cancelledResult(input, input.binding.pin),
       true,
       async (runId) => {
         await DBOS.send(
@@ -518,8 +569,8 @@ describe('RN1 private agent-runtime port', () => {
       { decision: 'approved' },
       false,
       (input) => ({
-        ...succeededResult(input, bindingFor(input.agent.id).pin, { decision: 'approved' }),
-        finishedAt: 'not-a-utc-timestamp',
+        ...succeededResult(input, input.binding.pin, { decision: 'approved' }),
+        outputDirectory: '/must-not-enter-durable-history',
       }),
     );
 
