@@ -10,6 +10,7 @@ import { createInitialPipelineState } from '@revisium/revo-pipeline/kernel';
 import type { PreparedScriptBinding, ScriptIdentityPin } from '@revisium/revo-scripts';
 import { Check } from 'typebox/value';
 
+import { CODEX_AGENT_REF } from '../composition/agents/codex/codex-definition.js';
 import type { RunComposition } from '../composition/run-composition.js';
 import type { AdmittedRunSnapshotV1 } from '../contracts/admitted-run.js';
 import { isJsonValue, type JsonValue } from '../contracts/json.js';
@@ -27,6 +28,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0;
+
+const logicalWorkspaceRefPattern = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
+
+const isLogicalWorkspaceRef = (value: unknown): value is string =>
+  typeof value === 'string' && logicalWorkspaceRefPattern.test(value);
 
 const isStringRecord = (value: unknown): value is Readonly<Record<string, string>> =>
   isRecord(value) && Object.values(value).every(isNonEmptyString);
@@ -52,7 +58,7 @@ const isAgentAssignment = (value: unknown): value is AgentAssignment =>
   isNonEmptyString(value.definition.version) &&
   isJsonRecord(value.parameters) &&
   isJsonRecord(value.permissions) &&
-  isNonEmptyString(value.workspaceRef) &&
+  isLogicalWorkspaceRef(value.workspaceRef) &&
   (value.credentials === undefined || isStringRecord(value.credentials));
 
 const isValidEnvelope = (input: CreateRunInput): boolean =>
@@ -80,6 +86,18 @@ type ScriptProgramRequirement = ProgramRequirement & { readonly kind: 'script' }
 
 const profileInvalid = (path: string, reason: string): never => {
   throw new RunManagerError('run_profile_invalid', { path, reason });
+};
+
+const rejectInvalidAgentWorkspaceRefs = (assignments: Readonly<Record<string, unknown>>): void => {
+  for (const [bindingKey, assignment] of Object.entries(assignments)) {
+    if (
+      isRecord(assignment) &&
+      Object.hasOwn(assignment, 'workspaceRef') &&
+      !isLogicalWorkspaceRef(assignment.workspaceRef)
+    ) {
+      profileInvalid(`/bindings/agents/${bindingKey}/workspaceRef`, 'logical_reference_grammar');
+    }
+  }
 };
 
 const resolveAgentRequirement = (
@@ -188,13 +206,14 @@ const scriptPin = (value: { readonly id: string; readonly version: number }): Sc
 const isScriptIdentity = (value: string): value is `script:${string}` =>
   value.startsWith('script:');
 
-export const admitRun = async (
-  input: CreateRunInput,
-  composition: RunComposition,
-): Promise<AdmittedRunSnapshotV1> => {
-  // The caller may have combined an invalid run ID with another malformed
-  // field.  Extract and classify the ID before inspecting the rest of the
-  // envelope so admission never reaches compilation or host preparation.
+const isSupportedAgentAssignment = (assignment: AgentAssignment): boolean =>
+  assignment.definition.id === CODEX_AGENT_REF.id &&
+  assignment.definition.version === CODEX_AGENT_REF.version &&
+  assignment.credentials === undefined;
+
+const validateCreateRunInput = (input: CreateRunInput): void => {
+  // Classify an invalid run ID before the rest of a malformed envelope so no
+  // host preparation can observe the input.
   if (isRecord(input) && typeof input.runId === 'string' && !Check(RunIdSchema, input.runId)) {
     throw new RunManagerError('invalid_run_id', { path: '/runId', reason: 'grammar' });
   }
@@ -204,8 +223,13 @@ export const admitRun = async (
   if (!Check(RunIdSchema, input.runId)) {
     throw new RunManagerError('invalid_run_id', { path: '/runId', reason: 'grammar' });
   }
+  rejectInvalidAgentWorkspaceRefs(input.profile.bindings.agents);
+};
 
-  const compilation = compilationOrThrow(input);
+const initialStateOrThrow = (
+  input: CreateRunInput,
+  compilation: Extract<PipelineCompileResult, { readonly ok: true }>,
+): ReturnType<typeof createInitialPipelineState> => {
   const initial = createInitialPipelineState(
     { program: compilation.program, programDigest: compilation.programDigest },
     input.input,
@@ -216,18 +240,41 @@ export const admitRun = async (
       reason: 'entry_schema',
     });
   }
-  if (!Check(RunProfileSchema, input.profile)) {
-    profileInvalid('/profile', 'invalid_profile');
-  }
-  const assignments = resolveProfile(
-    compilation.requirements.entries,
-    input.profile.bindings.agents,
-    input.profile.bindings.scripts,
-  );
-  if (assignments.agents.length > 0) {
+  return initial;
+};
+
+const validateAgentAssignments = (assignments: ResolvedProfile): void => {
+  if (assignments.agents.some(([, assignment]) => !isSupportedAgentAssignment(assignment))) {
     throw new RunManagerError('agent_runtime_unavailable');
   }
+  if (assignments.agents.length > 0 && process.platform !== 'linux') {
+    throw new RunManagerError('agent_runtime_unavailable');
+  }
+};
 
+const prepareAgentBindings = async (
+  assignments: ResolvedProfile,
+  composition: RunComposition,
+): Promise<Record<string, Awaited<ReturnType<RunComposition['agents']['prepareBinding']>>>> => {
+  const bindings: Record<
+    string,
+    Awaited<ReturnType<RunComposition['agents']['prepareBinding']>>
+  > = {};
+  for (const [requirement, assignment] of assignments.agents) {
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- first failed requirement must be deterministic at admission.
+      bindings[requirement.bindingKey] = await composition.agents.prepareBinding(assignment);
+    } catch {
+      throw new RunManagerError('agent_runtime_unavailable');
+    }
+  }
+  return bindings;
+};
+
+const prepareScriptBindings = async (
+  assignments: ResolvedProfile,
+  composition: RunComposition,
+): Promise<Record<string, PreparedScriptBinding>> => {
   const controller = new AbortController();
   const bindings: Record<string, PreparedScriptBinding> = {};
   for (const [requirementKey, requirement, assignment] of assignments.scripts) {
@@ -249,6 +296,27 @@ export const admitRun = async (
       });
     }
   }
+  return bindings;
+};
+
+export const admitRun = async (
+  input: CreateRunInput,
+  composition: RunComposition,
+): Promise<AdmittedRunSnapshotV1> => {
+  validateCreateRunInput(input);
+  const compilation = compilationOrThrow(input);
+  const initial = initialStateOrThrow(input, compilation);
+  if (!Check(RunProfileSchema, input.profile)) {
+    profileInvalid('/profile', 'invalid_profile');
+  }
+  const assignments = resolveProfile(
+    compilation.requirements.entries,
+    input.profile.bindings.agents,
+    input.profile.bindings.scripts,
+  );
+  validateAgentAssignments(assignments);
+  const agentBindings = await prepareAgentBindings(assignments, composition);
+  const bindings = await prepareScriptBindings(assignments, composition);
 
   return Object.freeze({
     persistenceVersion: 1,
@@ -266,7 +334,10 @@ export const admitRun = async (
       materializationDigest: compilation.materializationDigest,
       programDigest: compilation.programDigest,
     }),
-    bindings: Object.freeze({ scripts: Object.freeze(bindings) }),
+    bindings: Object.freeze({
+      scripts: Object.freeze(bindings),
+      ...(Object.keys(agentBindings).length === 0 ? {} : { agents: Object.freeze(agentBindings) }),
+    }),
     initial: Object.freeze({ state: initial.state, commands: initial.commands }),
     admission: Object.freeze({ createdAt: new Date().toISOString(), token: randomUUID() }),
   });

@@ -20,9 +20,9 @@ import {
 } from '@revisium/revo-scripts';
 import { Check } from 'typebox/value';
 
-import { isAgentInvocationResult } from '../composition/agent-invocation-result.js';
-import type { AgentInvocationResult } from '../composition/agent-port.js';
+import type { AgentTerminalResult } from '../composition/agent-port.js';
 import { unavailableAgentPort } from '../composition/agent-port.js';
+import { isAgentTerminalResult } from '../composition/agent-terminal-result.js';
 import { requireRunComposition, type RunComposition } from '../composition/run-composition.js';
 import type { AdmittedRunSnapshotV1 } from '../contracts/admitted-run.js';
 import type { JsonValue } from '../contracts/json.js';
@@ -693,7 +693,7 @@ export const deriveScriptTerminalPipelineEvent = (
 
 export const deriveAgentTerminalPipelineEvent = (
   command: Extract<HostedCommand, { readonly kind: 'dispatchActivity' }>,
-  result: AgentInvocationResult,
+  result: AgentTerminalResult,
 ): PipelineEvent => {
   if (result.status === 'succeeded') {
     if (result.value === undefined) {
@@ -906,9 +906,9 @@ const applyAgentObservation = async (
   journal: RunJournal,
   operation: string,
   attempt: string,
-  result: AgentInvocationResult,
+  result: AgentTerminalResult,
 ): Promise<void> => {
-  if (!isAgentInvocationResult(result)) {
+  if (!isAgentTerminalResult(result)) {
     throw new Error('Agent observation does not satisfy the private result contract.');
   }
   const finishedAt = new Date(await DBOS.now()).toISOString();
@@ -1676,7 +1676,7 @@ const applyAgentRelayObservation = async (
   }
   const binding = runtime.snapshot.bindings.agents?.[bindingKey];
   if (
-    !isAgentInvocationResult(message.agentResult) ||
+    !isAgentTerminalResult(message.agentResult) ||
     binding === undefined ||
     message.agentResult.invocationId !== attemptId(message.operationId, ordinal) ||
     message.agentResult.pin.agentId !== binding.pin.agentId ||

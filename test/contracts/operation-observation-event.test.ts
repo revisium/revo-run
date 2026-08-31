@@ -2,7 +2,7 @@ import type { PipelineCommand, PipelineEvent } from '@revisium/revo-pipeline/ker
 import type { ScriptTerminalAttemptResult } from '@revisium/revo-scripts';
 import { describe, expect, it } from 'vitest';
 
-import type { AgentInvocationResult } from '../../src/composition/agent-port.js';
+import type { AgentTerminalResult } from '../../src/composition/agent-port.js';
 import {
   deriveAgentTerminalPipelineEvent,
   deriveScriptTerminalPipelineEvent,
@@ -95,44 +95,20 @@ const scriptResults: readonly ScriptTerminalAttemptResult[] = [
 ];
 
 const agentBase = {
-  schemaVersion: 'agent-invocation-result/v1' as const,
+  schemaVersion: 'agent-terminal-result/v1' as const,
   invocationId: 'att_relay',
   pin: { agentId: 'agent', agentVersion: '1.0.0', definitionDigest: digest },
-  launch: { executable: 'private-agent', reportedVersion: '1.0.0' },
-  acceptedAt: '2026-01-01T00:00:00.000Z',
-  startedAt: '2026-01-01T00:00:00.000Z',
-  finishedAt: '2026-01-01T00:00:00.000Z',
-  durationMs: 0,
-  exit: { code: 0, signal: null },
-  files: {
-    directory: 'private-agent',
-    events: 'events.ndjson' as const,
-    stdout: 'stdout.log' as const,
-    stderr: 'stderr.log' as const,
-    result: 'result.json' as const,
-  },
 };
 
-const agentResults: readonly AgentInvocationResult[] = [
+const agentResults: readonly AgentTerminalResult[] = [
   { ...agentBase, status: 'succeeded', value: { decision: 'approved' } },
-  {
-    ...agentBase,
-    status: 'cancelled',
-    error: {
-      code: 'revo.agent.cancelled',
-      message: 'cancelled',
-      phase: 'running',
-      retryable: false,
-    },
-  },
+  { ...agentBase, status: 'cancelled' },
   {
     ...agentBase,
     status: 'failed',
     error: {
       code: 'revo.agent.process_failed',
       message: 'failed',
-      phase: 'running',
-      retryable: false,
     },
   },
 ];

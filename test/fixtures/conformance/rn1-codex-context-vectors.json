@@ -1,0 +1,662 @@
+{
+  "schemaVersion": "rn1-codex-context-vectors/v3",
+  "axes": {
+    "platform": ["linux", "darwin"],
+    "dependency": ["exact-registry", "non-registry", "alternate-version"],
+    "surface": ["root", "deep-import", "runtime-injection"],
+    "definition": [
+      "codex-v1",
+      "wrong-id",
+      "wrong-version",
+      "mixed",
+      "unsupported-consensus-member"
+    ],
+    "model": ["valid", "invalid"],
+    "prompt": ["plain", "adversarial"],
+    "auth": ["ambient-true", "ambient-false", "ambient-missing", "host-credential"],
+    "credentials": ["absent", "empty-present", "populated-present"],
+    "workspace": ["logical", "invalid-grammar", "absolute", "per-invocation"],
+    "terminal": ["safe", "secret-key", "acronym-key", "absolute-path", "captured-secret"],
+    "acquire": ["resolved", "caller-cancelled", "shutdown"],
+    "start": ["accepted", "known-rejected", "cancelled", "unknown", "mismatched"],
+    "recovery": ["none", "terminal-retained", "active-reaped", "identity-unknown"],
+    "provider": ["fake", "live"]
+  },
+  "cases": [
+    {
+      "id": "CTX-DEP-EXACT",
+      "coordinates": { "dependency": "exact-registry", "surface": "root" },
+      "input": {
+        "package": "@revisium/revo-agent-runtime",
+        "version": "0.1.0-alpha.0",
+        "integrity": "sha512-UeL2eP+fmCf6zpnkwYWE7z7XX1UMIihtvIAQOup7sAME9Bi0cqQbzGCv/q1PL/FKkEK23f8RooRpPxkKiK6vPg=="
+      },
+      "expected": { "accepted": true, "resolutionCount": 1, "importer": "root" },
+      "requirements": ["SR-DEP-001", "SR-DEP-002"],
+      "evidence": {
+        "consumer": "test/contracts/registry-dependency-contract.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-SURFACE-PRIVATE",
+      "coordinates": { "surface": "deep-import" },
+      "input": {
+        "rootImport": "@revisium/revo-run",
+        "deepImport": "@revisium/revo-run/composition/agents/codex",
+        "forbiddenExports": [
+          "createCodexAgentRuntimePort",
+          "CODEX_AGENT_DEFINITION",
+          "runManagerStopOrder"
+        ]
+      },
+      "expected": { "rootAccepted": true, "deepRejected": true, "runtimeInjectionExported": false },
+      "requirements": ["SR-SURFACE-001", "SR-SURFACE-002", "SR-VERIFY-002"],
+      "evidence": { "consumer": "scripts/verify-package.mjs", "evidenceClass": "executable-vector" }
+    },
+    {
+      "id": "CTX-DARWIN-UNSUPPORTED",
+      "coordinates": { "platform": "darwin", "definition": "codex-v1" },
+      "input": { "assignment": "valid-codex" },
+      "expected": {
+        "code": "agent_runtime_unavailable",
+        "agentPrepareCalls": 0,
+        "workspaceCalls": 0,
+        "scriptPrepareCalls": 0,
+        "processCalls": 0,
+        "dbosCalls": 0,
+        "scriptOnlyAccepted": true
+      },
+      "requirements": ["SR-PLATFORM-001", "SR-PLATFORM-002", "SR-ADMISSION-001"],
+      "evidence": {
+        "consumer": "test/contracts/admission.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-UNSUPPORTED-ASSIGNMENTS",
+      "coordinates": { "platform": "linux", "definition": "mixed" },
+      "input": {
+        "variants": [
+          "wrong-id",
+          "wrong-version",
+          "mixed-supported-unsupported",
+          "unsupported-consensus-member"
+        ]
+      },
+      "expected": {
+        "codes": [
+          "agent_runtime_unavailable",
+          "agent_runtime_unavailable",
+          "agent_runtime_unavailable",
+          "agent_runtime_unavailable"
+        ],
+        "preparedAgentCalls": 0,
+        "workspaceCalls": 0,
+        "scriptCalls": 0,
+        "processCalls": 0,
+        "dbosCalls": 0
+      },
+      "requirements": ["SR-DEF-001", "SR-ADMISSION-001", "SR-ADMISSION-002"],
+      "evidence": {
+        "consumer": "test/contracts/admission.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-ARGV-STDIN",
+      "coordinates": {
+        "platform": "linux",
+        "definition": "codex-v1",
+        "model": "valid",
+        "prompt": "adversarial",
+        "auth": "ambient-true",
+        "provider": "fake"
+      },
+      "input": {
+        "model": "gpt-5.6-sol",
+        "prompt": "-leading\nПривет $(echo must-not-run); --model evil"
+      },
+      "expected": {
+        "argv": [
+          "--ask-for-approval=never",
+          "exec",
+          "--ignore-user-config",
+          "--json",
+          "--output-schema",
+          "<runtime-result-schema-file>",
+          "--sandbox=read-only",
+          "--config",
+          "sandbox_workspace_write.network_access=false",
+          "--model",
+          "gpt-5.6-sol",
+          "--",
+          "-"
+        ],
+        "stdin": "-leading\nПривет $(echo must-not-run); --model evil",
+        "promptPresentInArgv": false,
+        "hostCredentialCalls": 0,
+        "repoParser": { "correctAccepted": true, "legacyRejected": true }
+      },
+      "requirements": [
+        "SR-IO-001",
+        "SR-IO-002",
+        "SR-IO-003",
+        "SR-MODEL-001",
+        "SR-AUTH-001",
+        "SR-AUTH-002"
+      ],
+      "evidence": {
+        "consumer": "test/integration/rn1-codex-agent-runtime-port.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-CREDENTIALS-OMITTED",
+      "coordinates": { "credentials": "absent" },
+      "input": { "property": "omitted" },
+      "expected": { "prepared": true },
+      "requirements": ["SR-CREDENTIALS-001"],
+      "evidence": {
+        "consumer": "test/contracts/rn1-codex-conformance.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-CREDENTIALS-PRESENT",
+      "coordinates": { "credentials": "empty-present" },
+      "input": { "variants": [{}, { "token": "secret-ref" }] },
+      "expected": {
+        "codes": ["agent_runtime_unavailable", "agent_runtime_unavailable"],
+        "agentPrepareCalls": 0,
+        "workspaceAcquireCalls": 0,
+        "scriptPrepareCalls": 0,
+        "processCalls": 0,
+        "dbosCalls": 0
+      },
+      "requirements": ["SR-CREDENTIALS-001", "SR-ADMISSION-001"],
+      "evidence": {
+        "consumer": "test/contracts/admission.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-WORKSPACE-PER-INVOCATION",
+      "coordinates": { "workspace": "per-invocation", "start": "accepted", "provider": "fake" },
+      "input": { "workspaceRef": "Workspace_1.prod", "invocationIds": ["att_1", "att_2"] },
+      "expected": {
+        "prepareAcquireCalls": 0,
+        "invocationAcquireCalls": 2,
+        "acquiredRefs": ["Workspace_1.prod", "Workspace_1.prod"],
+        "outputLeavesDistinct": true,
+        "outputLeavesAreExclusiveSiblings": true,
+        "durablePaths": []
+      },
+      "requirements": ["SR-WORKSPACE-001", "SR-WORKSPACE-002", "SR-WORKSPACE-003"],
+      "evidence": {
+        "consumer": "test/integration/rn1-codex-agent-runtime-port.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-TERMINAL-ACRONYMS",
+      "coordinates": { "terminal": "acronym-key" },
+      "input": {
+        "variants": [
+          { "apikey": "value" },
+          { "clientAPIKey": "value" },
+          { "APIKey": "value" },
+          { "AWS_ACCESS_KEY_ID": "value" },
+          { "JWTToken": "value" },
+          { "OAuthToken": "value" },
+          { "SSHPrivateKey": "value" }
+        ]
+      },
+      "expected": {
+        "status": "failed",
+        "code": "revo.run.execution_failed",
+        "valuePresent": false
+      },
+      "requirements": ["SR-TERMINAL-001", "SR-TERMINAL-002", "SR-TERMINAL-003", "SR-TERMINAL-004"],
+      "evidence": {
+        "consumer": "test/contracts/codex-terminal-result.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-TERMINAL-EMBEDDED-PATHS",
+      "coordinates": { "terminal": "absolute-path" },
+      "input": {
+        "unsafe": [
+          "/",
+          "root is \"/\".",
+          "/private/value",
+          "failed at /private/output/result.json.",
+          "ошибка: «/private/x»",
+          "path=(/private/x), retry",
+          "path:/private/x",
+          "/@scope/package",
+          "/+name/file",
+          "/%name/file",
+          "/.config/file",
+          "/-name/file",
+          "///private/x",
+          "C:\\private\\value",
+          "d:/private/value",
+          "drive=(C:\\), failed",
+          "\\\\server\\share\\file",
+          "\\\\?\\C:\\private\\file",
+          "\\\\.\\pipe\\name",
+          "file:///private/value",
+          "FILE://server/share",
+          "file:/private/value",
+          "prefix: file:C:/private/value",
+          "x=file:///private/value",
+          "https:///private/x",
+          "//",
+          "https://user@/private/x",
+          "https://[2001:db8::1/private/x",
+          "https://[not-ipv6]/private/x",
+          "https://2001:db8::1/private/x",
+          "https://host:abc/private/x",
+          "https://host:%32/private/x",
+          "https://%ZZ.invalid/private/x",
+          "https://example.invalid/%ZZ/private/x",
+          "https://example.invalid/path?bad=%G0/private",
+          "https://example.invalid/path#bad=%0G/private",
+          "https://host\\share/private/x",
+          "//[::1/private/x",
+          "(https://example.invalid/a(b))/private/x",
+          "'https://example.invalid/path'/private/x",
+          "file://[::1]/private",
+          "'https://example.invalid/a'/private",
+          "(https://example.invalid/a)/private",
+          "'https://example.invalid/a^'/private'",
+          "(https://example.invalid/a^b/private)",
+          "'https://example.invalid/a^b/private'",
+          "[https://[::1]/a^b/private]",
+          "https://example.invalid/safe /private"
+        ],
+        "safe": [
+          "relative/path",
+          "./relative/path",
+          "../relative/path",
+          "dir-/file",
+          "@scope/package",
+          "+name/file",
+          "%name/file",
+          "safe/value",
+          "C:relative\\file",
+          "\\relative\\file",
+          "ratio 1/2 and/or either",
+          "https://example.invalid/foo-/bar",
+          "(https://example.invalid/@scope/+name/%25).",
+          "custom+scheme://host/path",
+          "//example.invalid/foo-/bar",
+          "https://example.invalid/?next=/private/x",
+          "https://example.invalid/#fragment=/private/x",
+          "mailto:user@example.invalid",
+          "https://example.invalid/foo;/private",
+          "https://example.invalid/foo,/private",
+          "https://example.invalid/foo!/private",
+          "https://example.invalid/foo)/private",
+          "https://edge+blue.invalid/path",
+          "https://[2001:db8::1]:443/a;/b",
+          "//[::1]/a,b!/private",
+          "https://user%2Dname@example!$&'()*+,;=.invalid:8443/a(b),c;d!/private?next=/private,ok#frag=/private!",
+          "(https://example.invalid/a(b),c;/d)",
+          "'https://example.invalid/a(b),c;/d'",
+          "[https://[2001:db8::1]/a(b),c;/d]",
+          "https://example.invalid/?next=/private;x=1#frag=/private,ok",
+          "'https://example.invalid/a'/private'",
+          "(https://example.invalid/a)/private)",
+          "'https://exa'mple.invalid/a'b?x='y#f='z'",
+          "(https://exa(mple).invalid/a(b)c?x=(y)#f=(z))",
+          "[https://[2001:db8::1]/a(b),c?x='y#f=+z]",
+          "https://example.invalid/safe relative/path"
+        ],
+        "properties": {
+          "authorityCharacters": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$&'()*+,;=",
+          "authorities": [
+            "example.invalid",
+            "a",
+            "Z",
+            "0",
+            "-",
+            ".",
+            "_",
+            "~",
+            "!",
+            "$",
+            "&",
+            "'",
+            "(",
+            ")",
+            "*",
+            "+",
+            ",",
+            ";",
+            "=",
+            "%41",
+            "user:pa;ss%2D@example.invalid",
+            "[::1]",
+            "[2001:0db8:0000:0000:0000:ff00:0042:8329]",
+            "[v1.a:b]",
+            "example.invalid:",
+            "example.invalid:8443"
+          ],
+          "componentSuffix": "/AZaz09-._~%41!$&'()*+,;=:@/slash?AZaz09-._~%41!$&'()*+,;=:@/slash??#AZaz09-._~%41!$&'()*+,;=:@/slash??",
+          "wrapperUrl": "https://example.invalid/a(b),c;/d",
+          "wrappers": [
+            { "opener": "(", "closer": ")" },
+            { "opener": "[", "closer": "]" },
+            { "opener": "{", "closer": "}" },
+            { "opener": "<", "closer": ">" },
+            { "opener": "'", "closer": "'" },
+            { "opener": "\"", "closer": "\"" },
+            { "opener": "`", "closer": "`" },
+            { "opener": "«", "closer": "»" }
+          ],
+          "punctuation": [";", ",", "!", ")", "+"],
+          "subdelimiters": ["!", "$", "&", "'", "(", ")", "*", "+", ",", ";", "="],
+          "unknownCharacters": ["^", "|", "{", "}", "[", "]", "\"", "`", "<", ">", "é", "%ZZ"],
+          "complexity": {
+            "semanticRepeats": 64,
+            "apostrophePattern": "a'/b;!+,",
+            "parenthesisPattern": "a)/b(c);!+,",
+            "squarePattern": "a,b;!+,",
+            "equalByteBudget": {
+              "smallBytes": 32768,
+              "smallIterations": 32,
+              "largeBytes": 262144,
+              "largeIterations": 4,
+              "samples": 5,
+              "ratioCeiling": 5,
+              "fixedAllowanceMs": 50
+            },
+            "nearLimit": { "bytes": 1000000, "timeoutMs": 15000 }
+          }
+        }
+      },
+      "expected": {
+        "carriers": ["direct", "lookup", "cancel", "handle.result", "handle.cancel"],
+        "unsafeObservation": {
+          "status": "failed",
+          "code": "revo.run.execution_failed",
+          "message": "Agent execution failed.",
+          "valuePresent": false
+        },
+        "safeSuccessObservation": { "status": "succeeded", "valuePreserved": true },
+        "safeFailureObservation": {
+          "status": "failed",
+          "code": "revo.agent.process_failed",
+          "messagePreserved": true
+        },
+        "checks": {
+          "unsafeVectors": 162,
+          "safeVectors": 3213,
+          "carriers": 5,
+          "unsafeSuccess": 810,
+          "unsafeFailure": 810,
+          "safeSuccess": 16065,
+          "safeFailure": 16065
+        },
+        "complexity": {
+          "selectedEndpoints": ["apostrophe-final", "parenthesis-final", "square-prose-final"],
+          "equalByteBudgetComparable": true,
+          "nearLimitValid": "succeeded",
+          "nearLimitMalformed": "failed"
+        }
+      },
+      "requirements": ["SR-TERMINAL-002", "SR-TERMINAL-004"],
+      "evidence": {
+        "consumer": "test/contracts/codex-terminal-result.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-PENDING-CANCEL",
+      "coordinates": { "acquire": "caller-cancelled", "start": "cancelled", "provider": "fake" },
+      "input": { "phase": "pending-acquire" },
+      "expected": {
+        "outcome": "cancelled",
+        "acquireAborted": true,
+        "acquireSettled": true,
+        "runtimeStartCalls": 0,
+        "childProcesses": 0
+      },
+      "requirements": ["SR-LIFECYCLE-001", "SR-START-001"],
+      "evidence": {
+        "consumer": "test/integration/rn1-codex-agent-runtime-port.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-PENDING-SHUTDOWN",
+      "coordinates": { "acquire": "shutdown", "start": "cancelled", "provider": "fake" },
+      "input": { "phase": "pending-acquire" },
+      "expected": {
+        "aborted": true,
+        "settledBeforeReturn": true,
+        "runtimeStartCalls": 0,
+        "childProcesses": 0
+      },
+      "requirements": ["SR-LIFECYCLE-002"],
+      "evidence": {
+        "consumer": "test/integration/rn1-codex-agent-runtime-port.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-START-CLASSIFICATION",
+      "coordinates": { "start": "unknown" },
+      "input": {
+        "variants": [
+          "known-agent-manager-rejection",
+          "preaccept-abort",
+          "unexpected-runtime-start-throw",
+          "mismatched-handle",
+          "mismatched-lookup"
+        ]
+      },
+      "expected": {
+        "statuses": [
+          "failed",
+          "cancelled",
+          "recovery_required",
+          "recovery_required",
+          "recovery_required"
+        ],
+        "replacementInvocationCalls": 0
+      },
+      "requirements": ["SR-START-001", "SR-START-002", "SR-START-003"],
+      "evidence": {
+        "consumer": "test/integration/rn1-private-agent-port.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-ACTIVE-RECOVERY",
+      "coordinates": { "recovery": "active-reaped", "start": "accepted", "provider": "fake" },
+      "input": { "persistedState": "running", "action": "restart" },
+      "expected": {
+        "loadedBeforeReadiness": true,
+        "processReaped": true,
+        "removeAcknowledged": true,
+        "invocationCalls": 1,
+        "finalStatus": "recovery_required"
+      },
+      "requirements": ["SR-ACTIVE-001", "SR-ACTIVE-002", "SR-ACTIVE-003", "SR-ACTIVE-004"],
+      "evidence": {
+        "consumer": "test/integration/rn1-codex-agent-recovery-process.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-TERMINAL-NO-REPLAY",
+      "coordinates": { "recovery": "terminal-retained", "start": "accepted", "provider": "fake" },
+      "input": { "persistedState": "succeeded", "action": "restart" },
+      "expected": {
+        "invocationCalls": 1,
+        "finalStatus": "succeeded",
+        "replacementInvocationCalls": 0
+      },
+      "requirements": ["SR-ACTIVE-004"],
+      "evidence": {
+        "consumer": "test/integration/rn1-codex-agent-dbos.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-MANAGER-STOP-ORDER",
+      "coordinates": {
+        "acquire": "resolved",
+        "start": "accepted",
+        "recovery": "none",
+        "provider": "fake"
+      },
+      "input": { "state": "active-invocation", "action": "manager-stop" },
+      "expected": {
+        "orderedEvents": [
+          "public-calls-drained",
+          "agents.shutdown.begin",
+          "active.remove.ack",
+          "agents.shutdown.end",
+          "dbos.shutdown.begin",
+          "dbos.shutdown.end"
+        ],
+        "cleanupAfterDbosShutdown": false
+      },
+      "requirements": ["SR-LIFECYCLE-002", "SR-ACTIVE-002", "SR-STOP-001"],
+      "evidence": {
+        "consumer": "test/integration/rn1-codex-agent-dbos.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-CONFORMANCE-ARTIFACTS",
+      "coordinates": { "surface": "root" },
+      "input": {
+        "artifacts": [
+          "approved-architecture",
+          "source-requirements",
+          "golden-vectors",
+          "context-vectors"
+        ]
+      },
+      "expected": {
+        "closedSchemas": true,
+        "digestPinned": true,
+        "coordinatesValidated": true,
+        "requirementsCovered": true
+      },
+      "requirements": ["SR-GOLDEN-001", "SR-CONTEXT-001"],
+      "evidence": {
+        "consumer": "test/contracts/rn1-codex-conformance.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-DEP-REJECT-ALTERNATES",
+      "coordinates": { "dependency": "non-registry", "surface": "root" },
+      "input": {
+        "variants": [
+          { "id": "file", "specifier": "file:../runtime" },
+          { "id": "link", "specifier": "link:../runtime" },
+          { "id": "workspace", "specifier": "workspace:*" },
+          { "id": "git", "specifier": "git+https://example.invalid/runtime.git" },
+          { "id": "url", "specifier": "https://example.invalid/runtime.tgz" },
+          { "id": "tarball", "specifier": "../runtime.tgz" },
+          { "id": "alternate-version", "specifier": "0.1.0-alpha.1" }
+        ]
+      },
+      "expected": [
+        { "id": "file", "rejected": true },
+        { "id": "link", "rejected": true },
+        { "id": "workspace", "rejected": true },
+        { "id": "git", "rejected": true },
+        { "id": "url", "rejected": true },
+        { "id": "tarball", "rejected": true },
+        { "id": "alternate-version", "rejected": true }
+      ],
+      "requirements": ["SR-DEP-001", "SR-DEP-002", "SR-VERIFY-002"],
+      "evidence": {
+        "consumer": "test/contracts/registry-dependency-contract.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    },
+    {
+      "id": "CTX-AMBIENT-AUTH-PER-INVOCATION",
+      "coordinates": { "platform": "linux", "auth": "ambient-true", "provider": "fake" },
+      "input": { "construction": "A", "invocations": ["B", "C"], "postCompletion": "D" },
+      "expected": {
+        "childSecretSets": ["B", "C"],
+        "constructionSnapshotObserved": false,
+        "logsRedacted": true,
+        "completedLookupSanitized": true,
+        "completedCancelSanitized": true
+      },
+      "requirements": ["SR-AUTH-001", "SR-AUTH-002", "SR-TERMINAL-002"],
+      "evidence": {
+        "consumer": "test/integration/rn1-codex-agent-runtime-port.test.ts",
+        "evidenceClass": "executable-vector"
+      }
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "EX-DARWIN-LIVE",
+      "evidenceClass": "source-backed-exclusion",
+      "excluded": "Darwin execution",
+      "requiredEvidence": "pre-host unsupported test",
+      "reason": "RN1 is Linux-only and claims no Darwin live conformance.",
+      "sourceIds": ["SRC-APPROVED-ARCH", "SRC-ADR-0003", "SRC-ADR-0004"],
+      "requirements": ["SR-EXCLUSION-001"]
+    },
+    {
+      "id": "EX-LIVE-PROVIDER-AUTOMATIC",
+      "evidenceClass": "source-backed-exclusion",
+      "excluded": "automatic live-provider request",
+      "requiredEvidence": "not-run without explicit authorization and same-context ambient login",
+      "reason": "External authorization and credentials are human-controlled.",
+      "sourceIds": ["SRC-APPROVED-ARCH", "SRC-ADR-0003", "SRC-VERIFICATION"],
+      "requirements": ["SR-EXCLUSION-001", "SR-LIVE-001"]
+    },
+    {
+      "id": "EX-NON-CODEX",
+      "evidenceClass": "source-backed-exclusion",
+      "excluded": "non-Codex adapters and fallback",
+      "requiredEvidence": "exact definition rejection",
+      "reason": "The production definition set is exact and closed.",
+      "sourceIds": ["SRC-APPROVED-ARCH", "SRC-ADR-0003"],
+      "requirements": ["SR-EXCLUSION-001"]
+    },
+    {
+      "id": "EX-PUBLIC-INJECTION",
+      "evidenceClass": "source-backed-exclusion",
+      "excluded": "runtime, runner, provider, or definition injection",
+      "requiredEvidence": "packed root-only consumer",
+      "reason": "The repository contract keeps all runtime composition private.",
+      "sourceIds": ["SRC-REPOSITORY", "SRC-PUBLIC-ENTRYPOINT", "SRC-APPROVED-ARCH"],
+      "requirements": ["SR-EXCLUSION-001"]
+    },
+    {
+      "id": "EX-CLI-VERSION-PIN",
+      "evidenceClass": "source-backed-exclusion",
+      "excluded": "Codex executable version pin",
+      "requiredEvidence": "version-independent definition probe",
+      "reason": "definition-v1 is the consumer definition contract, not a CLI release.",
+      "sourceIds": ["SRC-APPROVED-ARCH", "SRC-ADR-0003", "SRC-ADR-0004"],
+      "requirements": ["SR-EXCLUSION-001"]
+    },
+    {
+      "id": "EX-HOST-CODEX-AVAILABILITY",
+      "evidenceClass": "source-backed-exclusion",
+      "excluded": "claim that generic CI has a host Codex executable",
+      "requiredEvidence": "mandatory repo parser plus explicit conditional installed-Codex smoke status",
+      "reason": "CLI scope compatibility is always executable in-repo; host executable availability is environment-specific and only ENOENT is non-blocking.",
+      "sourceIds": ["SRC-APPROVED-ARCH", "SRC-VERIFICATION", "SRC-ADR-0003", "SRC-ADR-0004"],
+      "requirements": ["SR-EXCLUSION-002"]
+    }
+  ]
+}

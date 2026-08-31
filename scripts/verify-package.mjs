@@ -8,6 +8,19 @@ import { assertRegistryDependencyFiles } from './registry-dependency-contract.ts
 
 const isRecord = (value) => typeof value === 'object' && value !== null;
 
+const root = process.cwd();
+const contextVectors = JSON.parse(
+  await readFile(join(root, 'test/fixtures/conformance/rn1-codex-context-vectors.json'), 'utf8'),
+);
+const surfaceContext = contextVectors.cases?.find(({ id }) => id === 'CTX-SURFACE-PRIVATE');
+assert.ok(isRecord(surfaceContext) && isRecord(surfaceContext.input));
+assert.equal(typeof surfaceContext.input.rootImport, 'string');
+assert.equal(typeof surfaceContext.input.deepImport, 'string');
+assert.ok(
+  Array.isArray(surfaceContext.input.forbiddenExports) &&
+    surfaceContext.input.forbiddenExports.every((value) => typeof value === 'string'),
+);
+
 const packagePath = (root, packageName) => join(root, ...packageName.split('/'));
 
 const linkPackage = async (sourceNodeModules, targetNodeModules, packageName) => {
@@ -39,12 +52,20 @@ const assertPackedProductionHasNoTestHooks = async (directory) => {
       /WorkflowProbe|reachWorkflowProbe|\.probe(?:\?\.)?\.reach/u,
       `Packed production artifact contains a workflow probe: ${path}`,
     );
+    assert.doesNotMatch(
+      content,
+      /codex-fixture-parser|installed-codex-parser-smoke/u,
+      `Packed production artifact contains the test-only Codex parser: ${path}`,
+    );
   }
 };
 
 const runtimeConsumer = `
 import assert from 'node:assert/strict';
-import { createRunManager } from '@revisium/revo-run';
+
+const rootModule = await import(${JSON.stringify(surfaceContext.input.rootImport)});
+const createRunManager = rootModule.createRunManager;
+assert.equal(typeof createRunManager, 'function');
 
 const manager = createRunManager({
   database: { url: 'postgresql://example.invalid/revo-run' },
@@ -61,10 +82,19 @@ const manager = createRunManager({
   },
 });
 assert.equal(typeof manager.createRun, 'function');
-await assert.rejects(
-  import('@revisium/revo-run/dist/manager/create-run-manager.js'),
-  (error) => error instanceof Error && 'code' in error && error.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED',
-);
+let deepRejected = false;
+try {
+  await import(${JSON.stringify(surfaceContext.input.deepImport)});
+} catch (error) {
+  deepRejected = error instanceof Error && 'code' in error && error.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED';
+}
+process.stdout.write(JSON.stringify({
+  rootAccepted: true,
+  deepRejected,
+  runtimeInjectionExported: ${JSON.stringify(surfaceContext.input.forbiddenExports)}.some(
+    (name) => Object.hasOwn(rootModule, name),
+  ),
+}));
 `;
 
 const consumerTsconfig = {
@@ -84,7 +114,6 @@ const consumerTsconfig = {
   include: ['consumer.ts'],
 };
 
-const root = process.cwd();
 const typeConsumer = await readFile(
   join(root, 'test/package/fixtures/root-consumer/raw-create-run.ts'),
   'utf8',
@@ -150,7 +179,14 @@ try {
     cwd: consumerDirectory,
     stdio: 'pipe',
   });
-  execFileSync(process.execPath, ['consumer.mjs'], { cwd: consumerDirectory, stdio: 'pipe' });
+  const actualSurface = JSON.parse(
+    execFileSync(process.execPath, ['consumer.mjs'], {
+      cwd: consumerDirectory,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+  );
+  assert.deepStrictEqual(actualSurface, surfaceContext.expected);
   console.log('Packed root consumer validation passed.');
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true });

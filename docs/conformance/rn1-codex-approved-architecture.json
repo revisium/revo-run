@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "rn1-codex-approved-architecture/v3",
+  "artifactRevision": "repo:rn1-codex-approved-architecture:2026-08-30:v9",
+  "normalization": {
+    "encoding": "UTF-8",
+    "separator": "LF",
+    "terminalNewline": false,
+    "form": "<ordinal>. <text>, joined by LF in ordinal order"
+  },
+  "normalizedTextSha256": "0ecad38de5c7ad4f6a4ed03c31d7c768d719e58a57482a4161157971ffbe7571",
+  "constraints": [
+    {
+      "ordinal": 1,
+      "id": "ARCH-DEP-REGISTRY",
+      "text": "@revisium/revo-agent-runtime is a direct root dependency at exactly 0.1.0-alpha.0, resolved only from the npm registry with SRI sha512-UeL2eP+fmCf6zpnkwYWE7z7XX1UMIihtvIAQOup7sAME9Bi0cqQbzGCv/q1PL/FKkEK23f8RooRpPxkKiK6vPg==; file, link, workspace, Git, URL, tarball, override, and alternate-version resolutions are forbidden."
+    },
+    {
+      "ordinal": 2,
+      "id": "ARCH-ROOT-PRIVATE",
+      "text": "revo-run keeps one package-root public entrypoint; the agent runtime, adapter, definition, active registry, prepared bindings, handles, and durable internal records remain private and consumers cannot inject a runner, runtime, provider factory, or definition."
+    },
+    {
+      "ordinal": 3,
+      "id": "ARCH-DEFINITION",
+      "text": "Production recognizes exactly codex@definition-v1 with no fallback or dynamic selection; the definition version is independent of the Codex CLI executable version."
+    },
+    {
+      "ordinal": 4,
+      "id": "ARCH-PLATFORM",
+      "text": "Production Codex support is Linux only and the runtime remains content-pinned; a run containing a Codex requirement on non-Linux fails after whole-set profile resolution but before any agent binding preparation, workspace acquisition, script binding preparation, process launch, or DBOS admission; script-only runs are unaffected."
+    },
+    {
+      "ordinal": 5,
+      "id": "ARCH-ARGV-STDIN",
+      "text": "The real Codex argv begins with the root-scoped --ask-for-approval=never option, followed by exec and the exec-scoped --ignore-user-config option, then the fixed JSON/result-schema/permission/model options, and ends with -- and -; the prompt is absent from argv and delivered byte-for-byte as UTF-8 stdin."
+    },
+    {
+      "ordinal": 6,
+      "id": "ARCH-MODEL",
+      "text": "model is required, matches ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$, and appears only as the value of --model."
+    },
+    {
+      "ordinal": 7,
+      "id": "ARCH-AMBIENT-AUTH",
+      "text": "allowAmbientLogin is exactly true; HOME and CODEX_HOME are captured afresh for each invocation immediately before runtime.start and passed only as that invocation’s runtime secret environment, which registers them for redaction; user configuration and host credential acquisition are forbidden."
+    },
+    {
+      "ordinal": 8,
+      "id": "ARCH-CREDENTIALS-OMITTED",
+      "text": "The credentials property must be absent; any present value, including an empty object, is rejected before host work."
+    },
+    {
+      "ordinal": 9,
+      "id": "ARCH-WORKSPACE-OUTPUT",
+      "text": "workspaceRef matches [A-Za-z][A-Za-z0-9._-]{0,127}; only that logical reference is durable; the workspace is acquired per invocation and the exclusive sibling output directory is derived per invocation, while acquired workspace and output paths remain process-local."
+    },
+    {
+      "ordinal": 10,
+      "id": "ARCH-TERMINAL-SAFETY",
+      "text": "The closed terminal carrier excludes launch, environment, metadata, usage, files, diagnostics, paths, and process values; recursive sanitization rejects environment, secret, credential, authentication, token, password, generic key, acronym credential key, and captured-secret shapes; a lexical token scanner rejects atom-started POSIX absolute tokens including root and punctuation-leading segment characters, drive absolutes, backslash UNC/device paths, and file URI tokens anywhere in terminal success or failure text; a non-file URL exemption requires full RFC3986 consumption to end, whitespace, control, or a deterministically selected rightmost full-valid external wrapper closer; unknown or out-of-grammar input invalidates the whole candidate and exposes its first slash, while wrapper characters that are RFC data remain data unless selected as the maximal valid envelope boundary; RFC URL and maximal-valid wrapper recognition is one forward O(n) parse with bounded state, so closer count does not multiply parsing work; unsafe success maps to generic revo.run.execution_failed."
+    },
+    {
+      "ordinal": 11,
+      "id": "ARCH-PENDING-START",
+      "text": "Caller cancellation and shutdown own, abort, and await settlement of pending workspace acquisition and start; no late runtime.start or child process may escape."
+    },
+    {
+      "ordinal": 12,
+      "id": "ARCH-START-CLASSIFICATION",
+      "text": "A proven pre-acceptance cancellation maps to cancelled, another known pre-acceptance rejection maps to failed, an exact returned handle maps to accepted, and an unexpected or unclassifiable post-runtime.start fault, mismatched handle, or mismatched lookup maps to recovery_required; no outcome is guessed."
+    },
+    {
+      "ordinal": 13,
+      "id": "ARCH-ACTIVE-RECOVERY",
+      "text": "Running and cancelling active invocation identity snapshots use one closed versioned DBOS/PostgreSQL registry, acknowledge save/remove, load into runtime.initialize before readiness opens, remove only identity-matched rows after confirmed cleanup, and never trigger a replacement invocation; unknown or unconfirmed state becomes recovery_required."
+    },
+    {
+      "ordinal": 14,
+      "id": "ARCH-STOP-ORDER",
+      "text": "Graceful manager stop first prevents new public work and drains public calls, then cancels and drains agents while DBOS and the active registry remain available, and only then shuts down DBOS; cleanup acknowledgement must not be attempted after DBOS shutdown."
+    },
+    {
+      "ordinal": 15,
+      "id": "ARCH-UNSUPPORTED-ADMISSION",
+      "text": "Unsupported platform, provider, mixed assignment set, wrong definition version, invalid model, invalid ambient-login flag, present credentials, invalid workspaceRef, unavailable definition, and every unsupported consensus participant fail as a complete pre-admission set before workspace acquisition, script preparation, or DBOS admission."
+    },
+    {
+      "ordinal": 16,
+      "id": "ARCH-CONFORMANCE",
+      "text": "The consuming repository owns digest-pinned approved-architecture, source-requirements, golden-vector, and context-vector artifacts; every vector-class case executes its input through production code or the package verifier and strictly compares the normalized observation, while route gates and source-backed exclusions use distinct evidence classes and an identifier, title, or source marker is never behavioral evidence; executable cases cover platform, dependency, public surface, definition, argv/stdin, model, auth, credentials, workspace/output, terminal safety, acquire/start, cancellation/shutdown, active recovery, and no replay."
+    },
+    {
+      "ordinal": 17,
+      "id": "ARCH-VERIFICATION",
+      "text": "Required gates are targeted conformance/admission/adapter/sanitizer/manager-stop/fresh-process DBOS suites, a mandatory repo-owned executable CLI scope parser against the actual adapter-rendered argv, the disposable-database clean-registry pnpm verify and packed root-consumer gates, git diff --check, applicable actionlint, exact-head CI/Sonar checks, and same-command base proof for any claimed pre-existing failure; a zero-cost installed Codex help smoke is conditional, reports not_available only when the executable is absent, and fails for an available parser mismatch, while live-provider smoke remains conditional on explicit human authorization and ambient login."
+    }
+  ]
+}

@@ -1,0 +1,479 @@
+{
+  "schemaVersion": "rn1-codex-source-requirements/v3",
+  "artifactRevision": "repo:rn1-codex-source-requirements:2026-08-30:v9",
+  "sources": [
+    {
+      "id": "SRC-APPROVED-ARCH",
+      "locator": "docs/conformance/rn1-codex-approved-architecture.json#/constraints",
+      "immutablePin": {
+        "kind": "normalized-sha256",
+        "value": "0ecad38de5c7ad4f6a4ed03c31d7c768d719e58a57482a4161157971ffbe7571"
+      }
+    },
+    {
+      "id": "SRC-BASE",
+      "locator": "git commit d170ebeb64735557ae3d3db6de9f83082439b474",
+      "immutablePin": { "kind": "git-commit", "value": "d170ebeb64735557ae3d3db6de9f83082439b474" },
+      "immutabilityEvidence": [
+        {
+          "kind": "git-tree",
+          "locator": "git commit d170ebeb64735557ae3d3db6de9f83082439b474^{tree}",
+          "value": "edd8e4f4da4841eb33017e8d4e204f141256b70f"
+        }
+      ]
+    },
+    {
+      "id": "SRC-RUNTIME",
+      "locator": "pnpm-lock.yaml#/packages/@revisium~1revo-agent-runtime@0.1.0-alpha.0",
+      "immutablePin": {
+        "kind": "sri-sha512",
+        "value": "UeL2eP+fmCf6zpnkwYWE7z7XX1UMIihtvIAQOup7sAME9Bi0cqQbzGCv/q1PL/FKkEK23f8RooRpPxkKiK6vPg=="
+      },
+      "immutabilityEvidence": [
+        {
+          "kind": "file-sha256",
+          "locator": "node_modules/@revisium/revo-agent-runtime/package.json",
+          "value": "71be2d99fda99ec47ac81a72b68eabf5bc92aa68c58cde57c5ed93632edd00ef"
+        },
+        {
+          "kind": "file-sha256",
+          "locator": "node_modules/@revisium/revo-agent-runtime/README.md",
+          "value": "0b2bf412723c9084bcdc75cb0002368cce15e95c25b214de2e58324babeb1c55"
+        }
+      ]
+    },
+    {
+      "id": "SRC-MANIFEST",
+      "locator": "package.json",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "673ea4855ad2d63cfb217b430e511c8982e2dcaa60e5ae4478ff085b74d82dea"
+      }
+    },
+    {
+      "id": "SRC-LOCK",
+      "locator": "pnpm-lock.yaml",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "8c7e8a1a7d2a6e59b35729b49d82d83f3199d66b3a3270ac14c4c620b2ad4af4"
+      }
+    },
+    {
+      "id": "SRC-WORKSPACE",
+      "locator": "pnpm-workspace.yaml",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "29548d3382d2f0adbce8d1c43b8c3bf12377d198e398b01c98a7316e84d24264"
+      }
+    },
+    {
+      "id": "SRC-REGISTRY-CONTRACT",
+      "locator": "scripts/registry-dependency-contract.ts",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "a8f365061058aa1a7c9886d8ec790c5fd8b8458e03483aaa46d423c131a78ea0"
+      }
+    },
+    {
+      "id": "SRC-REPOSITORY",
+      "locator": "REPOSITORY.md",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "504bda4c4fccc306b65bb0229e9a91d3329b4f51bd82823978c98e45560382e8"
+      }
+    },
+    {
+      "id": "SRC-REVIEW",
+      "locator": "REVIEW.md",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "7c619a457313f2380e38005ab382523a95f7e7572b62847ab88c3d9ab5d89f38"
+      }
+    },
+    {
+      "id": "SRC-VERIFICATION",
+      "locator": "VERIFICATION.md",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "e74c8f9b91288319023d07d63be98dea63e8c1d354c63f70f5aaabb622bef430"
+      }
+    },
+    {
+      "id": "SRC-ADR-0001",
+      "locator": "docs/adr/0001-direct-kernel-host.md",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "fe52fa45c4263ecf035bd903fda9546bd31a05926c1be10c8cd49f1c1d74087c"
+      }
+    },
+    {
+      "id": "SRC-ADR-0003",
+      "locator": "docs/adr/0003-linux-codex-runtime-and-active-recovery.md",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "0b0442bd5d9f5a151ade69f5399da0d041deeb19b4d787ce83a1d61c2babd94f"
+      }
+    },
+    {
+      "id": "SRC-ADR-0004",
+      "locator": "docs/adr/0004-codex-cli-scope-and-invocation-auth.md",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "c0188e488dd559954324f79d35874ee81d386522ba6789921b2b4bb5ab865b66"
+      }
+    },
+    {
+      "id": "SRC-ARCHITECTURE",
+      "locator": "docs/architecture.md",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "5a020e18afd94ef8ece328c50603f11a8bdd522ea234000887c6758ee83123bb"
+      }
+    },
+    {
+      "id": "SRC-README",
+      "locator": "README.md",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "a6e0d9369434235111deb4f3cce81849da1018c3b8d32bfd6c5ff8f41387b707"
+      }
+    },
+    {
+      "id": "SRC-PUBLIC-ENTRYPOINT",
+      "locator": "src/index.ts",
+      "immutablePin": {
+        "kind": "file-sha256",
+        "value": "d80f9bdfec47e8243d602ba7cd437fc0506900d2d5a15bddbd311d6cb2482c6f"
+      }
+    }
+  ],
+  "routeGates": [
+    {
+      "id": "GATE-LOCAL-VERIFY",
+      "evidenceClass": "route-gate",
+      "command": "corepack pnpm db:test:up && corepack pnpm verify && corepack pnpm db:test:down && git diff --check",
+      "requirements": ["SR-VERIFY-001"]
+    },
+    {
+      "id": "GATE-PR-PROVIDERS",
+      "evidenceClass": "route-gate",
+      "command": "exact-head CI and Sonar checks after push",
+      "requirements": ["SR-VERIFY-003"]
+    },
+    {
+      "id": "GATE-BASE-PROOF",
+      "evidenceClass": "route-gate",
+      "command": "same-command execution against SRC-BASE when claiming a pre-existing failure",
+      "requirements": ["SR-VERIFY-004"]
+    },
+    {
+      "id": "GATE-CODEX-CLI-PARSER",
+      "evidenceClass": "route-gate",
+      "command": "mandatory repo-owned executable scope parser and conditional installed Codex --help smoke",
+      "requirements": ["SR-VERIFY-001"]
+    }
+  ],
+  "requirements": [
+    {
+      "id": "SR-DEP-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-MANIFEST",
+      "locator": "/dependencies/@revisium~1revo-agent-runtime",
+      "text": "Exact direct root dependency 0.1.0-alpha.0."
+    },
+    {
+      "id": "SR-DEP-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-LOCK",
+      "locator": "/packages/@revisium~1revo-agent-runtime@0.1.0-alpha.0",
+      "text": "One exact registry/SRI resolution and approved dependency snapshot; no alternate resolver."
+    },
+    {
+      "id": "SR-SURFACE-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-REPOSITORY",
+      "locator": "/Repository Contract",
+      "text": "Only the revo-run package root is public."
+    },
+    {
+      "id": "SR-SURFACE-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/1",
+      "text": "Runtime, adapter, definition, registry, bindings, handles, and internal records are root-private and non-injectable."
+    },
+    {
+      "id": "SR-DEF-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/2",
+      "text": "Exactly private codex@definition-v1; no fallback or dynamic selection."
+    },
+    {
+      "id": "SR-DEF-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-ADR-0003",
+      "locator": "/Decision",
+      "text": "Definition version does not pin the Codex CLI version."
+    },
+    {
+      "id": "SR-PLATFORM-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/3",
+      "text": "Production support is Linux only."
+    },
+    {
+      "id": "SR-PLATFORM-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-ADR-0004",
+      "locator": "/Decision",
+      "text": "A non-Linux run containing Codex rejects after whole-set profile resolution with agent preparation, workspace acquisition, script preparation, process launch, and DBOS admission all untouched; script-only runs are unaffected."
+    },
+    {
+      "id": "SR-IO-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-ADR-0004",
+      "locator": "/Decision",
+      "text": "Actual Codex argv places root-scoped --ask-for-approval=never before exec, then exec-scoped --ignore-user-config."
+    },
+    {
+      "id": "SR-IO-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/4",
+      "text": "Actual argv ends with -- and -."
+    },
+    {
+      "id": "SR-IO-003",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/4",
+      "text": "Prompt is absent from argv and byte-identical UTF-8 stdin."
+    },
+    {
+      "id": "SR-MODEL-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/5",
+      "text": "model matches ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$ and is only the --model value."
+    },
+    {
+      "id": "SR-AUTH-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/6",
+      "text": "allowAmbientLogin is exactly true and host credentials are never acquired."
+    },
+    {
+      "id": "SR-AUTH-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-ADR-0004",
+      "locator": "/Decision",
+      "text": "HOME/CODEX_HOME are captured per invocation immediately before runtime.start and supplied only through that invocation’s runtime secret/redaction path; no port-lifetime snapshot and no user config inheritance."
+    },
+    {
+      "id": "SR-CREDENTIALS-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/7",
+      "text": "credentials must be absent; empty or populated presence rejects pre-admission."
+    },
+    {
+      "id": "SR-WORKSPACE-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/8",
+      "text": "workspaceRef matches [A-Za-z][A-Za-z0-9._-]{0,127}."
+    },
+    {
+      "id": "SR-WORKSPACE-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/8",
+      "text": "Workspace acquisition happens per invocation, never during binding preparation or admission."
+    },
+    {
+      "id": "SR-WORKSPACE-003",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/8",
+      "text": "Each invocation derives an exclusive sibling output leaf; workspace/output paths remain process-local and non-durable."
+    },
+    {
+      "id": "SR-TERMINAL-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-REVIEW",
+      "locator": "/public-durable-values",
+      "text": "Terminal carrier is closed and excludes runtime/process/files/environment/diagnostic fields."
+    },
+    {
+      "id": "SR-TERMINAL-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/9",
+      "text": "Recursive sanitization rejects secret/environment/credential/auth/token/password/generic-key shapes and captured secrets; a lexical token scanner rejects atom-started POSIX absolute tokens including root and punctuation-leading segment characters, drive absolutes, backslash UNC/device paths, and file URI tokens anywhere in terminal success or failure text; a non-file URL exemption requires full RFC3986 consumption to end, whitespace, control, or a deterministically selected rightmost full-valid external wrapper closer; unknown or out-of-grammar input invalidates the whole candidate and exposes its first slash, while wrapper characters that are RFC data remain data unless selected as the maximal valid envelope boundary; RFC URL and maximal-valid wrapper recognition is one forward O(n) parse with bounded state, so closer count does not multiply parsing work."
+    },
+    {
+      "id": "SR-TERMINAL-003",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/9",
+      "text": "Acronym credential keys such as APIKey, AWS_ACCESS_KEY_ID, JWTToken, OAuthToken, and SSHPrivateKey reject."
+    },
+    {
+      "id": "SR-TERMINAL-004",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/9",
+      "text": "Unsafe success maps only to generic revo.run.execution_failed; safe JSON is cloned and deeply frozen."
+    },
+    {
+      "id": "SR-LIFECYCLE-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/10",
+      "text": "Caller cancellation aborts and settles pending acquisition/start with no late runtime.start."
+    },
+    {
+      "id": "SR-LIFECYCLE-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/10",
+      "text": "Adapter shutdown aborts and settles pending acquisition/start and drains accepted work."
+    },
+    {
+      "id": "SR-START-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/11",
+      "text": "Proven pre-accept cancellation becomes cancelled; another known pre-accept rejection becomes failed."
+    },
+    {
+      "id": "SR-START-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/11",
+      "text": "Accepted requires an exact invocationId and execution pin."
+    },
+    {
+      "id": "SR-START-003",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/11",
+      "text": "Unexpected post-start faults and mismatched handles/lookups become recovery_required."
+    },
+    {
+      "id": "SR-ACTIVE-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-ADR-0003",
+      "locator": "/Decision/active-process-identity",
+      "text": "Closed versioned active running/cancelling snapshots use DBOS/PostgreSQL only."
+    },
+    {
+      "id": "SR-ACTIVE-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/12",
+      "text": "Active save/remove complete only after DBOS acknowledgement."
+    },
+    {
+      "id": "SR-ACTIVE-003",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/12",
+      "text": "Rows load into runtime.initialize and cleanup completes before readiness opens."
+    },
+    {
+      "id": "SR-ACTIVE-004",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/12",
+      "text": "Cleanup is identity-matched; unknown/unconfirmed state is recovery_required with no replacement invocation."
+    },
+    {
+      "id": "SR-STOP-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/13",
+      "text": "Manager stop drains public calls, then agents while DBOS/registry remain available, then shuts down DBOS."
+    },
+    {
+      "id": "SR-ADMISSION-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/14",
+      "text": "Every listed unsupported/invalid assignment class rejects before workspace, scripts, or DBOS."
+    },
+    {
+      "id": "SR-ADMISSION-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/14",
+      "text": "Mixed and consensus sets are validated completely before any participant preparation."
+    },
+    {
+      "id": "SR-GOLDEN-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/15",
+      "text": "Approved architecture, requirements, golden vectors, and context vectors are repo-owned and digest-pinned."
+    },
+    {
+      "id": "SR-CONTEXT-001",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/15",
+      "text": "Every context case has concrete axis coordinates, inputs, expected observations, requirement IDs, and executable evidence."
+    },
+    {
+      "id": "SR-EXCLUSION-001",
+      "evidenceClass": "source-backed-exclusion",
+      "sourceId": "SRC-ADR-0003",
+      "locator": "/Consequences",
+      "text": "Darwin live execution and automatic live-provider calls remain explicit source-backed exclusions."
+    },
+    {
+      "id": "SR-EXCLUSION-002",
+      "evidenceClass": "source-backed-exclusion",
+      "sourceId": "SRC-VERIFICATION",
+      "locator": "/codex-parser-evidence",
+      "text": "Generic CI does not claim an installed Codex executable; the mandatory repo-owned executable parser always proves CLI scopes, while the conditional installed Codex help smoke reports only executable absence as not_available and fails every available mismatch."
+    },
+    {
+      "id": "SR-VERIFY-001",
+      "evidenceClass": "route-gate",
+      "sourceId": "SRC-VERIFICATION",
+      "locator": "/complete-clean-registry-gate",
+      "text": "Targeted suites include the mandatory independent repo-owned executable CLI scope parser against actual adapter argv and precede full disposable-DB pnpm verify and git diff --check; the conditional installed Codex help smoke explicitly reports executable absence and fails every available parser mismatch."
+    },
+    {
+      "id": "SR-VERIFY-002",
+      "evidenceClass": "executable-vector",
+      "sourceId": "SRC-VERIFICATION",
+      "locator": "/registry-dependencies",
+      "text": "Clean install and packed root consumer prove registry-only dependencies and root surface."
+    },
+    {
+      "id": "SR-VERIFY-003",
+      "evidenceClass": "route-gate",
+      "sourceId": "SRC-VERIFICATION",
+      "locator": "/workflow-and-provider-gates",
+      "text": "Applicable actionlint and exact-head CI/Sonar checks pass after push."
+    },
+    {
+      "id": "SR-VERIFY-004",
+      "evidenceClass": "route-gate",
+      "sourceId": "SRC-BASE",
+      "locator": "/",
+      "text": "Any claimed pre-existing subprocess red requires same-command evidence against the pinned base."
+    },
+    {
+      "id": "SR-LIVE-001",
+      "evidenceClass": "source-backed-exclusion",
+      "sourceId": "SRC-APPROVED-ARCH",
+      "locator": "/constraints/16",
+      "text": "Live provider smoke is conditional on explicit human authorization and ambient login, never an automatic gate."
+    }
+  ]
+}

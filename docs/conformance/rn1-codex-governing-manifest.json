@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "rn1-codex-governing-manifest/v3",
+  "algorithm": "sha256",
+  "artifacts": [
+    {
+      "path": "docs/conformance/rn1-codex-approved-architecture.json",
+      "digest": "f1b0caac79dfc368c4fa7f5582265e3c06a14995b9eeb4115185783cc962a2b6"
+    },
+    {
+      "path": "docs/conformance/rn1-codex-source-requirements.json",
+      "digest": "b74b256a18724954416b4dd1353bd87dcb80f4df16594733680f1cd77e254d02"
+    },
+    {
+      "path": "test/fixtures/conformance/rn1-codex-context-vectors.json",
+      "digest": "0371c4800588ca4caf1cec7cb1dca71717335c919eef92fed86e06973b2e4b18"
+    },
+    {
+      "path": "test/fixtures/conformance/rn1-codex-golden-vectors.json",
+      "digest": "cd844addb75a03b2bdae48c94210a94c8876b66de88708e623be2342c6a1a337"
+    }
+  ],
+  "governingArtifactsDigest": "18ef90214f49ba28d1b518153b778f320467f2094089db6b8e51b4891f8f1064"
+}

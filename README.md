@@ -17,13 +17,27 @@ read [the RN1 architecture](docs/architecture.md) and
   commands, and transitions.
 - `@revisium/revo-scripts` owns script definitions, providers, resource and
   credential acquisition, and one physical script attempt.
+- `@revisium/revo-agent-runtime` owns Codex process preflight, execution,
+  structured results, cancellation, timeout, and reaping.
 - `@revisium/revo-run` owns durable admission, stable operation identities, DBOS
   workflow lifecycle, interactions, recovery observation, and public run views.
 
-The manager does not accept an executor map, compiler callback, lowered plan, or
-runner supplied by the consumer. Agent-bearing pipelines are currently rejected
-before DBOS admission with `agent_runtime_unavailable`; the future agent-runtime
-adapter is intentionally not part of this API.
+The manager does not accept an executor map, compiler callback, lowered plan,
+runner, or agent runtime supplied by the consumer. Its private adapter accepts
+only the `codex@definition-v1` profile reference; unsupported agent assignments
+fail before DBOS admission with `agent_runtime_unavailable`.
+
+The Codex adapter is Linux-only. After resolving the whole profile, a run with
+Codex rejects non-Linux before agent or script preparation and DBOS admission;
+script-only runs are unaffected. Codex requires an explicit safe model, logical
+workspace reference, and ambient-login opt-in and rejects every supplied
+credentials object. Its argv starts with the root option
+`--ask-for-approval=never`, then `exec`, `--ignore-user-config`, and ends with
+`--`, `-`; the prompt is stdin. `HOME` and `CODEX_HOME` are captured afresh
+immediately before each invocation and passed only through that invocation's
+runtime secret/redaction path. Graceful manager stop drains agents and their
+active-registry acknowledgements before DBOS shutdown. Automatic verification
+never sends a live provider request.
 
 ## Create a manager and run
 
@@ -58,9 +72,9 @@ pipeline is terminal. `runId` is consumer-owned and must match
 creation with the same ID returns `run_id_conflict`.
 
 The admitted snapshot fixes the raw source/profile/input, compiled program, and
-prepared script bindings. It never contains a secret, acquired credential handle,
-absolute workspace path, or live process handle. Recovery uses that snapshot and
-does not compile the pipeline again.
+minimal prepared script and agent bindings. It never contains a secret, acquired
+credential handle, absolute workspace path, output path, or live process handle.
+Recovery uses that snapshot and does not compile the pipeline again.
 
 ## Observe and interact
 
@@ -105,6 +119,6 @@ corepack pnpm db:test:down
 ```
 
 The database is a disposable local PostgreSQL instance configured by `.env.test`.
-The pipeline and script packages are exact registry dependencies. The complete
-gate includes a packed root consumer and rejects local, workspace, Git, URL, and
-tarball dependency references.
+The agent-runtime, pipeline, and script packages are the three exact Revisium
+registry dependencies. The complete gate includes a packed root consumer and
+rejects local, workspace, Git, URL, and tarball dependency references.

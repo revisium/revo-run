@@ -44,6 +44,11 @@ afterEach(() => vi.restoreAllMocks());
 describe('RN1 run-manager stop lifecycle', () => {
   it('stops accepting new calls, drains an active read, then shuts DBOS down once', async () => {
     const manager = runningManager();
+    const shutdownOrder: string[] = [];
+    const shutdownAgents = vi.fn<() => Promise<void>>(async () => {
+      shutdownOrder.push('agents.shutdown');
+    });
+    Reflect.set(manager, 'composition', { agents: { shutdown: shutdownAgents } });
     let resolveStatus: ((status: WorkflowStatus) => void) | undefined;
     const pendingStatus = new Promise<WorkflowStatus>((resolve) => {
       resolveStatus = resolve;
@@ -51,7 +56,9 @@ describe('RN1 run-manager stop lifecycle', () => {
     const status = vi
       .spyOn(DBOS, 'getWorkflowStatus')
       .mockImplementation(async () => pendingStatus);
-    const shutdown = vi.spyOn(DBOS, 'shutdown').mockResolvedValue(undefined);
+    const shutdown = vi.spyOn(DBOS, 'shutdown').mockImplementation(async () => {
+      shutdownOrder.push('dbos.shutdown');
+    });
 
     const activeRead = manager.getRun('rn1-lifecycle-active');
     await expect.poll(() => status.mock.calls.length).toBe(1);
@@ -72,6 +79,8 @@ describe('RN1 run-manager stop lifecycle', () => {
     await Promise.all([firstStop, secondStop]);
 
     expect(shutdown).toHaveBeenCalledOnce();
+    expect(shutdownAgents).toHaveBeenCalledOnce();
+    expect(shutdownOrder).toStrictEqual(['agents.shutdown', 'dbos.shutdown']);
     await expect(manager.getRun('rn1-lifecycle-stopped')).rejects.toMatchObject({
       code: 'manager_not_started',
       details: { lifecycle: 'stopped' },

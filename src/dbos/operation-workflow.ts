@@ -15,12 +15,12 @@ import type {
   ScriptTerminalAttemptResult,
 } from '@revisium/revo-scripts';
 
-import { isAgentInvocationResult } from '../composition/agent-invocation-result.js';
 import type {
-  AgentInvocationResult,
   AgentResultLookup,
+  AgentTerminalResult,
   PreparedAgentBinding,
 } from '../composition/agent-port.js';
+import { isAgentTerminalResult } from '../composition/agent-terminal-result.js';
 import { requireRunComposition } from '../composition/run-composition.js';
 import type { AdmittedRunSnapshotV1 } from '../contracts/admitted-run.js';
 import { isJsonObject, type JsonObject, type JsonValue } from '../contracts/json.js';
@@ -78,7 +78,7 @@ export interface OperationObservationRelayV1 {
   readonly retrying: boolean;
   readonly event: PipelineEvent;
   readonly scriptResult: ScriptAttemptResult | null;
-  readonly agentResult: AgentInvocationResult | null;
+  readonly agentResult: AgentTerminalResult | null;
   readonly preDispatchCancelled: boolean;
 }
 
@@ -278,7 +278,7 @@ interface OperationObservation {
   readonly scriptResult: ScriptAttemptResult | null;
   readonly attemptOrdinal: number | null;
   readonly retrying: boolean;
-  readonly agentResult?: AgentInvocationResult | null;
+  readonly agentResult?: AgentTerminalResult | null;
   readonly preDispatchCancelled?: boolean;
 }
 
@@ -845,7 +845,7 @@ const agentDispatchIntent = async (
 
 const agentPipelineEvent = (
   command: Extract<PipelineCommand, { readonly kind: 'dispatchActivity' }>,
-  result: AgentInvocationResult,
+  result: AgentTerminalResult,
 ): PipelineEvent => {
   if (result.status === 'succeeded') {
     if (result.value === undefined) {
@@ -872,13 +872,13 @@ const agentPipelineEvent = (
 const validAgentResult = (
   result: unknown,
   attempt: AgentOperationAttempt,
-): result is AgentInvocationResult =>
-  isAgentInvocationResult(result) &&
+): result is AgentTerminalResult =>
+  isAgentTerminalResult(result) &&
   result.invocationId === attempt.attemptId &&
   samePin(result.pin, attempt.binding.pin);
 
 type AgentResolution =
-  | Readonly<{ readonly kind: 'terminal'; readonly result: AgentInvocationResult }>
+  | Readonly<{ readonly kind: 'terminal'; readonly result: AgentTerminalResult }>
   | Readonly<{ readonly kind: 'running' }>
   | Readonly<{ readonly kind: 'recovery' }>;
 
@@ -985,20 +985,24 @@ const agentOperation = async (
       }
       try {
         const activity = agentActivityInput(attempt.command.input);
-        const handle = await composition.agents.start({
+        const outcome = await composition.agents.start({
           invocationId: attempt.attemptId,
-          agent: { id: attempt.binding.pin.agentId, version: attempt.binding.pin.agentVersion },
+          binding: attempt.binding,
           prompt: activity.prompt,
-          workspace: { directory: attempt.binding.workspaceRef },
-          parameters: attempt.binding.parameters,
-          permissions: attempt.binding.permissions,
           ...(activity.metadata === undefined ? {} : { metadata: activity.metadata }),
           result: { schema: attempt.requirement.outputSchema },
-          output: { directory: attempt.binding.workspaceRef },
         });
+        if (outcome.status === 'unknown') {
+          return { kind: 'recovery' };
+        }
+        if (outcome.status === 'rejected') {
+          return validAgentResult(outcome.result, attempt)
+            ? { kind: 'terminal', result: outcome.result }
+            : { kind: 'recovery' };
+        }
         if (
-          handle.invocationId !== attempt.attemptId ||
-          !samePin(handle.pin, attempt.binding.pin)
+          outcome.handle.invocationId !== attempt.attemptId ||
+          !samePin(outcome.handle.pin, attempt.binding.pin)
         ) {
           return { kind: 'recovery' };
         }
