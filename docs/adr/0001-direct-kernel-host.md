@@ -22,9 +22,8 @@ pipeline control flow and calls only `revo-scripts` for script lifecycle.
   values, bindings, handles, paths, and secrets stay private.
 - This is a breaking alpha cutover. Old plan/executor APIs are not retained.
 - Agent execution is represented only by the private port documented in
-  [ADR 0002](0002-private-agent-runtime-port.md) and its production integration
-  in [ADR 0003](0003-linux-codex-runtime-and-active-recovery.md). Consumers
-  cannot inject a runner or runtime.
+  [ADR 0002](0002-private-agent-runtime-port.md). Consumers cannot inject a
+  runner or runtime.
 - The RN1 package pins the matching revo-agent-runtime, revo-pipeline, and revo-scripts alpha
   artifacts as exact registry dependencies. Local, workspace, Git, URL, and
   tarball references are never package dependencies.

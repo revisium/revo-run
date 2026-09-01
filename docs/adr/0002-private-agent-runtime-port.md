@@ -12,7 +12,7 @@ The frozen port surface is deliberately small and exact:
 interface AgentRuntimePort {
   initialize(snapshots: readonly ActiveInvocationSnapshot[]): Promise<void>;
   prepareBinding(input: AgentBindingInput): Promise<PreparedAgentBinding>;
-  start(input: StartAgentInvocation, context?: AgentStartContext): Promise<AgentInvocationHandle>;
+  start(input: AgentRuntimeStartInput, context?: AgentStartContext): Promise<AgentInvocationHandle>;
   getResult(invocationId: string): AgentResultLookup;
   cancel(invocationId: string, reason?: string): Promise<CancelInvocationResult>;
   shutdown(reason?: string): Promise<void>;
@@ -20,26 +20,24 @@ interface AgentRuntimePort {
 ```
 
 `AgentExecutionPin` is the identity returned by every handle/result/lookup.
-`StartAgentInvocation` contains the agent reference, prompt, workspace,
-parameters, permissions, output/result contract and optional limits. The result
-is a closed succeeded/failed/cancelled/timed-out union with process output-file
-metadata and a typed fault. `getResult` is synchronous and returns only
+`AgentRuntimeStartInput` contains the admitted binding, prompt, result contract
+and optional metadata/limits. The result is a closed
+succeeded/failed/cancelled/timed-out union with a typed fault; runtime launch
+evidence and output-file paths are deliberately not carried into durable
+history. `getResult` is synchronous and returns only
 running/completed/unknown; it does not start work or infer an outcome.
 
-Production composes only `unavailableAgentPort`: only `initialize([])` and shutdown
-succeed, while a non-empty recovery initialization, prepare/start/lookup/cancel throw the exact closed public error
-`agent_runtime_unavailable` with empty details. It is therefore impossible for
-the public manager, including an installed package consumer, to inject an
-agent fake or choose a runtime mode.
+Production composes one private adapter over the generic
+`@revisium/revo-agent-runtime` root API. Definitions are discovered and pinned
+during admission; the active invocation registry remains the sole durable state
+sink. It is therefore impossible for the public manager, including an installed
+package consumer, to inject an agent fake or choose a runtime mode.
 
 ## Consequences
 
 - Test fakes remain under `test/support/agent-runtime/` and are never imported
   by production source, exported from the root, or packed.
 - Tests can exercise the durable host's stable invocation identity, lookup and
-  cancellation paths without claiming that RN1 ships an agent adapter.
-- An approved future adapter may implement this port against a stable
-  `@revisium/revo-agent-runtime` root API; it must not change the public
-  manager model or move pipeline control-flow into `revo-run`.
-- Agent-bearing public admission stays fail-closed until that separate work is
-  approved.
+  cancellation paths without exposing the runtime manager as a public option.
+- The adapter must not change the public manager model or move pipeline
+  control-flow into `revo-run`.

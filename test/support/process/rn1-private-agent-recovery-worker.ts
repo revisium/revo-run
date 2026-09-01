@@ -82,14 +82,19 @@ const pipeline: PipelineSourcePackage = {
 };
 const binding: PreparedAgentBinding = {
   schemaVersion: 'prepared-agent-binding/v1',
+  definition: {
+    schemaVersion: 'prepared-agent-definition-snapshot/v1',
+    value: { id: 'reviewer', version: '1.0.0', kind: 'test' },
+  },
   pin: {
     agentId: 'reviewer',
     agentVersion: '1.0.0',
-    definitionDigest: 'sha256:0000000000000000000000000000000000000000000000000000000000000001',
+    definitionDigest: '0000000000000000000000000000000000000000000000000000000000000001',
   },
   parameters: {},
   permissions: {},
   workspaceRef: '/trusted/recovery',
+  credentials: {},
 };
 
 const succeededResult = (input: AgentRuntimeStartInput): AgentTerminalResult => ({

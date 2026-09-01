@@ -11,11 +11,6 @@
     "identities/script-event-relay-receipts.json": "sha256:3dc37d0c2500081399034c89f8041b027bf3b6bcf018314cd0db8b9b4fb9f953",
     "scripts/cancellation-result-mapping.json": "sha256:3efd5cf993989ff4949cd50724b0fd160c001943b1069df40fe36704e2ae0bff",
     "integration/recovery/d1-d9.json": "sha256:309a5cd4acfcffd712cc6a3be3b4dc5a658b2901e1a4f1708d6421f31bc0f5a1",
-    "package/root-consumer/raw-create-run.ts": "sha256:2893232cb1ef65bcefc6c022d9fcc90094c6cc56ce4f5fc48ad138eb002c5086",
-    "docs/conformance/rn1-codex-approved-architecture.json": "sha256:f1b0caac79dfc368c4fa7f5582265e3c06a14995b9eeb4115185783cc962a2b6",
-    "docs/conformance/rn1-codex-source-requirements.json": "sha256:b74b256a18724954416b4dd1353bd87dcb80f4df16594733680f1cd77e254d02",
-    "docs/conformance/rn1-codex-governing-manifest.json": "sha256:bb495e5047b228fd590ccf637b6342436dcb8c462430a0ad4e30ac2b56650aba",
-    "test/fixtures/conformance/rn1-codex-context-vectors.json": "sha256:0371c4800588ca4caf1cec7cb1dca71717335c919eef92fed86e06973b2e4b18",
-    "test/fixtures/conformance/rn1-codex-golden-vectors.json": "sha256:cd844addb75a03b2bdae48c94210a94c8876b66de88708e623be2342c6a1a337"
+    "package/root-consumer/raw-create-run.ts": "sha256:2893232cb1ef65bcefc6c022d9fcc90094c6cc56ce4f5fc48ad138eb002c5086"
   }
 }

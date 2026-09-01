@@ -10,7 +10,6 @@ import { createInitialPipelineState } from '@revisium/revo-pipeline/kernel';
 import type { PreparedScriptBinding, ScriptIdentityPin } from '@revisium/revo-scripts';
 import { Check } from 'typebox/value';
 
-import { CODEX_AGENT_REF } from '../composition/agents/codex/codex-definition.js';
 import type { RunComposition } from '../composition/run-composition.js';
 import type { AdmittedRunSnapshotV1 } from '../contracts/admitted-run.js';
 import { isJsonValue, type JsonValue } from '../contracts/json.js';
@@ -29,13 +28,39 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0;
 
+const isBoundedString = (value: unknown, maximum: number): value is string =>
+  typeof value === 'string' && value.length > 0 && value.length <= maximum;
+
 const logicalWorkspaceRefPattern = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
+const environmentVariablePattern = /^[A-Za-z_]\w*$/u;
 
 const isLogicalWorkspaceRef = (value: unknown): value is string =>
   typeof value === 'string' && logicalWorkspaceRefPattern.test(value);
 
+const isCredentialRecord = (value: unknown): value is Readonly<Record<string, string>> =>
+  isRecord(value) &&
+  Object.keys(value).length <= 123 &&
+  Object.entries(value).every(
+    ([environmentVariable, alias]) =>
+      environmentVariablePattern.test(environmentVariable) &&
+      environmentVariable.length <= 128 &&
+      isBoundedString(alias, 256),
+  );
+
 const isStringRecord = (value: unknown): value is Readonly<Record<string, string>> =>
   isRecord(value) && Object.values(value).every(isNonEmptyString);
+
+const isConfiguration = (value: unknown): boolean =>
+  isRecord(value) &&
+  (value.catalogRevision === undefined || isBoundedString(value.catalogRevision, 128)) &&
+  isRecord(value.selections) &&
+  Object.keys(value.selections).length <= 128 &&
+  Object.entries(value.selections).every(
+    ([key, selection]) =>
+      key.length > 0 &&
+      key.length <= 256 &&
+      (typeof selection === 'boolean' || isBoundedString(selection, 4_096)),
+  );
 
 const isJsonRecord = (value: unknown): value is Readonly<Record<string, JsonValue>> =>
   isRecord(value) && Object.values(value).every(isJsonValue);
@@ -59,7 +84,8 @@ const isAgentAssignment = (value: unknown): value is AgentAssignment =>
   isJsonRecord(value.parameters) &&
   isJsonRecord(value.permissions) &&
   isLogicalWorkspaceRef(value.workspaceRef) &&
-  (value.credentials === undefined || isStringRecord(value.credentials));
+  (value.credentials === undefined || isCredentialRecord(value.credentials)) &&
+  (value.configuration === undefined || isConfiguration(value.configuration));
 
 const isValidEnvelope = (input: CreateRunInput): boolean =>
   isRecord(input) &&
@@ -206,11 +232,6 @@ const scriptPin = (value: { readonly id: string; readonly version: number }): Sc
 const isScriptIdentity = (value: string): value is `script:${string}` =>
   value.startsWith('script:');
 
-const isSupportedAgentAssignment = (assignment: AgentAssignment): boolean =>
-  assignment.definition.id === CODEX_AGENT_REF.id &&
-  assignment.definition.version === CODEX_AGENT_REF.version &&
-  assignment.credentials === undefined;
-
 const validateCreateRunInput = (input: CreateRunInput): void => {
   // Classify an invalid run ID before the rest of a malformed envelope so no
   // host preparation can observe the input.
@@ -243,15 +264,6 @@ const initialStateOrThrow = (
   return initial;
 };
 
-const validateAgentAssignments = (assignments: ResolvedProfile): void => {
-  if (assignments.agents.some(([, assignment]) => !isSupportedAgentAssignment(assignment))) {
-    throw new RunManagerError('agent_runtime_unavailable');
-  }
-  if (assignments.agents.length > 0 && process.platform !== 'linux') {
-    throw new RunManagerError('agent_runtime_unavailable');
-  }
-};
-
 const prepareAgentBindings = async (
   assignments: ResolvedProfile,
   composition: RunComposition,
@@ -265,6 +277,7 @@ const prepareAgentBindings = async (
       // oxlint-disable-next-line no-await-in-loop -- first failed requirement must be deterministic at admission.
       bindings[requirement.bindingKey] = await composition.agents.prepareBinding(assignment);
     } catch {
+      // Preparation failures are normalized at the requirement boundary.
       throw new RunManagerError('agent_runtime_unavailable');
     }
   }
@@ -314,7 +327,6 @@ export const admitRun = async (
     input.profile.bindings.agents,
     input.profile.bindings.scripts,
   );
-  validateAgentAssignments(assignments);
   const agentBindings = await prepareAgentBindings(assignments, composition);
   const bindings = await prepareScriptBindings(assignments, composition);
 
