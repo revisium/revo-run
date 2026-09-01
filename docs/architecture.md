@@ -7,13 +7,13 @@ revo-core
   -> revo-run manager: raw pipeline, profile, input, host resolvers
        -> revo-pipeline: compile, initial state, commands, transitions
        -> revo-scripts: binding preparation, one physical script attempt
-       -> revo-agent-runtime: one Codex process invocation and terminal result
+       -> revo-agent-runtime: discovery, configuration, and one agent invocation
        -> DBOS/PostgreSQL: admission snapshot, operation history, events
 ```
 
 The consumer supplies only the raw `PipelineSourcePackage`, `RunProfile`, JSON
 input, and host resolvers. `createRun()` compiles once, prepares script bindings
-and supported agent bindings, and starts a DBOS root workflow. The admitted
+and discovered agent bindings, and starts a DBOS root workflow. The admitted
 snapshot is immutable; recovery does not recompile or reselect profile values.
 
 ## Durable operation boundary
@@ -53,25 +53,14 @@ closed public schemas, public run values, raw pipeline/profile types, and host
 resolver types. It does not export a lowered plan, pipeline kernel, admitted
 snapshot, DBOS record, prepared binding, or a deep import surface.
 
-The private production adapter recognizes only `codex@definition-v1`. The
-definition version is independent of the installed Codex CLI version and does not
-pin one. The definition supports Linux only. A profile must explicitly provide a
-regex-safe `model`, `allowAmbientLogin: true`, and a logical workspace reference;
-any credentials property and unsupported, mixed, or wrong agent references fail
-before host work or DBOS admission. After whole-set resolution, a profile with
-Codex also rejects non-Linux before agent or script preparation; script-only
-profiles remain portable. The adapter starts the real argv with root-scoped
-`--ask-for-approval=never`, then `exec` and exec-scoped
-`--ignore-user-config`, ends it with `--`, `-`, and delivers the prompt
-byte-for-byte over stdin. It creates an exclusive sibling output leaf and
-captures `HOME` and `CODEX_HOME` afresh immediately before each start, passing
-them only through that invocation's runtime secret environment/redaction path.
-Every verification run sends the actual adapter-rendered argv through an
-independent repo-owned executable parser that enforces root and exec option
-scopes. A separate zero-cost installed-Codex `--help` smoke is conditional: an
-absent executable is reported explicitly, while an available executable with
-different parser behavior fails verification. Neither layer pins a CLI version
-or sends a provider request.
+The private production adapter discovers available definitions through the
+runtime API and pins the selected definition and digest in the admitted
+snapshot. Configuration selections are copied into the prepared binding and
+validated again by the runtime's fresh invocation session. Logical workspace
+references and credential aliases remain durable; acquired paths, secrets, and
+runtime handles remain process-local. Unsupported or unavailable definitions
+fail before workspace acquisition, script preparation, process launch, or DBOS
+admission.
 
 Only a minimal prepared binding and sanitized terminal carrier enter durable
 history. Raw environment, metadata, launch evidence, files, output paths, and
@@ -94,7 +83,7 @@ acknowledgement. Startup launches DBOS with readiness closed, loads the registry
 and calls runtime initialization to identity-check and reap recorded detached
 process groups before opening readiness. The durable operation then observes an
 unknown result as `recovery_required` and never relaunches it. A terminal DBOS
-result survives manager restart without executing Codex again. The pinned
+result survives manager restart without executing the agent again. The pinned
 runtime still has a spawn-before-save SIGKILL window; unregistered orphans in
 that window are not claimed as recoverable.
 
@@ -118,8 +107,8 @@ event to the one serialized root lane:
 | Source semantics                                     | RN1 evidence                                                                                        |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `script`                                             | `raw-kernel-run.test.ts` and `rn1-script-recovery.test.ts`                                          |
-| `agent` single                                       | Codex adapter, DBOS restart, active-process recovery, and private-port conformance                  |
-| `consensus` / three agent participants               | private-port conformance; mixed or unsupported production assignments fail before preparation       |
+| `agent` single                                       | Generic runtime adapter, DBOS restart, active-process recovery, and private-port conformance        |
+| `consensus` / three agent participants               | private-port conformance; mixed or unsupported assignments fail before preparation                  |
 | `choice`, `call`, `parallel`, `repeat`, `map`, `end` | `rn1-control-flow-conformance.test.ts`                                                              |
 | duration and signal `wait`                           | `rn1-control-flow-conformance.test.ts`, `raw-kernel-run.test.ts`, and fresh-process signal recovery |
 | `humanGate` answer, deadline, cancellation           | `raw-kernel-run.test.ts`                                                                            |

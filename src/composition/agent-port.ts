@@ -1,4 +1,4 @@
-import type { JsonObject } from '../contracts/json.js';
+import type { JsonObject, JsonValue } from '../contracts/json.js';
 import { RunManagerError } from '../contracts/run-manager-error.js';
 
 export interface AgentRef {
@@ -18,14 +18,31 @@ export interface AgentBindingInput {
   readonly permissions: JsonObject;
   readonly workspaceRef: string;
   readonly credentials?: Readonly<Record<string, string>>;
+  readonly configuration?: Readonly<{
+    readonly catalogRevision?: string;
+    readonly selections: Readonly<Record<string, boolean | string>>;
+  }>;
+}
+
+export interface PreparedAgentDefinitionSnapshot {
+  readonly schemaVersion: 'prepared-agent-definition-snapshot/v1';
+  readonly value: JsonObject;
 }
 
 export interface PreparedAgentBinding {
   readonly schemaVersion: 'prepared-agent-binding/v1';
   readonly pin: AgentExecutionPin;
+  readonly definition: PreparedAgentDefinitionSnapshot;
   readonly parameters: JsonObject;
   readonly permissions: JsonObject;
   readonly workspaceRef: string;
+  readonly credentials: Readonly<
+    Record<string, Readonly<{ readonly alias: string; readonly environmentVariable: string }>>
+  >;
+  readonly configuration?: Readonly<{
+    readonly catalogRevision?: string;
+    readonly selections: Readonly<Record<string, boolean | string>>;
+  }>;
 }
 
 export interface ActiveInvocationSnapshot {
@@ -64,6 +81,9 @@ export interface AgentRuntimeStartInput {
 export interface AgentTerminalFailure {
   readonly code: string;
   readonly message: string;
+  readonly phase?: string;
+  readonly retryable?: boolean;
+  readonly details?: JsonObject;
 }
 
 interface AgentTerminalResultBase {
@@ -76,7 +96,12 @@ export type AgentTerminalResult =
   | (AgentTerminalResultBase &
       Readonly<{
         readonly status: 'succeeded';
-        readonly value: JsonObject;
+        readonly value: JsonValue;
+        readonly usage?: Readonly<{
+          readonly inputTokens?: number;
+          readonly outputTokens?: number;
+          readonly totalTokens?: number;
+        }>;
       }>)
   | (AgentTerminalResultBase &
       Readonly<{

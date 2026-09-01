@@ -32,33 +32,20 @@ assignments must fail before workspace acquisition, script preparation, or DBOS
 admission. Unknown active agent lookups become `recovery_required`; they never
 launch a replacement process.
 
-The production Codex definition is Linux-only and has no CLI version constraint.
-Its argv starts with root-scoped `--ask-for-approval=never`, then `exec` and
-exec-scoped `--ignore-user-config`; it ends with `--`, `-` and receives
-byte-exact prompt content through stdin. Ambient `HOME` and `CODEX_HOME` are
-captured immediately before every invocation and remain invocation-scoped
-secret/redaction inputs. Reject a port-lifetime auth snapshot, every supplied
-credentials object, and every path-shaped durable workspace reference.
-
-Require two distinct CLI parser evidence layers. Every CI run must launch the
-actual adapter-rendered argv through the independent repo-owned executable scope
-parser, whose negative cases reject root options in exec scope and exec options
-in root scope. The installed-Codex `--help` smoke is conditional: only an
-executable-not-found spawn may report `not_available`; permission failures,
-signals, missing statuses, or available parser mismatches fail. Neither parser
-check may send a prompt/provider request or establish a CLI version pin.
-
-After whole-set profile resolution, any run containing Codex must reject
-non-Linux before agent binding preparation, workspace acquisition, script
-binding preparation, process launch, or DBOS admission. Do not apply that guard
-to script-only runs.
+Agent definitions are discovered and selected through the generic runtime API.
+The adapter pins the selected definition and digest, validates configuration in
+the runtime session, and keeps acquired workspaces, credentials, and process
+handles process-local. Reject unsupported or wrongly versioned assignments
+before workspace acquisition, script preparation, process launch, or DBOS
+admission. Credential leases remain until terminal settlement and are disposed
+on start failure, cancellation, or shutdown.
 
 The private active-invocation registry is one closed, versioned document in the
 DBOS system database. Reject a process-local-only sink, a second table/store, a
 write that does not await DBOS acknowledgement, or startup that opens readiness
 before registry load and runtime identity cleanup. Review terminal success and
-failure values through the shared recursive sanitizer; raw faults and rejected
-data must not become durable diagnostics.
+failure values through the shared bounded mapper; raw faults and rejected data
+must not become durable diagnostics.
 
 Graceful manager stop must close and drain public calls, shut agents down and
 await active-registry removal while DBOS remains available, and only then shut

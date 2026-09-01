@@ -2,8 +2,9 @@ import { DBOS, type DBOSExternalState } from '@dbos-inc/dbos-sdk';
 import type {
   ActiveInvocationSnapshot,
   ActiveInvocationStateSink,
-  ActiveStateOperationContext,
 } from '@revisium/revo-agent-runtime';
+
+type ActiveStateOperationContext = Parameters<ActiveInvocationStateSink['save']>[1];
 
 const registrySchemaVersion = 'agent-active-invocation-registry/v1';
 const registryIdentity = Object.freeze({

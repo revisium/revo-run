@@ -17,27 +17,18 @@ read [the RN1 architecture](docs/architecture.md) and
   commands, and transitions.
 - `@revisium/revo-scripts` owns script definitions, providers, resource and
   credential acquisition, and one physical script attempt.
-- `@revisium/revo-agent-runtime` owns Codex process preflight, execution,
-  structured results, cancellation, timeout, and reaping.
+- `@revisium/revo-agent-runtime` owns protocol-neutral agent discovery,
+  configuration, process preflight, execution, structured results, cancellation,
+  timeout, and reaping.
 - `@revisium/revo-run` owns durable admission, stable operation identities, DBOS
   workflow lifecycle, interactions, recovery observation, and public run views.
 
 The manager does not accept an executor map, compiler callback, lowered plan,
-runner, or agent runtime supplied by the consumer. Its private adapter accepts
-only the `codex@definition-v1` profile reference; unsupported agent assignments
-fail before DBOS admission with `agent_runtime_unavailable`.
-
-The Codex adapter is Linux-only. After resolving the whole profile, a run with
-Codex rejects non-Linux before agent or script preparation and DBOS admission;
-script-only runs are unaffected. Codex requires an explicit safe model, logical
-workspace reference, and ambient-login opt-in and rejects every supplied
-credentials object. Its argv starts with the root option
-`--ask-for-approval=never`, then `exec`, `--ignore-user-config`, and ends with
-`--`, `-`; the prompt is stdin. `HOME` and `CODEX_HOME` are captured afresh
-immediately before each invocation and passed only through that invocation's
-runtime secret/redaction path. Graceful manager stop drains agents and their
-active-registry acknowledgements before DBOS shutdown. Automatic verification
-never sends a live provider request.
+runner, or agent runtime supplied by the consumer. Agent definitions are
+discovered through the runtime public API, pinned into the admitted snapshot,
+and executed through the runtime manager. Configuration selections are copied
+into the admitted binding. Credential leases are acquired per invocation and
+released after terminal settlement or shutdown cleanup.
 
 ## Create a manager and run
 

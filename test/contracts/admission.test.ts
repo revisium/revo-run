@@ -1,5 +1,6 @@
 import type { PipelineSourcePackage } from '@revisium/revo-pipeline';
-import { createRevoScripts, type PreparedScriptBinding } from '@revisium/revo-scripts';
+import { createRevoScripts } from '@revisium/revo-scripts';
+import { Check } from 'typebox/value';
 import { describe, expect, it, vi } from 'vitest';
 
 import { admitRun } from '../../src/admission/admit-run.js';
@@ -10,11 +11,9 @@ import {
 } from '../../src/composition/agent-port.js';
 import { RunHostReadinessFence } from '../../src/composition/readiness-fence.js';
 import type { RunComposition } from '../../src/composition/run-composition.js';
-import { isJsonObject } from '../../src/contracts/json.js';
 import type { CreateRunInput } from '../../src/contracts/manager.js';
 import { RunManagerError } from '../../src/contracts/run-manager-error.js';
-import type { AgentAssignment } from '../../src/contracts/run-profile.js';
-import { codexContextCase } from '../support/codex-conformance.js';
+import { RunProfileSchema, type AgentAssignment } from '../../src/contracts/run-profile.js';
 
 const emptySchema = {
   type: 'object' as const,
@@ -22,9 +21,6 @@ const emptySchema = {
   required: [],
   additionalProperties: false as const,
 };
-
-const isStringRecord = (value: unknown): value is Readonly<Record<string, string>> =>
-  isJsonObject(value) && Object.values(value).every((entry) => typeof entry === 'string');
 
 const agentInputSchema = {
   type: 'object' as const,
@@ -70,70 +66,6 @@ const agentPipeline: PipelineSourcePackage = {
   ],
 };
 
-const scriptNode = {
-  kind: 'script' as const,
-  id: 'script',
-  requirementKey: 'verification',
-  script: { id: 'script:test/verification' as const, version: 1 },
-  input: {},
-  inputSchema: emptySchema,
-  outputSchema: emptySchema,
-  routes: { succeeded: 'done', failed: 'done', cancelled: 'done' },
-};
-
-const scriptOnlyPipeline: PipelineSourcePackage = {
-  schemaVersion: 'pipeline-source/v1',
-  key: 'rn1-script-only-admission',
-  entryModule: 'main',
-  maximumTotalActivities: 1,
-  modules: [
-    {
-      key: 'main',
-      inputSchema: emptySchema,
-      outputSchema: emptySchema,
-      region: {
-        key: 'root',
-        inputSchema: emptySchema,
-        entry: 'script',
-        outputSchema: emptySchema,
-        exits: [{ outcome: 'ok', outputSchema: emptySchema }],
-        nodes: [scriptNode, { kind: 'end', id: 'done', outcome: 'ok', output: {} }],
-      },
-    },
-  ],
-};
-
-const codexAndScriptPipeline: PipelineSourcePackage = {
-  ...agentPipeline,
-  key: 'rn1-codex-script-admission',
-  maximumTotalActivities: 2,
-  modules: [
-    {
-      ...agentPipeline.modules[0],
-      region: {
-        ...agentPipeline.modules[0].region,
-        nodes: [
-          {
-            kind: 'agent',
-            id: 'review',
-            strategies: [
-              {
-                kind: 'single',
-                routes: { succeeded: 'script', failed: 'script', cancelled: 'script' },
-              },
-            ],
-            input: { prompt: { kind: 'literal', value: 'Review' } },
-            inputSchema: agentInputSchema,
-            outputSchema: emptySchema,
-          },
-          scriptNode,
-          { kind: 'end', id: 'done', outcome: 'ok', output: {} },
-        ],
-      },
-    },
-  ],
-};
-
 const reviewerAssignment: AgentAssignment = {
   definition: { id: 'reviewer', version: '1' },
   parameters: {},
@@ -141,23 +73,39 @@ const reviewerAssignment: AgentAssignment = {
   workspaceRef: 'workspace-1',
 };
 
-const codexAssignment: AgentAssignment = {
-  definition: { id: 'codex', version: 'definition-v1' },
-  parameters: { model: 'test-model', allowAmbientLogin: true },
-  permissions: { mode: 'read-only', network: false },
+const alternateAgentAssignment: AgentAssignment = {
+  definition: { id: 'reviewer-alt', version: '2' },
+  parameters: { model: 'test-model' },
+  permissions: { mode: 'read-only' },
   workspaceRef: 'workspace-1',
 };
 
 const preparedAgentBinding = (input: AgentBindingInput): PreparedAgentBinding => ({
   schemaVersion: 'prepared-agent-binding/v1',
+  definition: {
+    schemaVersion: 'prepared-agent-definition-snapshot/v1',
+    value: {
+      schemaVersion: 'agent-definition/v1',
+      id: input.definition.id,
+      version: input.definition.version,
+      displayName: input.definition.id,
+    },
+  },
   pin: {
     agentId: input.definition.id,
     agentVersion: input.definition.version,
-    definitionDigest: `sha256:${'a'.repeat(64)}`,
+    definitionDigest: 'a'.repeat(64),
   },
   parameters: input.parameters,
   permissions: input.permissions,
   workspaceRef: input.workspaceRef,
+  credentials: Object.fromEntries(
+    Object.entries(input.credentials ?? {}).map(([environmentVariable, alias]) => [
+      environmentVariable,
+      { alias, environmentVariable },
+    ]),
+  ),
+  ...(input.configuration === undefined ? {} : { configuration: input.configuration }),
 });
 
 const baseInput = (
@@ -180,70 +128,6 @@ const baseInput = (
   },
   input: {},
 });
-
-const scriptAssignment = { resources: {}, credentials: {} } as const;
-const preparedScriptBinding: PreparedScriptBinding = {
-  schemaVersion: 'prepared-script-binding/v1',
-  script: { id: 'script:test/verification', version: 1 },
-  definitionDigest: `sha256:${'1'.repeat(64)}`,
-  implementation: {
-    id: '@revisium/revo-run/test/verification',
-    version: '1.0.0',
-    buildDigest: `sha256:${'2'.repeat(64)}`,
-  },
-  providers: [],
-  resources: {},
-  credentials: {},
-  attemptPolicy: {
-    timeoutMs: 1_000,
-    terminationGraceMs: 1_000,
-    retry: { mode: 'never', maxAttempts: 1, backoffMs: [] },
-    idempotency: 'read-only',
-  },
-};
-
-const scriptOnlyInput = (): CreateRunInput => ({
-  runId: 'rn1-script-only-admission',
-  pipeline: scriptOnlyPipeline,
-  profile: {
-    schemaVersion: 'run-profile/v1',
-    selections: {},
-    bindings: { agents: {}, scripts: { verification: scriptAssignment } },
-  },
-  input: {},
-});
-
-const codexAndScriptInput = (): CreateRunInput => ({
-  ...baseInput({ 'reviewer-binding': codexAssignment }),
-  runId: 'rn1-codex-script-admission',
-  pipeline: codexAndScriptPipeline,
-  profile: {
-    schemaVersion: 'run-profile/v1',
-    selections: {
-      review: {
-        strategy: 'single',
-        participant: { key: 'reviewer', bindingKey: 'reviewer-binding' },
-      },
-    },
-    bindings: {
-      agents: { 'reviewer-binding': codexAssignment },
-      scripts: { verification: scriptAssignment },
-    },
-  },
-});
-
-const withPlatform = async <T>(platform: NodeJS.Platform, action: () => Promise<T>): Promise<T> => {
-  const descriptor = Object.getOwnPropertyDescriptor(process, 'platform');
-  if (descriptor === undefined || !descriptor.configurable) {
-    throw new Error('process.platform cannot be safely isolated for this test.');
-  }
-  Object.defineProperty(process, 'platform', { ...descriptor, value: platform });
-  try {
-    return await action();
-  } finally {
-    Object.defineProperty(process, 'platform', descriptor);
-  }
-};
 
 const consensusInput = (): CreateRunInput => {
   const source = structuredClone(agentPipeline);
@@ -379,137 +263,30 @@ const expectCode = async (
   await expect(promise).rejects.toMatchObject({ code });
 };
 
-const rejectionCode = async (promise: Promise<unknown>): Promise<string> => {
-  try {
-    await promise;
-    return 'accepted';
-  } catch (error) {
-    return error instanceof RunManagerError ? error.code : 'unexpected_error';
-  }
-};
-
 const admitUnknown = (input: unknown, value: RunComposition): Promise<unknown> => {
   const result: unknown = Reflect.apply(admitRun, undefined, [input, value]);
   return Promise.resolve(result);
 };
 
 describe('RN1 admission profile boundary', () => {
-  it('CTX-DARWIN-UNSUPPORTED rejects Codex pre-host while preserving script-only admission', async () => {
-    const context = await codexContextCase('CTX-DARWIN-UNSUPPORTED');
-    const composed = composition();
-    composed.prepareBinding.mockResolvedValue(preparedScriptBinding);
-
-    const actual = await withPlatform('darwin', async () => {
-      const code = await rejectionCode(admitRun(codexAndScriptInput(), composed.value));
-      const preHost = {
-        agentPrepareCalls: composed.prepareAgentBinding.mock.calls.length,
-        workspaceCalls: 0,
-        scriptPrepareCalls: composed.prepareBinding.mock.calls.length,
-        processCalls: 0,
-        dbosCalls: 0,
-      };
-      const admitted = await admitRun(scriptOnlyInput(), composed.value);
-      return {
-        code,
-        ...preHost,
-        scriptOnlyAccepted: admitted.bindings.scripts['verification'] !== undefined,
-      };
-    });
-
-    expect(actual).toStrictEqual(context.expected);
-  });
-
-  it('CTX-UNSUPPORTED-ASSIGNMENTS executes every unsupported whole-set variant', async () => {
-    const context = await codexContextCase('CTX-UNSUPPORTED-ASSIGNMENTS');
-    if (
-      !isJsonObject(context.input) ||
-      !Array.isArray(context.input.variants) ||
-      !context.input.variants.every((variant) => typeof variant === 'string')
-    ) {
-      throw new Error('CTX-UNSUPPORTED-ASSIGNMENTS has invalid input.');
-    }
-    const inputVariants = context.input.variants;
-    const mixed = consensusInput();
-    const firstBinding = Object.keys(mixed.profile.bindings.agents)[0];
-    if (firstBinding === undefined) {
-      throw new Error('Expected a consensus binding.');
-    }
-    const variants: Readonly<Record<string, CreateRunInput>> = {
-      'wrong-id': baseInput(),
-      'wrong-version': baseInput({
-        'reviewer-binding': {
-          ...codexAssignment,
-          definition: { id: 'codex', version: 'definition-v2' },
-        },
-      }),
-      'mixed-supported-unsupported': {
-        ...mixed,
-        profile: {
-          ...mixed.profile,
-          bindings: {
-            ...mixed.profile.bindings,
-            agents: { ...mixed.profile.bindings.agents, [firstBinding]: codexAssignment },
+  it('keeps runtime configuration and credential key limits in the public schema', () => {
+    const valid = baseInput().profile;
+    expect(Check(RunProfileSchema, valid)).toBe(true);
+    expect(
+      Check(RunProfileSchema, {
+        ...valid,
+        bindings: {
+          ...valid.bindings,
+          agents: {
+            ...valid.bindings.agents,
+            'reviewer-binding': {
+              ...reviewerAssignment,
+              configuration: { selections: { ['x'.repeat(257)]: true } },
+            },
           },
         },
-      },
-      'unsupported-consensus-member': consensusInput(),
-    };
-    const composed = composition();
-    const codes: string[] = [];
-    for (const variant of inputVariants) {
-      const input = variants[variant];
-      if (input === undefined) {
-        throw new Error(`Unknown unsupported assignment variant ${variant}.`);
-      }
-      // oxlint-disable-next-line no-await-in-loop -- the vector fixes the deterministic variant order.
-      codes.push(await rejectionCode(admitRun(input, composed.value)));
-    }
-
-    expect({
-      codes,
-      preparedAgentCalls: composed.prepareAgentBinding.mock.calls.length,
-      workspaceCalls: 0,
-      scriptCalls: composed.prepareBinding.mock.calls.length,
-      processCalls: 0,
-      dbosCalls: 0,
-    }).toStrictEqual(context.expected);
-  });
-
-  it('CTX-CREDENTIALS-PRESENT rejects empty and populated credentials pre-host', async () => {
-    const context = await codexContextCase('CTX-CREDENTIALS-PRESENT');
-    if (!isJsonObject(context.input) || !Array.isArray(context.input.variants)) {
-      throw new Error('CTX-CREDENTIALS-PRESENT has invalid input.');
-    }
-    const inputVariants = context.input.variants.filter(isStringRecord);
-    if (inputVariants.length !== context.input.variants.length) {
-      throw new Error('CTX-CREDENTIALS-PRESENT has invalid credentials.');
-    }
-    const composed = composition();
-    const codes = await Promise.all(
-      inputVariants.map(
-        async (credentials) =>
-          await rejectionCode(
-            admitRun(
-              baseInput({
-                'reviewer-binding': {
-                  ...codexAssignment,
-                  credentials,
-                },
-              }),
-              composed.value,
-            ),
-          ),
-      ),
-    );
-
-    expect({
-      codes,
-      agentPrepareCalls: composed.prepareAgentBinding.mock.calls.length,
-      workspaceAcquireCalls: 0,
-      scriptPrepareCalls: composed.prepareBinding.mock.calls.length,
-      processCalls: 0,
-      dbosCalls: 0,
-    }).toStrictEqual(context.expected);
+      }),
+    ).toBe(false);
   });
 
   it('reports a malformed run ID before the rest of the create-run envelope', async () => {
@@ -547,33 +324,36 @@ describe('RN1 admission profile boundary', () => {
     expect(composed.prepareBinding).not.toHaveBeenCalled();
   });
 
-  it('rejects an unsupported agent before agent or script preparation', async () => {
+  it('normalizes a generic agent preparation failure before script preparation', async () => {
     const composed = composition();
+    composed.prepareAgentBinding.mockRejectedValue(new Error('agent unavailable'));
 
     await expectCode(admitRun(baseInput(), composed.value), 'agent_runtime_unavailable');
 
     expect(composed.initializeAgents).not.toHaveBeenCalled();
-    expect(composed.prepareAgentBinding).not.toHaveBeenCalled();
+    expect(composed.prepareAgentBinding).toHaveBeenCalledOnce();
     expect(composed.prepareBinding).not.toHaveBeenCalled();
   });
 
-  it('validates all consensus assignments before rejecting unsupported agents', async () => {
+  it('stops deterministic consensus preparation at the first generic failure', async () => {
     const composed = composition();
+    composed.prepareAgentBinding.mockRejectedValue(new Error('agent unavailable'));
 
     await expectCode(admitRun(consensusInput(), composed.value), 'agent_runtime_unavailable');
 
     expect(composed.initializeAgents).not.toHaveBeenCalled();
-    expect(composed.prepareAgentBinding).not.toHaveBeenCalled();
+    expect(composed.prepareAgentBinding).toHaveBeenCalledOnce();
     expect(composed.prepareBinding).not.toHaveBeenCalled();
   });
 
-  it('rejects mixed supported and unsupported agents before preparing either one', async () => {
+  it('stops mixed generic agent preparation at the first failure', async () => {
     const input = consensusInput();
     const firstBinding = Object.keys(input.profile.bindings.agents)[0];
     if (firstBinding === undefined) {
       throw new Error('Expected a consensus binding.');
     }
     const composed = composition();
+    composed.prepareAgentBinding.mockRejectedValue(new Error('agent unavailable'));
 
     await expectCode(
       admitRun(
@@ -583,7 +363,10 @@ describe('RN1 admission profile boundary', () => {
             ...input.profile,
             bindings: {
               ...input.profile.bindings,
-              agents: { ...input.profile.bindings.agents, [firstBinding]: codexAssignment },
+              agents: {
+                ...input.profile.bindings.agents,
+                [firstBinding]: alternateAgentAssignment,
+              },
             },
           },
         },
@@ -592,43 +375,88 @@ describe('RN1 admission profile boundary', () => {
       'agent_runtime_unavailable',
     );
 
-    expect(composed.prepareAgentBinding).not.toHaveBeenCalled();
+    expect(composed.prepareAgentBinding).toHaveBeenCalledOnce();
     expect(composed.prepareBinding).not.toHaveBeenCalled();
   });
 
-  it('rejects the wrong Codex definition version before preparation', async () => {
+  it('accepts arbitrary generic definition versions through the runtime port', async () => {
     const composed = composition();
 
-    await expectCode(
-      admitRun(
-        baseInput({
-          'reviewer-binding': {
-            ...codexAssignment,
-            definition: { id: 'codex', version: 'definition-v2' },
-          },
-        }),
-        composed.value,
-      ),
-      'agent_runtime_unavailable',
+    const admitted = await admitRun(
+      baseInput({ 'reviewer-binding': alternateAgentAssignment }),
+      composed.value,
     );
 
-    expect(composed.prepareAgentBinding).not.toHaveBeenCalled();
+    expect(composed.prepareAgentBinding).toHaveBeenCalledOnce();
+    expect(composed.prepareBinding).not.toHaveBeenCalled();
+    expect(admitted.bindings.agents?.['reviewer-binding']?.pin).toStrictEqual({
+      agentId: 'reviewer-alt',
+      agentVersion: '2',
+      definitionDigest: 'a'.repeat(64),
+    });
+  });
+
+  it('preserves populated generic credential selections', async () => {
+    const composed = composition();
+
+    await admitRun(
+      baseInput({
+        'reviewer-binding': {
+          ...alternateAgentAssignment,
+          credentials: { API_TOKEN: 'primary' },
+        },
+      }),
+      composed.value,
+    );
+
+    expect(composed.prepareAgentBinding).toHaveBeenCalledOnce();
+    expect(composed.prepareAgentBinding.mock.calls[0]?.[0].credentials).toStrictEqual({
+      API_TOKEN: 'primary',
+    });
     expect(composed.prepareBinding).not.toHaveBeenCalled();
   });
 
-  it('rejects even empty agent credentials before agent or script preparation', async () => {
+  it.each([
+    {
+      label: 'too many configuration selections',
+      assignment: {
+        ...alternateAgentAssignment,
+        configuration: {
+          selections: Object.fromEntries(
+            Array.from({ length: 129 }, (_, index) => [`selection-${index}`, true]),
+          ),
+        },
+      },
+    },
+    {
+      label: 'an overlong configuration selection',
+      assignment: {
+        ...alternateAgentAssignment,
+        configuration: { selections: { model: 'x'.repeat(4_097) } },
+      },
+    },
+    {
+      label: 'an overlong configuration selection key',
+      assignment: {
+        ...alternateAgentAssignment,
+        configuration: { selections: { ['x'.repeat(257)]: true } },
+      },
+    },
+    {
+      label: 'an invalid credential environment variable',
+      assignment: {
+        ...alternateAgentAssignment,
+        credentials: { 'NOT-AN-ENV': 'primary' },
+      },
+    },
+  ])('rejects $label before generic preparation', async ({ assignment }) => {
     const composed = composition();
 
     await expectCode(
-      admitRun(
-        baseInput({ 'reviewer-binding': { ...codexAssignment, credentials: {} } }),
-        composed.value,
-      ),
-      'agent_runtime_unavailable',
+      admitRun(baseInput({ 'reviewer-binding': assignment }), composed.value),
+      'run_profile_invalid',
     );
-
     expect(composed.prepareAgentBinding).not.toHaveBeenCalled();
-    expect(composed.prepareBinding).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -641,7 +469,7 @@ describe('RN1 admission profile boundary', () => {
 
     await expectCode(
       admitRun(
-        baseInput({ 'reviewer-binding': { ...codexAssignment, workspaceRef } }),
+        baseInput({ 'reviewer-binding': { ...alternateAgentAssignment, workspaceRef } }),
         composed.value,
       ),
       'run_profile_invalid',
@@ -651,18 +479,18 @@ describe('RN1 admission profile boundary', () => {
     expect(composed.prepareBinding).not.toHaveBeenCalled();
   });
 
-  it('stores only the prepared supported Codex binding in the admitted snapshot', async () => {
+  it('stores only the prepared generic binding in the admitted snapshot', async () => {
     const composed = composition();
 
     const admitted = await admitRun(
-      baseInput({ 'reviewer-binding': codexAssignment }),
+      baseInput({ 'reviewer-binding': alternateAgentAssignment }),
       composed.value,
     );
 
     expect(composed.prepareAgentBinding).toHaveBeenCalledOnce();
     expect(composed.prepareBinding).not.toHaveBeenCalled();
     expect(admitted.bindings.agents).toStrictEqual({
-      'reviewer-binding': preparedAgentBinding(codexAssignment),
+      'reviewer-binding': preparedAgentBinding(alternateAgentAssignment),
     });
   });
 

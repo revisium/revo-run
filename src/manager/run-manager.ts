@@ -12,6 +12,7 @@ import { PipelineCommandSchema, PipelineStateSchema } from '@revisium/revo-pipel
 import { Check } from 'typebox/value';
 
 import { admitRun } from '../admission/admit-run.js';
+import { isPreparedAgentBinding } from '../composition/agents/prepared-agent-binding.js';
 import {
   clearRunComposition,
   createRunComposition,
@@ -77,7 +78,6 @@ import { operationWorkflowId, runWorkflowId } from '../dbos/workflow-id.js';
 const applicationName = 'revo-run';
 const interactionDeliveryAttempts = 300;
 const interactionDeliveryDelayMs = 50;
-
 export const runManagerStopOrder = Object.freeze(['agents.shutdown', 'dbos.shutdown'] as const);
 
 const timestamp = (value: number | undefined): string =>
@@ -268,20 +268,6 @@ const isPreparedScriptBinding = (value: unknown): boolean => {
   );
 };
 
-const isPreparedAgentBinding = (value: unknown): boolean =>
-  isRecord(value) &&
-  isJsonValue(value) &&
-  hasExactKeys(value, ['schemaVersion', 'pin', 'parameters', 'permissions', 'workspaceRef']) &&
-  value.schemaVersion === 'prepared-agent-binding/v1' &&
-  isRecord(value.pin) &&
-  hasExactKeys(value.pin, ['agentId', 'agentVersion', 'definitionDigest']) &&
-  isNonEmptyString(value.pin.agentId) &&
-  isNonEmptyString(value.pin.agentVersion) &&
-  isNonEmptyString(value.pin.definitionDigest) &&
-  isRecord(value.parameters) &&
-  isRecord(value.permissions) &&
-  isNonEmptyString(value.workspaceRef);
-
 const isCompatiblePersistedRun = (value: unknown): value is AdmittedRunSnapshotV1 => {
   if (
     !isRecord(value) ||
@@ -460,11 +446,12 @@ export class DefaultRunManager implements RunManager {
     if (this.lifecycle === 'stopping') {
       throw new RunManagerError('manager_not_started', { lifecycle: 'stopping' });
     }
-    const composition = createRunComposition(this.options);
+    let composition: RunComposition | undefined;
     let launchStarted = false;
     try {
       DBOS.setConfig({ name: applicationName, systemDatabaseUrl: this.options.database.url });
       await this.assertPersistedRunsCompatible();
+      composition = await createRunComposition(this.options);
       installRunComposition(composition);
       launchStarted = true;
       await DBOS.launch();
@@ -474,8 +461,10 @@ export class DefaultRunManager implements RunManager {
       this.composition = composition;
       this.lifecycle = 'running';
     } catch {
-      clearRunComposition(composition);
-      await composition.agents.shutdown('run_manager_start_failed').catch(() => undefined);
+      if (composition !== undefined) {
+        clearRunComposition(composition);
+        await composition.agents.shutdown('run_manager_start_failed').catch(() => undefined);
+      }
       if (launchStarted) {
         await DBOS.shutdown().catch(() => undefined);
       }
