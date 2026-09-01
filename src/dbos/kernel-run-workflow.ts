@@ -64,6 +64,7 @@ import {
   arbitrateAttemptDispatch,
   attemptDispatchArbitrationCandidate,
 } from './attempt-dispatch-arbitration.js';
+import { waitForCoordinatorMessage } from './coordinator-inbox.js';
 import {
   gateConfigurationKey,
   runEventHighWaterKey,
@@ -1845,10 +1846,9 @@ const runCoordinator = async (runtime: KernelWorkflowContext): Promise<KernelRun
     if (terminal !== null) {
       return terminal;
     }
-    const message = await DBOS.recv<RunCoordinatorMessage>(coordinatorTopic);
-    if (message === null) {
-      throw new Error('Coordinator inbox unexpectedly returned no message.');
-    }
+    const message = await waitForCoordinatorMessage(
+      async () => await DBOS.recv<RunCoordinatorMessage>(coordinatorTopic),
+    );
     const result = await handleCoordinatorMessage(runtime, message);
     if (result !== null) {
       return result;
