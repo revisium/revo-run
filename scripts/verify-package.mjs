@@ -9,17 +9,14 @@ import { assertRegistryDependencyFiles } from './registry-dependency-contract.ts
 const isRecord = (value) => typeof value === 'object' && value !== null;
 
 const root = process.cwd();
-const contextVectors = JSON.parse(
-  await readFile(join(root, 'test/fixtures/conformance/rn1-codex-context-vectors.json'), 'utf8'),
-);
-const surfaceContext = contextVectors.cases?.find(({ id }) => id === 'CTX-SURFACE-PRIVATE');
-assert.ok(isRecord(surfaceContext) && isRecord(surfaceContext.input));
-assert.equal(typeof surfaceContext.input.rootImport, 'string');
-assert.equal(typeof surfaceContext.input.deepImport, 'string');
-assert.ok(
-  Array.isArray(surfaceContext.input.forbiddenExports) &&
-    surfaceContext.input.forbiddenExports.every((value) => typeof value === 'string'),
-);
+const surfaceContext = {
+  input: {
+    rootImport: '@revisium/revo-run',
+    deepImport: '@revisium/revo-run/composition/agents/revo-runtime/revo-agent-runtime-port',
+    forbiddenExports: ['createRevoAgentRuntimePort', 'AgentRuntimePort', 'PreparedAgentBinding'],
+  },
+  expected: { rootAccepted: true, deepRejected: true, runtimeInjectionExported: false },
+};
 
 const packagePath = (root, packageName) => join(root, ...packageName.split('/'));
 
@@ -51,11 +48,6 @@ const assertPackedProductionHasNoTestHooks = async (directory) => {
       content,
       /WorkflowProbe|reachWorkflowProbe|\.probe(?:\?\.)?\.reach/u,
       `Packed production artifact contains a workflow probe: ${path}`,
-    );
-    assert.doesNotMatch(
-      content,
-      /codex-fixture-parser|installed-codex-parser-smoke/u,
-      `Packed production artifact contains the test-only Codex parser: ${path}`,
     );
   }
 };

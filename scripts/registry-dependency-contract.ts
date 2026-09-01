@@ -19,13 +19,19 @@ type RegistryDependencyFiles = {
 export const registryRuntimeDependencies = Object.freeze({
   '@revisium/revo-agent-runtime': Object.freeze({
     integrity:
-      'sha512-UeL2eP+fmCf6zpnkwYWE7z7XX1UMIihtvIAQOup7sAME9Bi0cqQbzGCv/q1PL/FKkEK23f8RooRpPxkKiK6vPg==',
+      'sha512-vJvzj+DB8dx7exuiDc+3u1l4KrUnKqVuI7uXHcAMxAOPxfFk0CiPRluZG/4RAqD9CvFErvYsAG8Da3Cm1DMTiA==',
     snapshotDependencies: Object.freeze({
+      '@agentclientprotocol/claude-agent-acp':
+        '0.70.0(@anthropic-ai/sdk@0.122.0(zod@4.5.4))(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4))',
+      '@agentclientprotocol/codex-acp': '1.7.0',
+      '@agentclientprotocol/sdk': '1.4.0(zod@4.5.4)',
       ajv: '8.20.0',
-      canonicalize: '3.0.0',
-      zod: '4.4.3',
+      canonicalize: '4.0.0',
+      execa: '10.0.1',
+      which: '7.0.0',
+      zod: '4.5.4',
     }),
-    version: '0.1.0-alpha.0',
+    version: '0.2.0-alpha.0',
   }),
   '@revisium/revo-pipeline': Object.freeze({
     integrity:
@@ -88,6 +94,8 @@ const assertNoForbiddenReferences = (value: unknown, label: string): void => {
 
 const dependencyKey = (packageName: string, version: string): string => `${packageName}@${version}`;
 
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+
 export const assertRegistryDependencyContract = ({
   manifest,
   lockfile,
@@ -129,9 +137,14 @@ export const assertRegistryDependencyContract = ({
       importerDependencies[packageName],
       `${packageName} lockfile importer`,
     );
-    assert.deepEqual(
-      importer,
-      { specifier: expected.version, version: expected.version },
+    assert.equal(
+      importer.specifier,
+      expected.version,
+      `${packageName} lockfile importer must use the exact registry specifier.`,
+    );
+    assert.match(
+      String(importer.version),
+      new RegExp(`^${escapeRegExp(expected.version)}(?:$|\\()`),
       `${packageName} lockfile importer must resolve the exact registry version.`,
     );
 
@@ -148,15 +161,25 @@ export const assertRegistryDependencyContract = ({
       `${packageName} must use the expected npm integrity without a local or tarball resolution.`,
     );
 
-    assert.deepEqual(
-      Object.keys(snapshots).filter((candidate) => candidate.startsWith(`${packageName}@`)),
-      [key],
-      `${packageName} must have exactly one registry snapshot.`,
+    const snapshotKeys = Object.keys(snapshots).filter((candidate) =>
+      new RegExp(`^${escapeRegExp(packageName)}@${escapeRegExp(expected.version)}(?:$|\\()`).test(
+        candidate,
+      ),
     );
-    const snapshot = requireRecord(snapshots[key], `${packageName} package snapshot`);
+    assert.equal(snapshotKeys.length, 1, `${packageName} must have exactly one registry snapshot.`);
+    const snapshotKey = snapshotKeys[0];
+    if (snapshotKey === undefined) {
+      throw new Error(`${packageName} snapshot is missing.`);
+    }
+    const snapshot = requireRecord(snapshots[snapshotKey], `${packageName} package snapshot`);
     assert.deepEqual(
       snapshot,
-      { dependencies: expected.snapshotDependencies },
+      packageName === '@revisium/revo-agent-runtime'
+        ? {
+            dependencies: expected.snapshotDependencies,
+            transitivePeerDependencies: ['@anthropic-ai/sdk', '@modelcontextprotocol/sdk'],
+          }
+        : { dependencies: expected.snapshotDependencies },
       `${packageName} snapshot must match the published dependency graph.`,
     );
   }

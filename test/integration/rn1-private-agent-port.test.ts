@@ -25,14 +25,12 @@ import {
   type RunComposition,
 } from '../../src/composition/run-composition.js';
 import type { AdmittedRunSnapshotV1 } from '../../src/contracts/admitted-run.js';
-import { isJsonObject } from '../../src/contracts/json.js';
 import type { KernelRunResult } from '../../src/dbos/kernel-run-workflow.js';
 import { kernelRunWorkflow } from '../../src/dbos/kernel-run-workflow.js';
 import { coordinatorTopic } from '../../src/dbos/operation-workflow.js';
 import { operationWorkflowId, runWorkflowId } from '../../src/dbos/workflow-id.js';
 import { attemptId, operationId, operationReceiptId } from '../../src/operations/identities.js';
 import { createFakeAgentPort } from '../support/agent-runtime/fake-agent-port.js';
-import { codexContextCase } from '../support/codex-conformance.js';
 import { testDatabaseUrl } from '../support/test-environment.js';
 
 const emptySchema = {
@@ -158,14 +156,19 @@ const consensusPipeline: PipelineSourcePackage = {
 
 const bindingFor = (agentId: string): PreparedAgentBinding => ({
   schemaVersion: 'prepared-agent-binding/v1',
+  definition: {
+    schemaVersion: 'prepared-agent-definition-snapshot/v1',
+    value: { id: agentId, version: '1.0.0', kind: 'test' },
+  },
   pin: {
     agentId,
     agentVersion: '1.0.0',
-    definitionDigest: `sha256:${agentId.padEnd(64, '0').slice(0, 64)}`,
+    definitionDigest: 'a'.repeat(64),
   },
   parameters: {},
   permissions: {},
   workspaceRef: `/trusted/${agentId}`,
+  credentials: {},
 });
 
 const succeededResult = (
@@ -414,15 +417,13 @@ const classificationPort = (
 
 describe('RN1 private agent-runtime port', () => {
   it('CTX-START-CLASSIFICATION executes every start outcome without replacement', async () => {
-    const context = await codexContextCase('CTX-START-CLASSIFICATION');
-    if (
-      !isJsonObject(context.input) ||
-      !Array.isArray(context.input.variants) ||
-      !context.input.variants.every((variant) => typeof variant === 'string')
-    ) {
-      throw new Error('CTX-START-CLASSIFICATION has invalid input.');
-    }
-    const inputVariants = context.input.variants;
+    const inputVariants = [
+      'known-agent-manager-rejection',
+      'preaccept-abort',
+      'unexpected-runtime-start-throw',
+      'mismatched-handle',
+      'mismatched-lookup',
+    ] as const;
     const statuses: string[] = [];
     let totalStartCalls = 0;
     for (const [variantIndex, variant] of inputVariants.entries()) {
@@ -463,7 +464,16 @@ describe('RN1 private agent-runtime port', () => {
     expect({
       statuses,
       replacementInvocationCalls: totalStartCalls - inputVariants.length,
-    }).toStrictEqual(context.expected);
+    }).toStrictEqual({
+      statuses: [
+        'failed',
+        'cancelled',
+        'recovery_required',
+        'recovery_required',
+        'recovery_required',
+      ],
+      replacementInvocationCalls: 0,
+    });
   });
 
   it('keeps the production unavailable port side-effect free only for initialize([])', async () => {
