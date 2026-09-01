@@ -8,7 +8,7 @@ const closed = <T extends Record<string, import('typebox').TSchema>>(properties:
 
 const identifier = Type.String({ minLength: 1, maxLength: 256 });
 const logicalWorkspaceRef = Type.String({ pattern: '^[A-Za-z][A-Za-z0-9._-]{0,127}$' });
-const environmentVariablePattern = '^[A-Za-z_]\\w{0,127}$';
+const environmentVariablePattern = String.raw`^[A-Za-z_]\w{0,127}$`;
 const agentCredentialAliases = Type.Object(
   {},
   {

@@ -84,10 +84,7 @@ export const createRevoAgentRuntimePort = async (
           id: input.binding.pin.agentId,
           version: input.binding.pin.agentVersion,
         });
-        if (
-          descriptor === undefined ||
-          descriptor.definitionDigest !== input.binding.pin.definitionDigest
-        ) {
+        if (descriptor?.definitionDigest !== input.binding.pin.definitionDigest) {
           return { status: 'unknown' };
         }
         allocation = await options.host.workspaces.acquire(input.binding.workspaceRef, { signal });
