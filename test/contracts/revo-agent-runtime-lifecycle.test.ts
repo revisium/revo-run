@@ -1,3 +1,5 @@
+import { basename, dirname } from 'node:path';
+
 import type {
   AgentDefinitionInput,
   AgentInvocationResult,
@@ -45,6 +47,26 @@ afterEach(() => {
 });
 
 describe('generic agent-runtime adapter lifecycle', () => {
+  it('places the claimable output leaf directly under the acquired workspace', async () => {
+    const { manager, port } = await setup(runtime);
+    const { credentials: _credentials, ...withoutCredentials } = bindingInput;
+    const binding = await port.prepareBinding(withoutCredentials);
+    manager.start.mockImplementation(async (input) => ({
+      invocationId: input.invocationId,
+      pin: descriptorToPin(),
+      result: async () => managerResult(input.invocationId, descriptorToPin(), { ok: true }),
+      cancel: async () => ({ state: 'unknown' as const }),
+    }));
+
+    const outcome = await port.start(resultInput(binding));
+
+    expect(outcome.status).toBe('accepted');
+    const request = manager.start.mock.calls[0]?.[0];
+    expect(dirname(request?.output.directory ?? '')).toBe('/workspace');
+    expect(basename(request?.output.directory ?? '')).toMatch(/^\.revo-agent-output-[a-f\d]{64}$/u);
+    await port.shutdown();
+  });
+
   it.each([
     [{ ok: true }, { ok: true }],
     ['scalar', 'scalar'],
