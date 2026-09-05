@@ -118,24 +118,28 @@ const consumerNodeModules = join(consumerDirectory, 'node_modules');
 try {
   await mkdir(packDirectory);
   await mkdir(consumerDirectory);
-  const packOutput = execFileSync(
-    'npm',
-    ['pack', '--json', '--ignore-scripts', '--pack-destination', packDirectory],
-    {
-      cwd: root,
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        npm_config_cache: join(temporaryRoot, 'npm-cache'),
-        npm_config_loglevel: 'silent',
-      },
+  const packOutput = execFileSync('npm', ['pack', '--json', '--pack-destination', packDirectory], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      npm_config_cache: join(temporaryRoot, 'npm-cache'),
+      npm_config_loglevel: 'silent',
     },
-  );
+  });
   const parsedPackOutput = JSON.parse(packOutput);
   assert.ok(Array.isArray(parsedPackOutput) && parsedPackOutput.length === 1);
   const packResult = parsedPackOutput[0];
   assert.ok(isRecord(packResult) && typeof packResult.filename === 'string');
   const tarball = join(packDirectory, packResult.filename);
+  execFileSync(
+    join(root, 'node_modules/.bin/publint'),
+    ['run', tarball, '--strict', '--pack=false'],
+    { stdio: 'inherit' },
+  );
+  execFileSync(join(root, 'node_modules/.bin/attw'), [tarball, '--profile', 'esm-only'], {
+    stdio: 'inherit',
+  });
   const installedPackage = packagePath(consumerNodeModules, '@revisium/revo-run');
   await mkdir(installedPackage, { recursive: true });
   execFileSync('tar', ['-xzf', tarball, '-C', installedPackage, '--strip-components=1']);

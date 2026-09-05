@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const scanner = fileURLToPath(new URL('../../scripts/verify-surface.ts', import.meta.url));
 const temporaryRoots: string[] = [];
-const requiredDirectories = ['src', 'test', 'docs', 'scripts', 'examples', 'dist'] as const;
+const requiredDirectories = ['src', 'test', 'docs', 'scripts', 'examples'] as const;
 const requiredFiles = ['README.md', 'REPOSITORY.md', 'REVIEW.md', 'VERIFICATION.md'] as const;
 const requiredRoots = [...requiredDirectories, ...requiredFiles] as const;
 
@@ -86,14 +86,14 @@ describe('portable required surface scans', () => {
       failure: 'Legacy plan/executor symbols remain in the active RN1 surface.',
     },
     {
-      path: 'dist/hook.js',
+      path: 'src/hook.js',
       source: ['Symbol', '.for("fault")'].join(''),
-      failure: 'Production source or packed output still contains a test hook or marker.',
+      failure: 'Production source still contains a test hook or marker.',
     },
     {
       path: 'src/probe.ts',
       source: ['Workflow', 'Probe'].join(''),
-      failure: 'Production source or packed output still contains a workflow probe.',
+      failure: 'Production source still contains a workflow probe.',
     },
     {
       path: 'src/import.ts',

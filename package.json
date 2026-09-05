@@ -42,10 +42,9 @@
     "format:check": "oxfmt --check .",
     "test": "dotenv -e .env.test -- vitest run",
     "test:cov": "dotenv -e .env.test -- vitest run --coverage",
-    "test:package": "dotenv -e .env.test -- vitest run test/package",
-    "verify:shell": "bash -n scripts/*.sh && bash scripts/verify-shell.sh",
-    "verify:package": "pnpm exec publint && pnpm exec attw --pack . --profile esm-only && node --experimental-strip-types scripts/verify-package.mjs",
-    "verify": "pnpm run format:check && pnpm run build && pnpm run typecheck && pnpm run lint && pnpm run test:cov && pnpm run verify:shell && pnpm run verify:package",
+    "verify:shell": "for script in scripts/*.sh; do bash -n \"$script\" || exit; done && bash scripts/verify-shell.sh",
+    "verify:package": "node --experimental-strip-types scripts/verify-package.mjs",
+    "verify": "pnpm run format:check && pnpm run verify:package && pnpm run typecheck && pnpm run lint && pnpm run test:cov && pnpm run verify:shell",
     "sonar:issues:local": "bash scripts/sonar-issues-local.sh",
     "prepack": "pnpm run build"
   },
@@ -58,8 +57,6 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
-    "@babel/parser": "7.29.8",
-    "@babel/types": "7.29.8",
     "@types/node": "24.13.3",
     "@vitest/coverage-v8": "4.1.10",
     "dotenv-cli": "11.0.0",

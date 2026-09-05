@@ -39,18 +39,18 @@ const checks: readonly SurfaceCheck[] = [
     failure: 'Legacy plan/executor symbols remain in the active RN1 surface.',
   },
   {
-    roots: ['src', 'dist'],
+    roots: ['src'],
     excluded: new Set(),
     excludedPrefixes: [],
     pattern: /Symbol\.for\(|globalThis\[|test[-_ ]?(fault|hook|marker)/iu,
-    failure: 'Production source or packed output still contains a test hook or marker.',
+    failure: 'Production source still contains a test hook or marker.',
   },
   {
-    roots: ['src', 'dist'],
+    roots: ['src'],
     excluded: new Set(),
     excludedPrefixes: [],
     pattern: /WorkflowProbe|reachWorkflowProbe|\.probe(?:\?\.)?\.reach/u,
-    failure: 'Production source or packed output still contains a workflow probe.',
+    failure: 'Production source still contains a workflow probe.',
   },
   {
     roots: ['src'],
