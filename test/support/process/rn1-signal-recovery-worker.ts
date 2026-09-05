@@ -1,3 +1,4 @@
+import { unavailableAgentPort } from '../../../src/composition/agent-port.js';
 import {
   createRunManager,
   type PipelineSourcePackage,
@@ -49,6 +50,7 @@ const pipeline: PipelineSourcePackage = {
 };
 
 const manager: RunManager = createRunManager({
+  agents: unavailableAgentPort,
   database: { url: databaseUrl },
   host: {
     resources: { inspect: async () => undefined },

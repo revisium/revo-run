@@ -1,9 +1,16 @@
-import { createRunManager, type PipelineSourcePackage, type RunProfile } from '@revisium/revo-run';
+import {
+  createRunManager,
+  type AgentAttemptExecutionPort,
+  type PipelineSourcePackage,
+  type RunProfile,
+} from '@revisium/revo-run';
 
 declare const pipeline: PipelineSourcePackage;
 declare const profile: RunProfile;
+declare const agents: AgentAttemptExecutionPort;
 
 const manager = createRunManager({
+  agents,
   database: { url: 'postgresql://example.invalid/revo-run' },
   host: {
     resources: { inspect: async () => undefined },

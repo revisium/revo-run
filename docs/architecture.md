@@ -4,16 +4,20 @@
 
 ```text
 revo-core
-  -> revo-run manager: raw pipeline, profile, input, host resolvers
+  -> agent runtime host: discovery, AgentManager initialization and shutdown,
+                         active-state durability and restart reaping
+  -> revo-run manager: raw pipeline, profile, input, host resolvers,
+                       required AgentAttemptExecutionPort
        -> revo-pipeline: compile, initial state, commands, transitions
        -> revo-scripts: binding preparation, one physical script attempt
-       -> revo-agent-runtime: discovery, configuration, and one agent invocation
+       -> injected agent port: one pipeline agent Attempt
        -> DBOS/PostgreSQL: admission snapshot, operation history, events
 ```
 
-The consumer supplies only the raw `PipelineSourcePackage`, `RunProfile`, JSON
-input, and host resolvers. `createRun()` compiles once, prepares script bindings
-and discovered agent bindings, and starts a DBOS root workflow. The admitted
+The host supplies the raw `PipelineSourcePackage`, `RunProfile`, JSON input,
+host resolvers, and one required `AgentAttemptExecutionPort`. `createRun()`
+compiles once, prepares script and agent bindings through those injected
+boundaries, and starts a DBOS root workflow. The admitted
 snapshot is immutable; recovery does not recompile or reselect profile values.
 
 ## Durable operation boundary
@@ -49,18 +53,22 @@ uncertain outcome never creates a retry.
 ## Public boundary
 
 Only `@revisium/revo-run` root exports are supported. It exposes the manager,
-closed public schemas, public run values, raw pipeline/profile types, and host
-resolver types. It does not export a lowered plan, pipeline kernel, admitted
-snapshot, DBOS record, prepared binding, or a deep import surface.
+closed public schemas, public run values, raw pipeline/profile types, host
+resolver types, the `AgentAttemptExecutionPort`, and the optional
+`createAgentAttemptExecutionAdapter` helper. It does not export a lowered plan,
+pipeline kernel, admitted snapshot, DBOS record, prepared binding, runner map,
+the historically banned run-executor symbol, or a deep import surface.
 
-The private production adapter discovers available definitions through the
-runtime API and pins the selected definition and digest in the admitted
-snapshot. Configuration selections are copied into the prepared binding and
-validated again by the runtime's fresh invocation session. Logical workspace
-references and credential aliases remain durable; acquired paths, secrets, and
-runtime handles remain process-local. Unsupported or unavailable definitions
-fail before workspace acquisition, script preparation, process launch, or DBOS
-admission.
+The application host discovers definitions, constructs the process-local
+`AgentManager`, supplies its durable active-state sink, and initializes it with
+active snapshots before opening Run admission. Runtime initialization owns
+identity checking and reaping. The optional adapter pins the selected definition
+and digest in the admitted snapshot. Configuration selections are copied into
+the prepared binding and validated again by the runtime's fresh invocation
+session. Logical workspace references and credential aliases remain durable;
+acquired paths, secrets, and runtime handles remain process-local. Unsupported
+or unavailable definitions fail before workspace acquisition, script
+preparation, process launch, or DBOS admission.
 
 Only a minimal prepared binding and sanitized terminal carrier enter durable
 history. Raw environment, metadata, launch evidence, files, output paths, and
@@ -77,19 +85,17 @@ as the maximal valid envelope boundary. RFC URL and maximal-valid wrapper
 recognition uses one forward O(n) parse with bounded state; closer count does not
 multiply parsing work.
 
-The active invocation registry is a closed, versioned document in the DBOS
-system database. Runtime running/cancelling saves and removes await DBOS
-acknowledgement. Startup launches DBOS with readiness closed, loads the registry,
-and calls runtime initialization to identity-check and reap recorded detached
-process groups before opening readiness. The durable operation then observes an
-unknown result as `recovery_required` and never relaunches it. A terminal DBOS
-result survives manager restart without executing the agent again. The pinned
-runtime still has a spawn-before-save SIGKILL window; unregistered orphans in
-that window are not claimed as recoverable.
+Active-invocation snapshot durability is a host obligation, outside
+`revo-run`. The host initializes its manager from those snapshots so the runtime
+can identity-check and reap recorded detached process groups before Run admission
+opens. The old internal DBOS active-invocation registry is no longer used.
+Durable Run recovery observes an unknown Attempt result as
+`recovery_required` and never launches a replacement process.
 
-Graceful stop first closes and drains public calls, then shuts agents down while
-DBOS and the active registry can acknowledge process cleanup, and only then
-shuts DBOS down.
+Graceful application stop closes admission, shuts down the shared manager while
+credentials and the host active-state sink remain available, stops the Run
+manager/DBOS, and then shuts down the adapter to dispose remaining credential
+leases. The Run manager itself owns only public-call draining and DBOS lifecycle.
 
 ## Release fence
 
@@ -107,11 +113,14 @@ event to the one serialized root lane:
 | Source semantics                                     | RN1 evidence                                                                                        |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `script`                                             | `raw-kernel-run.test.ts` and `rn1-script-recovery.test.ts`                                          |
-| `agent` single                                       | Generic runtime adapter, DBOS restart, active-process recovery, and private-port conformance        |
-| `consensus` / three agent participants               | private-port conformance; mixed or unsupported assignments fail before preparation                  |
+| `agent` single                                       | Injected Attempt-port and generic-runtime adapter conformance; DBOS unknown-result recovery         |
+| `consensus` / three agent participants               | Injected Attempt-port conformance; mixed or unsupported assignments fail before preparation         |
 | `choice`, `call`, `parallel`, `repeat`, `map`, `end` | `rn1-control-flow-conformance.test.ts`                                                              |
 | duration and signal `wait`                           | `rn1-control-flow-conformance.test.ts`, `raw-kernel-run.test.ts`, and fresh-process signal recovery |
 | `humanGate` answer, deadline, cancellation           | `raw-kernel-run.test.ts`                                                                            |
+
+Active-process snapshot recovery and runtime process reaping are host-owned and
+therefore outside the `revo-run` evidence map.
 
 The crash matrix is intentionally split by durable boundary rather than by an
 in-process mock. D1 is admission's no-commit/no-call proof. D2–D5 and D8 use

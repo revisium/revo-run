@@ -6,7 +6,6 @@ import type {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CreateRunManagerOptions } from '../../src/contracts/manager.js';
-import { agentActiveInvocationStateSink } from '../../src/dbos/agent-active-invocation-registry.js';
 import {
   bindingInput,
   createOptions,
@@ -30,16 +29,9 @@ vi.mock('@revisium/revo-agent-runtime', () => runtime);
 afterEach(() => vi.clearAllMocks());
 
 describe('generic agent-runtime binding', () => {
-  it('discovers, initializes, binds, clones configuration, and wires the active-state sink', async () => {
-    const { manager, port } = await setup(runtime);
+  it('binds the injected definition and clones configuration', async () => {
+    const { port } = await setup(runtime);
     const prepared = await port.prepareBinding(bindingInput);
-    await port.initialize([]);
-
-    expect(runtime.discoverAgents).toHaveBeenCalledOnce();
-    expect(manager.initialize).toHaveBeenCalledWith([]);
-    const managerOptions = runtime.createAgentManager.mock.calls[0]?.[0];
-    expect(managerOptions?.activeStateSink).toBe(agentActiveInvocationStateSink);
-    expect(managerOptions?.definitions).toStrictEqual([definition]);
     expect(prepared).toMatchObject({
       pin: {
         agentId: definition.id,

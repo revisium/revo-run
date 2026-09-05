@@ -141,28 +141,20 @@ export type AgentStartOutcome =
   | Readonly<{ readonly status: 'rejected'; readonly result: AgentTerminalResult }>
   | Readonly<{ readonly status: 'unknown' }>;
 
-export interface AgentRuntimePort {
-  initialize(snapshots: readonly ActiveInvocationSnapshot[]): Promise<void>;
+export interface AgentAttemptExecutionPort {
   prepareBinding(input: AgentBindingInput): Promise<PreparedAgentBinding>;
   start(input: AgentRuntimeStartInput, context?: AgentStartContext): Promise<AgentStartOutcome>;
   getResult(invocationId: string): AgentResultLookup;
   cancel(invocationId: string, reason?: string): Promise<CancelInvocationResult>;
-  shutdown(reason?: string): Promise<void>;
 }
 
 const unavailable = (): never => {
   throw new RunManagerError('agent_runtime_unavailable');
 };
 
-export const unavailableAgentPort: AgentRuntimePort = Object.freeze({
-  initialize: async (snapshots: readonly ActiveInvocationSnapshot[]) => {
-    if (snapshots.length !== 0) {
-      unavailable();
-    }
-  },
+export const unavailableAgentPort: AgentAttemptExecutionPort = Object.freeze({
   prepareBinding: async () => unavailable(),
   start: async () => unavailable(),
   getResult: () => unavailable(),
   cancel: async () => unavailable(),
-  shutdown: async () => undefined,
 });
