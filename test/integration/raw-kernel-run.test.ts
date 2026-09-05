@@ -4,6 +4,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import { Check } from 'typebox/value';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { unavailableAgentPort } from '../../src/composition/agent-port.js';
 import {
   RunDetailsSchema,
   RunSnapshotSchema,
@@ -241,6 +242,7 @@ afterEach(async () => {
 describe('raw pipeline kernel host', () => {
   it('compiles once and runs an admitted raw terminal pipeline through the DBOS kernel workflow', async () => {
     manager = createRunManager({
+      agents: unavailableAgentPort,
       database: { url: testDatabaseUrl() },
       host: {
         resources: { inspect: async () => undefined },
@@ -294,6 +296,7 @@ describe('raw pipeline kernel host', () => {
 
   it('atomically claims a run ID with the admitted payload rather than accepting a concurrent mismatch', async () => {
     manager = createRunManager({
+      agents: unavailableAgentPort,
       database: { url: testDatabaseUrl() },
       host: {
         resources: { inspect: async () => undefined },
@@ -345,6 +348,7 @@ describe('raw pipeline kernel host', () => {
     const scenario = recoveryScenario('D1');
     const calls = { resources: 0, workspaces: 0, credentials: 0 };
     manager = createRunManager({
+      agents: unavailableAgentPort,
       database: { url: testDatabaseUrl() },
       host: {
         resources: {
@@ -418,6 +422,7 @@ describe('raw pipeline kernel host', () => {
 
   it('hosts one SC1 script attempt and relays only its sealed/live events through the root', async () => {
     manager = createRunManager({
+      agents: unavailableAgentPort,
       database: { url: testDatabaseUrl() },
       host: {
         resources: { inspect: async () => undefined },
@@ -469,6 +474,7 @@ describe('raw pipeline kernel host', () => {
 
   it('opens a stable signal wait, exposes its generated wait ID, and applies one signal through the kernel', async () => {
     manager = createRunManager({
+      agents: unavailableAgentPort,
       database: { url: testDatabaseUrl() },
       host: {
         resources: { inspect: async () => undefined },
@@ -528,6 +534,7 @@ describe('raw pipeline kernel host', () => {
 
   it('dispatches a full kernel command batch as concurrent child operations before it receives either event', async () => {
     manager = createRunManager({
+      agents: unavailableAgentPort,
       database: { url: testDatabaseUrl() },
       host: {
         resources: { inspect: async () => undefined },
@@ -592,6 +599,7 @@ describe('raw pipeline kernel host', () => {
 
   it('accepts one cancellation while a signal wait is pending and lets the kernel seal the cancelled terminal', async () => {
     manager = createRunManager({
+      agents: unavailableAgentPort,
       database: { url: testDatabaseUrl() },
       host: {
         resources: { inspect: async () => undefined },
@@ -649,6 +657,7 @@ describe('raw pipeline kernel host', () => {
 
   it('opens a stable human gate and applies the accepted answer through the kernel', async () => {
     manager = createRunManager({
+      agents: unavailableAgentPort,
       database: { url: testDatabaseUrl() },
       host: {
         resources: { inspect: async () => undefined },
@@ -718,6 +727,7 @@ describe('raw pipeline kernel host', () => {
 
   it('cancels a pending human gate through the kernel instead of treating request acceptance as terminal', async () => {
     manager = createRunManager({
+      agents: unavailableAgentPort,
       database: { url: testDatabaseUrl() },
       host: {
         resources: { inspect: async () => undefined },
@@ -766,6 +776,7 @@ describe('raw pipeline kernel host', () => {
 
   it('resolves a durable gate deadline through the pipeline kernel without a consumer answer', async () => {
     manager = createRunManager({
+      agents: unavailableAgentPort,
       database: { url: testDatabaseUrl() },
       host: {
         resources: { inspect: async () => undefined },

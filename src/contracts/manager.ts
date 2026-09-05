@@ -5,6 +5,7 @@ import type {
   WorkspaceResolver,
 } from '@revisium/revo-scripts';
 
+import type { AgentAttemptExecutionPort } from '../composition/agent-port.js';
 import type { JsonValue } from './json.js';
 import type {
   RunDetails,
@@ -23,6 +24,7 @@ export interface CreateRunManagerOptions {
     readonly workspaces: WorkspaceResolver;
     readonly credentials: CredentialResolver;
   }>;
+  readonly agents: AgentAttemptExecutionPort;
 }
 
 export interface CreateRunInput {

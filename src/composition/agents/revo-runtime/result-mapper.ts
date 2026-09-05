@@ -1,7 +1,7 @@
-import {
-  createAgentManager,
-  type AgentInvocationResult,
-  type AgentResultLookup,
+import type {
+  AgentManager,
+  AgentInvocationResult,
+  AgentResultLookup,
 } from '@revisium/revo-agent-runtime';
 
 import { cloneFrozenJson, isJsonObject, isJsonValue } from '../../../contracts/json.js';
@@ -10,8 +10,6 @@ import type {
   AgentTerminalResult,
   CancelInvocationResult,
 } from '../../agent-port.js';
-
-type RuntimeManager = ReturnType<typeof createAgentManager>;
 
 const mapPin = (pin: AgentInvocationResult['pin']) =>
   Object.freeze({
@@ -104,7 +102,7 @@ export const mapLookup = (lookup: AgentResultLookup): LocalLookup => {
 };
 
 export const mapCancel = (
-  value: Awaited<ReturnType<RuntimeManager['cancel']>>,
+  value: Awaited<ReturnType<AgentManager['cancel']>>,
 ): CancelInvocationResult =>
   value.state === 'already_completed'
     ? { state: value.state, result: mapResult(value.result) }

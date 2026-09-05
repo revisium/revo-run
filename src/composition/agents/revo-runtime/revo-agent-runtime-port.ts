@@ -1,16 +1,7 @@
-import {
-  createAgentManager,
-  discoverAgents,
-  type ActiveInvocationSnapshot as RuntimeActiveSnapshot,
-} from '@revisium/revo-agent-runtime';
+import { type AgentDefinitionInput, type AgentManager } from '@revisium/revo-agent-runtime';
 
 import type { CreateRunManagerOptions } from '../../../contracts/manager.js';
-import { agentActiveInvocationStateSink } from '../../../dbos/agent-active-invocation-registry.js';
-import type {
-  ActiveInvocationSnapshot,
-  AgentInvocationHandle,
-  AgentRuntimePort,
-} from '../../agent-port.js';
+import type { AgentAttemptExecutionPort, AgentInvocationHandle } from '../../agent-port.js';
 import { createBindingPreparer, indexAgentDefinitions } from './binding-preparer.js';
 import {
   acquireCredentials,
@@ -20,8 +11,6 @@ import {
 } from './credential-leases.js';
 import { mapCancel, mapLookup, mapResult } from './result-mapper.js';
 import { runtimeRequest } from './runtime-request.js';
-
-const toRuntimeSnapshot = (snapshot: ActiveInvocationSnapshot): RuntimeActiveSnapshot => snapshot;
 
 interface PendingStart {
   readonly controller: AbortController;
@@ -38,15 +27,21 @@ const createPendingStart = (): PendingStart => {
   return Object.freeze({ controller, settlement, settle });
 };
 
-export const createRevoAgentRuntimePort = async (
-  options: CreateRunManagerOptions,
-): Promise<AgentRuntimePort> => {
-  const discovery = await discoverAgents();
-  const manager = createAgentManager({
-    definitions: discovery.definitions,
-    activeStateSink: agentActiveInvocationStateSink,
-  });
-  const definitions = indexAgentDefinitions(discovery.definitions);
+export interface CreateAgentAttemptExecutionAdapterOptions {
+  readonly manager: Pick<AgentManager, 'cancel' | 'getAgent' | 'getResult' | 'start'>;
+  readonly definitions: readonly AgentDefinitionInput[];
+  readonly host: CreateRunManagerOptions['host'];
+}
+
+export interface AgentAttemptExecutionAdapter extends AgentAttemptExecutionPort {
+  shutdown(reason?: string): Promise<void>;
+}
+
+export const createAgentAttemptExecutionAdapter = (
+  options: CreateAgentAttemptExecutionAdapterOptions,
+): AgentAttemptExecutionAdapter => {
+  const { manager } = options;
+  const definitions = indexAgentDefinitions(options.definitions);
   const prepareBinding = createBindingPreparer(definitions, manager, options.host);
   type InvocationCredentialOwner = {
     readonly invocationId: string;
@@ -64,8 +59,7 @@ export const createRevoAgentRuntimePort = async (
   const pending = new Map<string, PendingStart>();
   let closing = false;
 
-  const port: AgentRuntimePort = {
-    initialize: async (snapshots) => await manager.initialize(snapshots.map(toRuntimeSnapshot)),
+  const port: AgentAttemptExecutionAdapter = {
     prepareBinding,
     start: async (input, context) => {
       if (closing || pending.has(input.invocationId) || owners.has(input.invocationId)) {
@@ -176,7 +170,7 @@ export const createRevoAgentRuntimePort = async (
       }
       return mapCancel(await manager.cancel(invocationId, reason));
     },
-    shutdown: async (reason) => {
+    shutdown: async (_reason) => {
       closing = true;
       const settling = [...pending.values()].map((entry) => {
         entry.controller.abort();
@@ -188,11 +182,6 @@ export const createRevoAgentRuntimePort = async (
         if (result.status === 'rejected') {
           failures.push(result.reason);
         }
-      }
-      try {
-        await manager.shutdown(reason);
-      } catch (error) {
-        failures.push(error);
       }
       const cleanupResults = await Promise.allSettled(
         [...owners.values()].map((owner) => disposeOwner(owner)),

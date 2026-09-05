@@ -12,8 +12,8 @@ at the root boundary. Deep imports are unsupported.
 - `src/contracts`: public JSON schemas, public error catalog, profile contracts,
   and private portable snapshot values. Public timestamps are strings; public or
   durable values never contain `Date`, paths, secrets, or live handles.
-- `src/composition`: process-local host composition and the startup readiness
-  fence.
+- `src/composition`: the startup readiness fence, required injected
+  `AgentAttemptExecutionPort`, and the optional generic-runtime adapter.
 - `src/operations`: deterministic operation, attempt, wait, gate, and relay
   receipt identities.
 - `src/dbos`: the durable kernel host, DBOS workflows, streams, interaction
@@ -29,6 +29,16 @@ at the root boundary. Deep imports are unsupported.
 executor, a second pipeline interpreter, manually resolved unknown outcomes, or a
 consumer-provided runner map. Pipeline control flow remains in
 `@revisium/revo-pipeline`; scripts remain in `@revisium/revo-scripts`.
+The public Attempt port is one required host boundary, not a runner registry or
+the historically banned run-executor abstraction.
+
+The application host owns agent discovery, the process-local `AgentManager`, its
+durable active-state sink, initialization from active snapshots, restart reaping,
+and manager shutdown. `revo-run` calls the injected port for pipeline Attempts
+and owns DBOS lifecycle only. The optional
+`createAgentAttemptExecutionAdapter` helper does not own manager lifecycle; host
+shutdown drains the manager before adapter shutdown disposes credential leases.
+The former package-local DBOS active-invocation registry is not used.
 
 ## Durable rules
 

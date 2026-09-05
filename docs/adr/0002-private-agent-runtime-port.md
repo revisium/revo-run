@@ -1,5 +1,11 @@
 # ADR 0002: Private agent-runtime port for RN1
 
+## Status
+
+Superseded by [ADR 0003](./0003-injected-agent-attempt-execution-port.md). This
+document records the earlier RN1-owned runtime composition and is not the current
+integration contract.
+
 ## Decision
 
 RN1 keeps agent execution behind the unexported `AgentRuntimePort` in

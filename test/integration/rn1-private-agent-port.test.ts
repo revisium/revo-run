@@ -11,7 +11,7 @@ import { createRevoScripts } from '@revisium/revo-scripts';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type {
-  AgentRuntimePort,
+  AgentAttemptExecutionPort,
   AgentRuntimeStartInput,
   AgentStartOutcome,
   AgentTerminalResult,
@@ -241,7 +241,7 @@ const runKnownAgentSnapshot = async (
   deferCompletionUntilCancel = false,
   afterWorkflowStart?: (runId: string) => Promise<void>,
   runIdOverride?: string,
-  agentPortOverride?: AgentRuntimePort,
+  agentPortOverride?: AgentAttemptExecutionPort,
   reuseLaunchedDbos = false,
 ): Promise<{
   readonly result: KernelRunResult;
@@ -352,7 +352,7 @@ const runKnownAgentSnapshot = async (
 const classificationPort = (
   variant: string,
   startCalls: AgentRuntimeStartInput[],
-): AgentRuntimePort => {
+): AgentAttemptExecutionPort => {
   let acceptedInput: AgentRuntimeStartInput | undefined;
   const terminal = (
     input: AgentRuntimeStartInput,
@@ -392,7 +392,6 @@ const classificationPort = (
     };
   };
   return {
-    initialize: async () => undefined,
     prepareBinding: async () => {
       throw new Error('Classification fixture does not prepare bindings.');
     },
@@ -411,7 +410,6 @@ const classificationPort = (
       };
     },
     cancel: async () => ({ state: 'unknown' }),
-    shutdown: async () => undefined,
   };
 };
 
@@ -474,25 +472,6 @@ describe('RN1 private agent-runtime port', () => {
       ],
       replacementInvocationCalls: 0,
     });
-  });
-
-  it('keeps the production unavailable port side-effect free only for initialize([])', async () => {
-    await expect(unavailableAgentPort.initialize([])).resolves.toBeUndefined();
-    await expect(
-      unavailableAgentPort.initialize([
-        {
-          invocationId: 'att_1',
-          pin: { agentId: 'agent', agentVersion: '1', definitionDigest: 'sha256:1' },
-          state: 'running',
-          process: {
-            pid: 1,
-            processGroupId: 1,
-            fingerprint: 'test',
-            startedAt: '2026-01-01T00:00:00.000Z',
-          },
-        },
-      ]),
-    ).rejects.toMatchObject({ code: 'agent_runtime_unavailable', details: {} });
   });
 
   it('hosts a known-v1 agent snapshot through PL1 commands without exposing an agent manager option', async () => {

@@ -93,6 +93,7 @@ const runStatus = (candidateRunId: string, createdAt: number): WorkflowStatus =>
 });
 
 const options = {
+  agents: unavailableAgentPort,
   database: { url: 'postgresql://unused' },
   host: {
     resources: { inspect: async () => undefined },

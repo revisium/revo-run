@@ -11,6 +11,6 @@
     "identities/script-event-relay-receipts.json": "sha256:3dc37d0c2500081399034c89f8041b027bf3b6bcf018314cd0db8b9b4fb9f953",
     "scripts/cancellation-result-mapping.json": "sha256:3efd5cf993989ff4949cd50724b0fd160c001943b1069df40fe36704e2ae0bff",
     "integration/recovery/d1-d9.json": "sha256:309a5cd4acfcffd712cc6a3be3b4dc5a658b2901e1a4f1708d6421f31bc0f5a1",
-    "package/root-consumer/raw-create-run.ts": "sha256:2893232cb1ef65bcefc6c022d9fcc90094c6cc56ce4f5fc48ad138eb002c5086"
+    "package/root-consumer/raw-create-run.ts": "sha256:f1b35edfa8fcea69e4ca2f97e8d912bb79a4eff8baa63c2cad11cb6307d2967f"
   }
 }

@@ -119,7 +119,7 @@ export const runtimeEnvironment = (
   return {
     signal,
     environment: {
-      inherit: ['HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL'].filter(
+      inherit: ['CLAUDE_CODE_EXECUTABLE', 'HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL'].filter(
         (name) => process.env[name] !== undefined,
       ),
       variables: {},

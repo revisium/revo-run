@@ -1,9 +1,11 @@
 import { DBOS, type WorkflowStatus } from '@dbos-inc/dbos-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { unavailableAgentPort } from '../../src/composition/agent-port.js';
 import { DefaultRunManager } from '../../src/manager/run-manager.js';
 
 const options = {
+  agents: unavailableAgentPort,
   database: { url: 'postgresql://unused' },
   host: {
     resources: { inspect: async () => undefined },
@@ -45,10 +47,6 @@ describe('RN1 run-manager stop lifecycle', () => {
   it('stops accepting new calls, drains an active read, then shuts DBOS down once', async () => {
     const manager = runningManager();
     const shutdownOrder: string[] = [];
-    const shutdownAgents = vi.fn<() => Promise<void>>(async () => {
-      shutdownOrder.push('agents.shutdown');
-    });
-    Reflect.set(manager, 'composition', { agents: { shutdown: shutdownAgents } });
     let resolveStatus: ((status: WorkflowStatus) => void) | undefined;
     const pendingStatus = new Promise<WorkflowStatus>((resolve) => {
       resolveStatus = resolve;
@@ -79,8 +77,7 @@ describe('RN1 run-manager stop lifecycle', () => {
     await Promise.all([firstStop, secondStop]);
 
     expect(shutdown).toHaveBeenCalledOnce();
-    expect(shutdownAgents).toHaveBeenCalledOnce();
-    expect(shutdownOrder).toStrictEqual(['agents.shutdown', 'dbos.shutdown']);
+    expect(shutdownOrder).toStrictEqual(['dbos.shutdown']);
     await expect(manager.getRun('rn1-lifecycle-stopped')).rejects.toMatchObject({
       code: 'manager_not_started',
       details: { lifecycle: 'stopped' },

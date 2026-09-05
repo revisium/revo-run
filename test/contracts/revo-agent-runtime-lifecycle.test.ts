@@ -217,11 +217,10 @@ describe('generic agent-runtime adapter lifecycle', () => {
     await expect(outcome.handle.result()).resolves.toMatchObject({ status: 'succeeded' });
   });
 
-  it('surfaces manager and lease cleanup failures during shutdown', async () => {
+  it('surfaces lease cleanup failures without owning manager shutdown', async () => {
     const owned = lease('primary');
     const cleanupError = new Error('lease cleanup failed');
     owned.dispose.mockRejectedValue(cleanupError);
-    const managerError = new Error('manager shutdown failed');
     const terminal = deferred<AgentInvocationResult>();
     const { manager, port } = await setup(
       runtime,
@@ -239,9 +238,8 @@ describe('generic agent-runtime adapter lifecycle', () => {
     }));
     const outcome = await port.start(resultInput(binding));
     expect(outcome.status).toBe('accepted');
-    manager.shutdown.mockRejectedValue(managerError);
-
-    await expect(port.shutdown()).rejects.toMatchObject({ errors: [managerError, cleanupError] });
+    await expect(port.shutdown()).rejects.toBe(cleanupError);
+    expect(manager.shutdown).not.toHaveBeenCalled();
     expect(owned.dispose).toHaveBeenCalledOnce();
   });
 

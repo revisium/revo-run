@@ -6,11 +6,11 @@ import type {
   AgentRuntimeStartInput,
   AgentTerminalResult,
   CancelInvocationResult,
-  AgentRuntimePort,
+  AgentAttemptExecutionPort,
 } from '../../../src/composition/agent-port.js';
 
 export interface FakeAgentPort {
-  readonly port: AgentRuntimePort;
+  readonly port: AgentAttemptExecutionPort;
   readonly starts: readonly AgentRuntimeStartInput[];
   readonly lookups: readonly string[];
   readonly cancellations: readonly string[];
@@ -28,8 +28,7 @@ export const createFakeAgentPort = (
     string,
     Readonly<{ readonly input: AgentRuntimeStartInput; readonly result: AgentTerminalResult }>
   >();
-  const port: AgentRuntimePort = {
-    initialize: async () => undefined,
+  const port: AgentAttemptExecutionPort = {
     prepareBinding: async (_input: AgentBindingInput) => {
       throw new Error('Private test agent port does not prepare new bindings.');
     },
@@ -83,7 +82,6 @@ export const createFakeAgentPort = (
       completed.set(invocationId, active.result);
       return { state: 'already_completed', result: active.result };
     },
-    shutdown: async () => undefined,
   };
   return Object.freeze({ port, starts, lookups, cancellations });
 };

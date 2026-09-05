@@ -5,6 +5,7 @@ import { Type } from 'typebox';
 import { Parse } from 'typebox/value';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { unavailableAgentPort } from '../../src/composition/agent-port.js';
 import { createRunManager, type PipelineSourcePackage, type RunManager } from '../../src/index.js';
 import { testDatabaseUrl } from '../support/test-environment.js';
 
@@ -178,6 +179,7 @@ afterEach(async () => {
 describe('RN1 pipeline-kernel conformance', () => {
   it('hosts commands for choice, call, parallel, repeat, map, wait, and end without a second interpreter', async () => {
     manager = createRunManager({
+      agents: unavailableAgentPort,
       database: { url: testDatabaseUrl() },
       host: {
         resources: { inspect: async () => undefined },
