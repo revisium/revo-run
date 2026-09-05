@@ -18,7 +18,7 @@ import {
 describe('registry dependency contract', () => {
   it('pins the generic agent runtime to its published alpha release', () => {
     expect(registryRuntimeDependencies['@revisium/revo-agent-runtime'].version).toBe(
-      '0.2.0-alpha.0',
+      '0.3.0-alpha.0',
     );
     expect(() =>
       assertRegistryDependencyFiles({

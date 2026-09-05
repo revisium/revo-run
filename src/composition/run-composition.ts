@@ -1,13 +1,12 @@
 import { createRevoScripts, type RevoScripts } from '@revisium/revo-scripts';
 
 import type { CreateRunManagerOptions } from '../contracts/manager.js';
-import type { AgentRuntimePort } from './agent-port.js';
-import { createRevoAgentRuntimePort } from './agents/revo-runtime/revo-agent-runtime-port.js';
+import type { AgentAttemptExecutionPort } from './agent-port.js';
 import { RunHostReadinessFence } from './readiness-fence.js';
 
 export interface RunComposition {
   readonly fence: RunHostReadinessFence;
-  readonly agents: AgentRuntimePort;
+  readonly agents: AgentAttemptExecutionPort;
   readonly scripts: RevoScripts;
 }
 
@@ -15,12 +14,13 @@ let activeComposition: RunComposition | undefined;
 
 export const createRunComposition = async (
   options: CreateRunManagerOptions,
-): Promise<RunComposition> =>
-  Object.freeze({
+): Promise<RunComposition> => {
+  return Object.freeze({
     fence: new RunHostReadinessFence(),
-    agents: await createRevoAgentRuntimePort(options),
+    agents: options.agents,
     scripts: createRevoScripts({ host: options.host }),
   });
+};
 
 export const installRunComposition = (composition: RunComposition): void => {
   if (activeComposition !== undefined && activeComposition !== composition) {

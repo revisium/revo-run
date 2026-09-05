@@ -19,10 +19,10 @@ type RegistryDependencyFiles = {
 export const registryRuntimeDependencies = Object.freeze({
   '@revisium/revo-agent-runtime': Object.freeze({
     integrity:
-      'sha512-vJvzj+DB8dx7exuiDc+3u1l4KrUnKqVuI7uXHcAMxAOPxfFk0CiPRluZG/4RAqD9CvFErvYsAG8Da3Cm1DMTiA==',
+      'sha512-jnKiZ+ZFaGPoLah0fhVeHbFHthNgVnfyF3Swyj+XFamUVWVkoeh/JmtAsDSYAXGu/COxBOUwlIqMRt2AoDCadg==',
     snapshotDependencies: Object.freeze({
       '@agentclientprotocol/claude-agent-acp':
-        '0.70.0(@anthropic-ai/sdk@0.122.0(zod@4.5.4))(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4))',
+        '0.70.0(@anthropic-ai/sdk@0.123.0(zod@4.5.4))(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4))',
       '@agentclientprotocol/codex-acp': '1.7.0',
       '@agentclientprotocol/sdk': '1.4.0(zod@4.5.4)',
       ajv: '8.20.0',
@@ -31,7 +31,7 @@ export const registryRuntimeDependencies = Object.freeze({
       which: '7.0.0',
       zod: '4.5.4',
     }),
-    version: '0.2.0-alpha.0',
+    version: '0.3.0-alpha.0',
   }),
   '@revisium/revo-pipeline': Object.freeze({
     integrity:

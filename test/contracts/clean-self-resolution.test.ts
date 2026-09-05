@@ -83,7 +83,12 @@ const assertCleanSelfResolution = ({
         ? specifier.imported.name
         : undefined,
     ),
-  ).toStrictEqual(['createRunManager', 'PipelineSourcePackage', 'RunProfile']);
+  ).toStrictEqual([
+    'createRunManager',
+    'AgentAttemptExecutionPort',
+    'PipelineSourcePackage',
+    'RunProfile',
+  ]);
 };
 
 const sources = {

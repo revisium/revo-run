@@ -18,6 +18,7 @@ import type {
   AgentRuntimeStartInput,
   PreparedAgentBinding,
 } from '../../../src/composition/agent-port.js';
+import { unavailableAgentPort } from '../../../src/composition/agent-port.js';
 import type { CreateRunManagerOptions } from '../../../src/contracts/manager.js';
 
 export interface RuntimeMock {
@@ -189,6 +190,7 @@ export const createOptions = (overrides?: {
   readonly inspectCredential?: CreateRunManagerOptions['host']['credentials']['inspect'];
   readonly acquireCredential?: CreateRunManagerOptions['host']['credentials']['acquire'];
 }): CreateRunManagerOptions => ({
+  agents: unavailableAgentPort,
   database: { url: 'postgresql://example.invalid/test' },
   host: {
     resources: { inspect: async () => undefined },
@@ -210,8 +212,8 @@ export const createOptions = (overrides?: {
   },
 });
 
-export const setup = async (runtime: RuntimeMock, options = createOptions()) => {
-  const { createRevoAgentRuntimePort } =
+export const setup = async (_runtime: RuntimeMock, options = createOptions()) => {
+  const { createAgentAttemptExecutionAdapter } =
     await import('../../../src/composition/agents/revo-runtime/revo-agent-runtime-port.js');
   const manager = {
     getAgent: vi.fn<AgentManager['getAgent']>((_agent: AgentRef) => descriptor),
@@ -236,12 +238,10 @@ export const setup = async (runtime: RuntimeMock, options = createOptions()) => 
     }),
     subscribe: vi.fn<AgentManager['subscribe']>(() => () => undefined),
   };
-  runtime.discoverAgents.mockResolvedValue({
+  const port = createAgentAttemptExecutionAdapter({
     definitions: [definition],
-    diagnostics: [],
-    modelObservations: [],
+    host: options.host,
+    manager,
   });
-  runtime.createAgentManager.mockReturnValue(manager);
-  const port = await createRevoAgentRuntimePort(options);
   return { manager, port };
 };

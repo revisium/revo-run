@@ -55,7 +55,6 @@ import {
 } from '../contracts/public-schemas.js';
 import { RunManagerError } from '../contracts/run-manager-error.js';
 import { RunProfileSchema } from '../contracts/run-profile.js';
-import { loadAgentActiveInvocationSnapshots } from '../dbos/agent-active-invocation-registry.js';
 import {
   gateConfigurationKey,
   runEventHighWaterKey,
@@ -78,7 +77,7 @@ import { operationWorkflowId, runWorkflowId } from '../dbos/workflow-id.js';
 const applicationName = 'revo-run';
 const interactionDeliveryAttempts = 300;
 const interactionDeliveryDelayMs = 50;
-export const runManagerStopOrder = Object.freeze(['agents.shutdown', 'dbos.shutdown'] as const);
+export const runManagerStopOrder = Object.freeze(['dbos.shutdown'] as const);
 
 const timestamp = (value: number | undefined): string =>
   new Date(value ?? Date.now()).toISOString();
@@ -455,15 +454,12 @@ export class DefaultRunManager implements RunManager {
       installRunComposition(composition);
       launchStarted = true;
       await DBOS.launch();
-      const activeInvocations = await loadAgentActiveInvocationSnapshots();
-      await composition.agents.initialize(activeInvocations);
       composition.fence.open();
       this.composition = composition;
       this.lifecycle = 'running';
     } catch {
       if (composition !== undefined) {
         clearRunComposition(composition);
-        await composition.agents.shutdown('run_manager_start_failed').catch(() => undefined);
       }
       if (launchStarted) {
         await DBOS.shutdown().catch(() => undefined);
@@ -491,14 +487,7 @@ export class DefaultRunManager implements RunManager {
 
   private async stopAfterPublicCallsDrain(): Promise<void> {
     await this.waitForPublicCallsToDrain();
-    let failure: 'dbos_shutdown' | 'agent_shutdown' | undefined;
-    if (this.composition !== undefined) {
-      try {
-        await this.composition.agents.shutdown('run_manager_stop');
-      } catch {
-        failure = 'agent_shutdown';
-      }
-    }
+    let failure: 'dbos_shutdown' | undefined;
     try {
       await DBOS.shutdown();
     } catch {
