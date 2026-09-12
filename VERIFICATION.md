@@ -11,10 +11,9 @@ corepack pnpm db:test:down
 The disposable PostgreSQL instance in `.env.test` is required for DBOS workflow,
 event-lane, interaction, recovery, and packed database-preparation tests. The
 listed checks cover formatting, strict types, type-aware lint, build output, test
-coverage, and shell/package surface scans. The package gate performs one
-lifecycle pack before installing the tarball into an isolated root consumer and
-typechecking its fixture. Publint, attw, and the consumer use that same tarball;
-source scans inspect source, and packed test-hook scans inspect the tarball.
+coverage, and shell/package checks. The package gate performs one lifecycle pack
+before installing the tarball into an isolated root consumer and typechecking
+its fixture. Publint, attw, and the consumer use that same tarball.
 
 RN1 has exactly three pinned Revisium runtime dependencies: agent-runtime,
 pipeline, and scripts. They are exact registry versions. A clean install and the

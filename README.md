@@ -55,14 +55,12 @@ An already-aborted signal rejects before opening a database connection. During
 PostgreSQL work, abort closes the preparation client's own connection and
 socket. During the DBOS migration phase, abort first terminates and reaps the
 schema child while retaining the advisory-lock session; only then does cleanup
-unlock and close PostgreSQL. If cancellation arrives while that unlock is
-stalled, cleanup closes only the owned preparation client and socket. Ordinary failures use
+unlock and close PostgreSQL. Ordinary failures use
 `RunManagerDatabasePreparationError`; cancellation uses
-`RunManagerDatabasePreparationAbortedError`. If cleanup also fails,
-`RunManagerDatabasePreparationAggregateError.errors` contains the primary
-failure first, followed by cleanup failures in attempted-cleanup order. These
-errors expose only closed stages and process status; they do not include the
-database URL, child output, or underlying PostgreSQL errors.
+`RunManagerDatabasePreparationAbortedError`. Cleanup never replaces an earlier
+preparation failure. These errors expose only closed stages and process status;
+they do not include the database URL, child output, or underlying PostgreSQL
+errors.
 
 ```ts
 import { createRunManager, type PipelineSourcePackage, type RunProfile } from '@revisium/revo-run';

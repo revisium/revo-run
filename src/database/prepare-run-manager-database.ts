@@ -6,59 +6,58 @@ import type {
   RunManagerDatabasePreparationFailure,
   RunManagerDatabasePreparationStage,
 } from '../contracts/database-preparation.js';
-import { RunManagerDatabasePreparationAggregateError } from '../contracts/database-preparation.js';
-import {
-  type ValidatedDatabasePreparationOptions,
-  validateDatabasePreparationOptions,
-} from './database-preparation-options.js';
 import { runDbosSchemaMigration } from './dbos-schema-command.js';
 import { forceClosePgClientSocket } from './pg-client-termination.js';
 import {
   normalizePreparationFailures,
   preparationAborted,
   preparationFailure,
-  throwPreparationFailures,
 } from './preparation-failures.js';
 
-const dbosSchemaName = 'dbos';
-const advisoryLockKeys = Object.freeze([0x72_65_76_6f, 0x72_75_6e_01] as const);
-const advisoryLockRetryMs = 50;
+const advisoryLockKeys = [0x72_65_76_6f, 0x72_75_6e_01] as const;
 
-/* eslint-disable no-await-in-loop -- Advisory-lock acquisition is intentionally serialized polling; remove when pg exposes abortable lock acquisition. */
+type PreparationOptions = Readonly<{ databaseUrl: string; signal?: AbortSignal }>;
 
-type PgQuery = <Row extends QueryResultRow>(
-  text: string,
-  values?: readonly unknown[],
-) => Promise<QueryResult<Row>>;
-type PreparationPhase = 'postgresql' | 'dbos-child' | 'cleanup';
-
-const readMigrationVersion = async (query: PgQuery): Promise<number> => {
-  const table = await query<{ table_name: string | null }>(
-    'SELECT to_regclass($1)::text AS table_name',
-    [`${dbosSchemaName}.dbos_migrations`],
-  );
-  if (table.rows[0]?.table_name === null) {
-    return 0;
-  }
-  const version = await query<{ version: string | number }>(
-    `SELECT version FROM "${dbosSchemaName}"."dbos_migrations" ORDER BY version DESC LIMIT 1`,
-  );
-  const parsed = Number(version.rows[0]?.version ?? 0);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    throw preparationFailure('migration-version-read');
-  }
-  return parsed;
+const invalidOptions = (): never => {
+  throw preparationFailure('input-validation');
 };
 
-const abortableDelay = async (signal: AbortSignal): Promise<void> => {
-  if (signal.aborted) {
-    throw preparationAborted();
+const parseOptions = (input: unknown): PreparationOptions => {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return invalidOptions();
   }
+
+  const databaseUrl = 'databaseUrl' in input ? input.databaseUrl : undefined;
+  const signal = 'signal' in input ? input.signal : undefined;
+  if (
+    typeof databaseUrl !== 'string' ||
+    (signal !== undefined && !(signal instanceof AbortSignal))
+  ) {
+    return invalidOptions();
+  }
+
+  try {
+    const url = new URL(databaseUrl);
+    if (
+      !['postgres:', 'postgresql:'].includes(url.protocol) ||
+      url.hostname === '' ||
+      url.pathname.length <= 1
+    ) {
+      return invalidOptions();
+    }
+  } catch {
+    return invalidOptions();
+  }
+
+  return signal === undefined ? { databaseUrl } : { databaseUrl, signal };
+};
+
+const waitForRetry = async (signal: AbortSignal): Promise<void> => {
   await new Promise<void>((resolveDelay, rejectDelay) => {
     const timer = setTimeout(() => {
       signal.removeEventListener('abort', abort);
       resolveDelay();
-    }, advisoryLockRetryMs);
+    }, 50);
     const abort = (): void => {
       clearTimeout(timer);
       rejectDelay(preparationAborted());
@@ -70,234 +69,199 @@ const abortableDelay = async (signal: AbortSignal): Promise<void> => {
   });
 };
 
-const createPreparationClient = (databaseUrl: string): Client => {
+class PreparationDatabase {
+  private readonly cancellation = new AbortController();
+  private failure: RunManagerDatabasePreparationFailure | undefined;
+  private locked = false;
+  private migrationRunning = false;
+  private connectionDestroyed = false;
+
+  constructor(
+    readonly databaseUrl: string,
+    private readonly client: Client,
+    private readonly externalSignal?: AbortSignal,
+  ) {
+    client.on('error', this.onConnectionLost);
+    externalSignal?.addEventListener('abort', this.onAbort, { once: true });
+  }
+
+  get signal(): AbortSignal {
+    return this.cancellation.signal;
+  }
+
+  private readonly onAbort = (): void => {
+    this.stop(preparationAborted());
+  };
+
+  private readonly onConnectionLost = (): void => {
+    this.stop(preparationFailure('database-session-lost'));
+  };
+
+  private stop(failure: RunManagerDatabasePreparationFailure): void {
+    this.failure ??= failure;
+    this.cancellation.abort();
+    if (!this.migrationRunning) {
+      this.destroyConnection();
+    }
+  }
+
+  private destroyConnection(): void {
+    if (this.connectionDestroyed) {
+      return;
+    }
+    this.connectionDestroyed = true;
+    try {
+      forceClosePgClientSocket(this.client);
+    } catch {
+      // The active PostgreSQL operation will still reject with its public stage.
+    }
+  }
+
+  private async run<Value>(
+    stage: RunManagerDatabasePreparationStage,
+    operation: () => Promise<Value>,
+  ): Promise<Value> {
+    if (this.failure !== undefined) {
+      throw this.failure;
+    }
+    try {
+      return await operation();
+    } catch (error) {
+      throw this.failure ?? normalizePreparationFailures(error, stage);
+    }
+  }
+
+  async connect(): Promise<void> {
+    await this.run('database-connection', async () => await this.client.connect());
+  }
+
+  async acquireMigrationLock(): Promise<void> {
+    while (!this.locked) {
+      // oxlint-disable-next-line no-await-in-loop -- Advisory locks are acquired by polling serially.
+      const result = await this.query<{ acquired: boolean }>(
+        'SELECT pg_try_advisory_lock($1, $2) AS acquired',
+        advisoryLockKeys,
+        'advisory-lock-acquisition',
+      );
+      this.locked = result.rows[0]?.acquired === true;
+      if (!this.locked) {
+        // oxlint-disable-next-line no-await-in-loop -- Each retry waits before the next lock attempt.
+        await this.run('advisory-lock-acquisition', async () => await waitForRetry(this.signal));
+      }
+    }
+  }
+
+  async readMigrationVersion(): Promise<number> {
+    const table = await this.query<{ table_name: string | null }>(
+      'SELECT to_regclass($1)::text AS table_name',
+      ['dbos.dbos_migrations'],
+      'migration-version-read',
+    );
+    if (table.rows[0]?.table_name === null) {
+      return 0;
+    }
+
+    const version = await this.query<{ version: string | number }>(
+      'SELECT version FROM dbos.dbos_migrations ORDER BY version DESC LIMIT 1',
+      [],
+      'migration-version-read',
+    );
+    const parsed = Number(version.rows[0]?.version ?? 0);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+      throw preparationFailure('migration-version-read');
+    }
+    return parsed;
+  }
+
+  async migrate(): Promise<void> {
+    this.migrationRunning = true;
+    try {
+      await runDbosSchemaMigration(this.databaseUrl, this.signal);
+    } catch (error) {
+      throw this.failure ?? normalizePreparationFailures(error, 'dbos-schema-migration');
+    } finally {
+      this.migrationRunning = false;
+    }
+  }
+
+  private async query<Row extends QueryResultRow>(
+    text: string,
+    values: readonly unknown[],
+    stage: RunManagerDatabasePreparationStage,
+  ): Promise<QueryResult<Row>> {
+    return await this.run(stage, async () => await this.client.query<Row>(text, [...values]));
+  }
+
+  async close(primaryFailure?: RunManagerDatabasePreparationFailure): Promise<void> {
+    let cleanupFailure: RunManagerDatabasePreparationFailure | undefined;
+    if (this.locked && !this.connectionDestroyed) {
+      try {
+        await this.client.query('SELECT pg_advisory_unlock($1, $2)', [...advisoryLockKeys]);
+      } catch {
+        cleanupFailure = preparationFailure('cleanup');
+      }
+    }
+    try {
+      await this.client.end();
+    } catch {
+      cleanupFailure ??= preparationFailure('cleanup');
+    } finally {
+      this.externalSignal?.removeEventListener('abort', this.onAbort);
+      this.client.removeListener('error', this.onConnectionLost);
+    }
+    if (primaryFailure !== undefined) {
+      throw primaryFailure;
+    }
+    if (cleanupFailure !== undefined) {
+      throw cleanupFailure;
+    }
+  }
+}
+
+const openPreparationDatabase = (options: PreparationOptions): PreparationDatabase => {
   try {
-    return new Client({
-      application_name: 'revo-run-database-preparation',
-      connectionString: databaseUrl,
-    });
+    return new PreparationDatabase(
+      options.databaseUrl,
+      new Client({
+        application_name: 'revo-run-database-preparation',
+        connectionString: options.databaseUrl,
+      }),
+      options.signal,
+    );
   } catch {
     throw preparationFailure('database-connection');
   }
 };
 
-class DatabasePreparationSession {
-  private readonly cancellation = new AbortController();
-  private readonly cleanupFailures: RunManagerDatabasePreparationFailure[] = [];
-  private primaryFailure: RunManagerDatabasePreparationFailure | undefined;
-  private clientEnd: Promise<void> | undefined;
-  private locked = false;
-  private closing = false;
-  private clientFailureRecorded = false;
-  private phase: PreparationPhase = 'postgresql';
-  private result: PrepareRunManagerDatabaseResult | undefined;
-
-  constructor(
-    private readonly options: ValidatedDatabasePreparationOptions,
-    private readonly client: Client,
-  ) {}
-
-  async prepare(): Promise<PrepareRunManagerDatabaseResult> {
-    this.client.on('error', this.onClientError);
-    this.options.signal?.addEventListener('abort', this.onExternalAbort, { once: true });
-    try {
-      try {
-        await this.runPreparation();
-      } catch (error) {
-        this.capturePrimaryFailure(error);
-      } finally {
-        await this.cleanup();
-      }
-    } finally {
-      this.options.signal?.removeEventListener('abort', this.onExternalAbort);
-      this.client.removeListener('error', this.onClientError);
-    }
-    throwPreparationFailures(this.primaryFailure, this.cleanupFailures);
-    if (this.result === undefined) {
-      throw preparationFailure('dbos-schema-migration');
-    }
-    return this.result;
-  }
-
-  private readonly onExternalAbort = (): void => {
-    this.recordPrimary(preparationAborted());
-    if (this.phase !== 'dbos-child') {
-      void this.endClient(true);
-    }
-  };
-
-  private readonly onClientError = (): void => {
-    if (this.clientFailureRecorded) {
-      return;
-    }
-    this.clientFailureRecorded = true;
-    const failure = preparationFailure(
-      this.closing ? 'database-connection-close' : 'database-session-lost',
-    );
-    if (this.closing) {
-      this.cleanupFailures.push(failure);
-      return;
-    }
-    this.recordPrimary(failure);
-    void this.endClient(true);
-  };
-
-  private recordPrimary(failure: RunManagerDatabasePreparationFailure): void {
-    this.primaryFailure ??= failure;
-    if (!this.cancellation.signal.aborted) {
-      this.cancellation.abort();
-    }
-  }
-
-  private startClientEnd(): Promise<void> {
-    if (this.clientEnd !== undefined) {
-      return this.clientEnd;
-    }
-    let ending: unknown;
-    const invokeClientEnd = (): unknown => this.client.end();
-    try {
-      ending = invokeClientEnd();
-    } catch {
-      this.cleanupFailures.push(preparationFailure('database-connection-close'));
-      this.clientEnd = Promise.resolve();
-      return this.clientEnd;
-    }
-    const closed = Promise.resolve(ending)
-      .then(() => undefined)
-      .catch(() => {
-        this.cleanupFailures.push(preparationFailure('database-connection-close'));
-      });
-    this.clientEnd = closed;
-    return closed;
-  }
-
-  private endClient(force = false): Promise<void> {
-    const ending = this.startClientEnd();
-    if (force) {
-      try {
-        forceClosePgClientSocket(this.client);
-      } catch {
-        this.cleanupFailures.push(preparationFailure('database-connection-close'));
-      }
-    }
-    return ending;
-  }
-
-  private async runPgOperation<Value>(
-    operation: () => Promise<Value>,
-    failureStage: RunManagerDatabasePreparationStage,
-  ): Promise<Value> {
-    if (this.cancellation.signal.aborted) {
-      await this.endClient(true);
-      throw this.primaryFailure ?? preparationAborted();
-    }
-    let rejectCancellation: ((reason: RunManagerDatabasePreparationFailure) => void) | undefined;
-    const cancellationResult = new Promise<Value>((_resolve, reject) => {
-      rejectCancellation = reject;
-    });
-    const onCancellation = (): void => {
-      void this.endClient(true).then(() =>
-        rejectCancellation?.(this.primaryFailure ?? preparationAborted()),
-      );
-    };
-    this.cancellation.signal.addEventListener('abort', onCancellation, { once: true });
-    if (this.cancellation.signal.aborted) {
-      onCancellation();
-    }
-    try {
-      return await Promise.race([Promise.resolve().then(operation), cancellationResult]);
-    } catch (error) {
-      if (this.cancellation.signal.aborted) {
-        throw this.primaryFailure ?? preparationAborted();
-      }
-      const [failure] = normalizePreparationFailures(error, failureStage);
-      throw failure ?? preparationFailure(failureStage);
-    } finally {
-      this.cancellation.signal.removeEventListener('abort', onCancellation);
-    }
-  }
-
-  private readonly query: PgQuery = async <Row extends QueryResultRow>(
-    text: string,
-    values?: readonly unknown[],
-  ): Promise<QueryResult<Row>> =>
-    await this.runPgOperation(
-      async () => await this.client.query<Row>(text, values === undefined ? [] : [...values]),
-      text.startsWith('SELECT pg_try_advisory_lock')
-        ? 'advisory-lock-acquisition'
-        : 'migration-version-read',
-    );
-
-  private async runPreparation(): Promise<void> {
-    await this.runPgOperation(async () => await this.client.connect(), 'database-connection');
-    await this.acquireAdvisoryLock();
-    const fromVersion = await readMigrationVersion(this.query);
-    this.phase = 'dbos-child';
-    await runDbosSchemaMigration(this.options.databaseUrl, this.cancellation.signal);
-    this.phase = 'postgresql';
-    const toVersion = await readMigrationVersion(this.query);
-    this.result = {
-      schema: dbosSchemaName,
-      fromVersion,
-      toVersion,
-      migrated: toVersion !== fromVersion,
-    };
-  }
-
-  private async acquireAdvisoryLock(): Promise<void> {
-    while (!this.locked) {
-      const lock = await this.query<{ acquired: boolean }>(
-        'SELECT pg_try_advisory_lock($1, $2) AS acquired',
-        advisoryLockKeys,
-      );
-      this.locked = lock.rows[0]?.acquired === true;
-      if (!this.locked) {
-        await abortableDelay(this.cancellation.signal);
-      }
-    }
-  }
-
-  private capturePrimaryFailure(error: unknown): void {
-    if (error instanceof RunManagerDatabasePreparationAggregateError) {
-      if (error.primary !== undefined && this.primaryFailure === undefined) {
-        this.recordPrimary(error.primary);
-      }
-      this.cleanupFailures.push(...error.cleanup);
-      return;
-    }
-    const [failure] = normalizePreparationFailures(error, 'dbos-schema-migration');
-    if (failure !== undefined && this.primaryFailure === undefined) {
-      this.recordPrimary(failure);
-    }
-  }
-
-  private async cleanup(): Promise<void> {
-    this.closing = true;
-    this.phase = 'cleanup';
-    if (this.cancellation.signal.aborted) {
-      await this.endClient(true);
-      return;
-    }
-    if (this.locked && this.clientEnd === undefined) {
-      try {
-        await this.client.query('SELECT pg_advisory_unlock($1, $2)', [...advisoryLockKeys]);
-      } catch (error) {
-        this.cleanupFailures.push(...normalizePreparationFailures(error, 'advisory-lock-release'));
-      }
-    }
-    await this.endClient();
-  }
-}
-
-export const prepareRunManagerDatabase = async (
-  rawOptions: PrepareRunManagerDatabaseOptions,
-): Promise<PrepareRunManagerDatabaseResult> => {
-  const options = validateDatabasePreparationOptions(rawOptions);
+export function prepareRunManagerDatabase(
+  options: PrepareRunManagerDatabaseOptions,
+): Promise<PrepareRunManagerDatabaseResult>;
+export async function prepareRunManagerDatabase(
+  input: unknown,
+): Promise<PrepareRunManagerDatabaseResult> {
+  const options = parseOptions(input);
   if (options.signal?.aborted === true) {
     throw preparationAborted();
   }
-  return await new DatabasePreparationSession(
-    options,
-    createPreparationClient(options.databaseUrl),
-  ).prepare();
-};
+
+  const database = openPreparationDatabase(options);
+  let result: PrepareRunManagerDatabaseResult | undefined;
+  let failure: RunManagerDatabasePreparationFailure | undefined;
+
+  try {
+    await database.connect();
+    await database.acquireMigrationLock();
+    const fromVersion = await database.readMigrationVersion();
+    await database.migrate();
+    const toVersion = await database.readMigrationVersion();
+    result = { schema: 'dbos', fromVersion, toVersion, migrated: fromVersion !== toVersion };
+  } catch (error) {
+    failure = normalizePreparationFailures(error, 'dbos-schema-migration');
+  }
+
+  await database.close(failure);
+  if (result === undefined) {
+    throw failure ?? preparationFailure('dbos-schema-migration');
+  }
+  return result;
+}

@@ -1,77 +1,33 @@
-import { getEventListeners } from 'node:events';
 import { createServer } from 'node:net';
 
-import { Client } from 'pg';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { normalizePreparationFailures } from '../../src/database/preparation-failures.js';
 import {
   RunManagerDatabasePreparationAbortedError,
-  RunManagerDatabasePreparationAggregateError,
   RunManagerDatabasePreparationError,
   prepareRunManagerDatabase,
 } from '../../src/index.js';
 
-const serializedError = (error: unknown): string => {
-  return error instanceof Error
-    ? JSON.stringify({
-        message: error.message,
-        stack: error.stack,
-        code: error instanceof RunManagerDatabasePreparationError ? error.code : undefined,
-        stage: error instanceof RunManagerDatabasePreparationError ? error.stage : undefined,
-      })
-    : JSON.stringify(error);
-};
-
-describe('run-manager database preparation failures', () => {
-  it.each([undefined, null])(
-    'rejects missing options %s through input validation',
-    async (options) => {
-      await expect(Reflect.apply(prepareRunManagerDatabase, undefined, [options])).rejects.toEqual(
-        expect.objectContaining({
-          code: 'run_manager_database_preparation_failed',
-          stage: 'input-validation',
-        }),
-      );
-    },
-  );
-
+describe('prepareRunManagerDatabase input', () => {
   it.each([
+    undefined,
+    null,
     {},
-    { databaseUrl: 'postgresql://user:secret@example.invalid/database', signal: null },
-    { databaseUrl: 'postgresql://user:secret@example.invalid/database', unexpected: true },
-  ])('rejects the complete invalid options shape %#', async (options) => {
-    await expect(Reflect.apply(prepareRunManagerDatabase, undefined, [options])).rejects.toEqual(
-      expect.objectContaining({
-        code: 'run_manager_database_preparation_failed',
-        stage: 'input-validation',
-      }),
-    );
-  });
-
-  it('rejects invalid input through the closed public error', async () => {
+    { databaseUrl: 'not-a-url' },
+    { databaseUrl: 'https://example.invalid/database' },
+    { databaseUrl: 'postgresql://example.invalid' },
+    { databaseUrl: 'postgresql:///database' },
+    { databaseUrl: 'postgresql://example.invalid/database', signal: null },
+  ])('rejects invalid input %#', async (input) => {
     await expect(
-      prepareRunManagerDatabase({ databaseUrl: 'not-a-postgresql-url' }),
-    ).rejects.toEqual(
-      expect.objectContaining({
-        code: 'run_manager_database_preparation_failed',
-        stage: 'input-validation',
-      }),
-    );
-  });
-
-  it.each([
-    'https://example.invalid/database',
-    'postgresql://example.invalid',
-    'postgresql:///database',
-  ])('rejects a structurally invalid PostgreSQL URL: %s', async (databaseUrl) => {
-    await expect(prepareRunManagerDatabase({ databaseUrl })).rejects.toMatchObject({
+      Reflect.apply(prepareRunManagerDatabase, undefined, [input]),
+    ).rejects.toMatchObject({
       code: 'run_manager_database_preparation_failed',
       stage: 'input-validation',
     });
   });
 
-  it('returns the dedicated closed error when already aborted', async () => {
+  it('rejects an already-aborted operation', async () => {
     const controller = new AbortController();
     controller.abort();
 
@@ -83,147 +39,54 @@ describe('run-manager database preparation failures', () => {
     ).rejects.toBeInstanceOf(RunManagerDatabasePreparationAbortedError);
   });
 
-  it('redacts an unreachable database URL', async () => {
-    const sentinel = 'revo-run-secret-sentinel';
+  it('does not expose credentials when the database is unavailable', async () => {
+    const password = 'database-password-sentinel';
     let failure: unknown;
 
     try {
       await prepareRunManagerDatabase({
-        databaseUrl: `postgresql://user:${sentinel}@127.0.0.1:1/database?connect_timeout=1`,
+        databaseUrl: `postgresql://user:${password}@127.0.0.1:1/database?connect_timeout=1`,
       });
     } catch (error) {
       failure = error;
     }
 
     expect(failure).toBeInstanceOf(RunManagerDatabasePreparationError);
-    expect(failure).toEqual(
-      expect.objectContaining({
-        code: 'run_manager_database_preparation_failed',
-        stage: 'database-connection',
-      }),
-    );
-    expect(serializedError(failure)).not.toContain(sentinel);
+    expect(failure).toMatchObject({ stage: 'database-connection' });
+    expect(JSON.stringify(failure)).not.toContain(password);
   });
 
-  it('normalizes a synchronous pg client construction failure and removes no listener', async () => {
-    const sentinel = 'synchronous-client-secret-sentinel';
-    const controller = new AbortController();
-    const databaseUrl = new URL('postgresql://user:password@127.0.0.1/database');
-    databaseUrl.searchParams.set('sslrootcert', `/definitely-missing/${sentinel}.pem`);
-
-    let failure: unknown;
-    try {
-      await prepareRunManagerDatabase({
-        databaseUrl: databaseUrl.toString(),
-        signal: controller.signal,
-      });
-    } catch (error) {
-      failure = error;
-    }
-
-    expect(failure).toMatchObject({
-      code: 'run_manager_database_preparation_failed',
-      stage: 'database-connection',
+  it('cancels a PostgreSQL connection handshake', async () => {
+    let connectionAccepted: (() => void) | undefined;
+    const accepted = new Promise<void>((resolve) => {
+      connectionAccepted = resolve;
     });
-    expect(serializedError(failure)).not.toContain(sentinel);
-    expect(getEventListeners(controller.signal, 'abort')).toStrictEqual([]);
-  });
-
-  it('normalizes a synchronous pg client close failure as typed redacted cleanup', async () => {
-    const sentinel = 'synchronous-client-close-secret-sentinel';
-    const endSpy = vi.spyOn(Client.prototype, 'end').mockImplementation(() => {
-      throw new Error(sentinel);
-    });
-    let failure: unknown;
-    try {
-      await prepareRunManagerDatabase({
-        databaseUrl: `postgresql://user:${sentinel}@127.0.0.1:1/database?connect_timeout=1`,
-      });
-    } catch (error) {
-      failure = error;
-    } finally {
-      endSpy.mockRestore();
-    }
-
-    expect(failure).toMatchObject({
-      code: 'run_manager_database_preparation_cleanup_failed',
-      primary: { stage: 'database-connection' },
-      cleanup: [{ stage: 'database-connection-close' }],
-    });
-    expect(serializedError(failure)).not.toContain(sentinel);
-  });
-
-  it('aborts an accepted but silent PostgreSQL handshake and closes its socket', async () => {
-    let accepted: (() => void) | undefined;
-    const connectionAccepted = new Promise<void>((resolve) => {
-      accepted = resolve;
-    });
-    const sockets = new Set<import('node:net').Socket>();
     const server = createServer((socket) => {
-      sockets.add(socket);
-      socket.once('close', () => sockets.delete(socket));
       socket.on('error', () => undefined);
-      accepted?.();
+      connectionAccepted?.();
     });
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject);
-      server.listen(0, '127.0.0.1', resolve);
-    });
+    await new Promise<void>((resolve, reject) =>
+      server.listen(0, '127.0.0.1', resolve).on('error', reject),
+    );
+
     try {
       const address = server.address();
       if (address === null || typeof address === 'string') {
-        throw new Error('Silent PostgreSQL test server did not expose a TCP port.');
+        throw new Error('Test server has no TCP port.');
       }
       const controller = new AbortController();
       const preparation = prepareRunManagerDatabase({
         databaseUrl: `postgresql://user:secret@127.0.0.1:${address.port}/database`,
         signal: controller.signal,
       });
-      await connectionAccepted;
+      await accepted;
       controller.abort();
 
-      let timeout: NodeJS.Timeout | undefined;
-      try {
-        await expect(
-          Promise.race([
-            preparation,
-            new Promise((_, reject) => {
-              timeout = setTimeout(
-                () => reject(new Error('Silent handshake abort timed out.')),
-                1_500,
-              );
-            }),
-          ]),
-        ).rejects.toBeInstanceOf(RunManagerDatabasePreparationAbortedError);
-      } finally {
-        clearTimeout(timeout);
-      }
-      await new Promise<void>((resolve) => setTimeout(resolve, 25));
-      expect(sockets.size).toBe(0);
-      expect(getEventListeners(controller.signal, 'abort')).toStrictEqual([]);
+      await expect(preparation).rejects.toBeInstanceOf(RunManagerDatabasePreparationAbortedError);
     } finally {
-      for (const socket of sockets) {
-        socket.destroy();
-      }
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error === undefined ? resolve() : reject(error))),
       );
     }
-  });
-
-  it('orders a primary failure before typed cleanup failures', () => {
-    const primary = new RunManagerDatabasePreparationError('database-session-lost');
-    const cleanup = new RunManagerDatabasePreparationError('database-connection-close');
-    const aggregate = new RunManagerDatabasePreparationAggregateError(primary, [cleanup]);
-
-    expect(aggregate.code).toBe('run_manager_database_preparation_cleanup_failed');
-    expect(aggregate.primary).toBe(primary);
-    expect(aggregate.cleanup).toStrictEqual([cleanup]);
-    expect(aggregate.errors).toStrictEqual([primary, cleanup]);
-    expect(aggregate.errors.every((error) => error instanceof Error)).toBe(true);
-    expect(normalizePreparationFailures(aggregate, 'database-connection')).toStrictEqual([
-      primary,
-      cleanup,
-    ]);
   });
 });

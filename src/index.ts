@@ -3,7 +3,6 @@ export { prepareRunManagerDatabase } from './database/prepare-run-manager-databa
 export { createAgentAttemptExecutionAdapter } from './composition/agents/revo-runtime/revo-agent-runtime-port.js';
 export {
   RunManagerDatabasePreparationAbortedError,
-  RunManagerDatabasePreparationAggregateError,
   RunManagerDatabasePreparationError,
 } from './contracts/database-preparation.js';
 export { RunManagerError } from './contracts/run-manager-error.js';

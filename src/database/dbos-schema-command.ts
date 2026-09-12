@@ -1,202 +1,109 @@
 import { spawn } from 'node:child_process';
-import { chmod, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
-import {
-  RunManagerDatabasePreparationError,
-  type RunManagerDatabasePreparationFailure,
-} from '../contracts/database-preparation.js';
+import type { RunManagerDatabasePreparationFailure } from '../contracts/database-preparation.js';
 import {
   normalizePreparationFailures,
   preparationAborted,
   preparationFailure,
-  throwPreparationFailures,
 } from './preparation-failures.js';
 
 const dbosPackageName = '@dbos-inc/dbos-sdk';
-const dbosPackageVersion = '4.25.14';
-const dbosSchemaName = 'dbos';
 const databaseUrlEnvironmentName = 'REVO_RUN_DATABASE_URL';
 const childTerminationGraceMs = 1_000;
 const require = createRequire(import.meta.url);
 
-type DbosManifest = Readonly<{
-  name: string;
-  version: string;
-  bin: Readonly<{ dbos: string }>;
-}>;
-
-type SchemaProcessResult = Readonly<{
-  exitCode: number | null;
-  signal: NodeJS.Signals | null;
-}>;
-
-const assertNotAborted = (signal: AbortSignal): void => {
+const throwIfAborted = (signal: AbortSignal): void => {
   if (signal.aborted) {
     throw preparationAborted();
   }
-};
-
-export const isContainedPath = (parent: string, candidate: string): boolean => {
-  const child = relative(parent, candidate);
-  return child !== '' && child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child);
-};
-
-export const parseDbosManifest = (source: string): DbosManifest => {
-  let value: unknown;
-  try {
-    value = JSON.parse(source);
-  } catch {
-    throw preparationFailure('dbos-cli-resolution');
-  }
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    !('name' in value) ||
-    value.name !== dbosPackageName ||
-    !('version' in value) ||
-    value.version !== dbosPackageVersion ||
-    !('bin' in value) ||
-    typeof value.bin !== 'object' ||
-    value.bin === null ||
-    !('dbos' in value.bin) ||
-    typeof value.bin.dbos !== 'string'
-  ) {
-    throw preparationFailure('dbos-cli-resolution');
-  }
-  return { name: value.name, version: value.version, bin: { dbos: value.bin.dbos } };
-};
-
-const findDbosPackageDirectory = async (entryPath: string): Promise<string> => {
-  const current = dirname(entryPath);
-  try {
-    const manifest = parseDbosManifest(await readFile(join(current, 'package.json'), 'utf8'));
-    if (manifest.name === dbosPackageName) {
-      return current;
-    }
-  } catch {
-    // Continue until the manifest containing the resolved public entrypoint is found.
-  }
-  const parent = dirname(current);
-  if (parent === current) {
-    throw preparationFailure('dbos-cli-resolution');
-  }
-  return await findDbosPackageDirectory(current);
 };
 
 const resolveDbosCli = async (): Promise<string> => {
+  let directory: string;
   try {
-    const entryPath = await realpath(require.resolve(dbosPackageName));
-    const packageDirectory = await realpath(await findDbosPackageDirectory(entryPath));
-    if (!isContainedPath(packageDirectory, entryPath)) {
-      throw preparationFailure('dbos-cli-resolution');
-    }
-    const manifest = parseDbosManifest(
-      await readFile(join(packageDirectory, 'package.json'), 'utf8'),
-    );
-    const binPath = await realpath(resolve(packageDirectory, manifest.bin.dbos));
-    if (!isContainedPath(packageDirectory, binPath) || !(await stat(binPath)).isFile()) {
-      throw preparationFailure('dbos-cli-resolution');
-    }
-    return binPath;
-  } catch (error) {
-    if (error instanceof RunManagerDatabasePreparationError) {
-      throw error;
-    }
+    directory = dirname(require.resolve(dbosPackageName));
+  } catch {
     throw preparationFailure('dbos-cli-resolution');
   }
-};
 
-export const childEnvironment = (
-  databaseUrl: string,
-  source: NodeJS.ProcessEnv = process.env,
-): NodeJS.ProcessEnv => {
-  const environment: NodeJS.ProcessEnv = {};
-  for (const [name, value] of Object.entries(source)) {
-    if (!name.startsWith('DBOS') && name !== databaseUrlEnvironmentName) {
-      environment[name] = value;
-    }
-  }
-  environment[databaseUrlEnvironmentName] = JSON.stringify(databaseUrl);
-  return environment;
-};
-
-const createPrivateConfiguration = async (): Promise<string> => {
-  let directory: string | undefined;
-  try {
-    directory = await mkdtemp(join(tmpdir(), 'revo-run-dbos-'));
-    await chmod(directory, 0o700);
-    await writeFile(
-      join(directory, 'dbos-config.yaml'),
-      `name: revo-run\nsystem_database_url: \${${databaseUrlEnvironmentName}}\nsystem_database_schema_name: ${dbosSchemaName}\n`,
-      { encoding: 'utf8', flag: 'wx', mode: 0o600 },
-    );
-    return directory;
-  } catch {
-    const primary = preparationFailure('temporary-directory-creation');
-    if (directory === undefined) {
-      throw primary;
-    }
-    const cleanup: RunManagerDatabasePreparationFailure[] = [];
+  while (true) {
     try {
-      await rm(directory, { recursive: true, force: true });
+      // oxlint-disable-next-line no-await-in-loop -- Package parents must be inspected in order.
+      const manifest: unknown = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
+      if (
+        typeof manifest === 'object' &&
+        manifest !== null &&
+        'name' in manifest &&
+        manifest.name === dbosPackageName &&
+        'bin' in manifest &&
+        typeof manifest.bin === 'object' &&
+        manifest.bin !== null &&
+        'dbos' in manifest.bin &&
+        typeof manifest.bin.dbos === 'string'
+      ) {
+        return resolve(directory, manifest.bin.dbos);
+      }
     } catch {
-      cleanup.push(preparationFailure('temporary-directory-removal'));
+      // The resolved entrypoint may be nested several directories below the package manifest.
     }
-    throwPreparationFailures(primary, cleanup);
-    throw primary;
+
+    const parent = dirname(directory);
+    if (parent === directory) {
+      throw preparationFailure('dbos-cli-resolution');
+    }
+    directory = parent;
   }
 };
 
-const executeDbosSchema = async (
-  binPath: string,
-  directory: string,
+const migrationEnvironment = (databaseUrl: string): NodeJS.ProcessEnv => ({
+  ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('DBOS'))),
+  [databaseUrlEnvironmentName]: JSON.stringify(databaseUrl),
+});
+
+const runSchemaCommand = async (
+  cli: string,
+  cwd: string,
   databaseUrl: string,
   signal: AbortSignal,
 ): Promise<void> => {
-  assertNotAborted(signal);
-  const result = await new Promise<SchemaProcessResult>((resolveProcess) => {
-    const child = spawn(process.execPath, [binPath, 'schema', '--schema', dbosSchemaName], {
-      cwd: directory,
-      env: childEnvironment(databaseUrl),
-      stdio: 'ignore',
-    });
-    let settled = false;
-    let forceTimer: NodeJS.Timeout | undefined;
-    const settle = (value: SchemaProcessResult): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (forceTimer !== undefined) {
-        clearTimeout(forceTimer);
-      }
-      signal.removeEventListener('abort', terminate);
-      resolveProcess(value);
-    };
-    const terminate = (): void => {
-      if (child.exitCode !== null || child.signalCode !== null) {
-        return;
-      }
-      child.kill('SIGTERM');
-      forceTimer = setTimeout(() => {
-        if (child.exitCode === null && child.signalCode === null) {
-          child.kill('SIGKILL');
-        }
-      }, childTerminationGraceMs);
-    };
-    child.once('error', () => settle({ exitCode: null, signal: null }));
-    child.once('close', (exitCode, childSignal) => settle({ exitCode, signal: childSignal }));
-    signal.addEventListener('abort', terminate, { once: true });
-    if (signal.aborted) {
-      terminate();
-    }
+  throwIfAborted(signal);
+
+  const child = spawn(process.execPath, [cli, 'schema', '--schema', 'dbos'], {
+    cwd,
+    env: migrationEnvironment(databaseUrl),
+    stdio: 'ignore',
   });
-  if (signal.aborted) {
-    throw preparationAborted();
-  }
+
+  const result = await new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>(
+    (resolveExit) => {
+      let forceTimer: NodeJS.Timeout | undefined;
+      const stop = (): void => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          return;
+        }
+        child.kill('SIGTERM');
+        forceTimer ??= setTimeout(() => child.kill('SIGKILL'), childTerminationGraceMs);
+      };
+      const finish = (exitCode: number | null, childSignal: NodeJS.Signals | null): void => {
+        clearTimeout(forceTimer);
+        signal.removeEventListener('abort', stop);
+        resolveExit({ exitCode, signal: childSignal });
+      };
+
+      child.once('error', () => finish(null, null));
+      child.once('close', finish);
+      signal.addEventListener('abort', stop, { once: true });
+      if (signal.aborted) {
+        stop();
+      }
+    },
+  );
+
+  throwIfAborted(signal);
   if (result.exitCode !== 0) {
     throw preparationFailure('dbos-schema-migration', result.exitCode, result.signal);
   }
@@ -206,23 +113,34 @@ export const runDbosSchemaMigration = async (
   databaseUrl: string,
   signal: AbortSignal,
 ): Promise<void> => {
-  assertNotAborted(signal);
-  const binPath = await resolveDbosCli();
-  assertNotAborted(signal);
-  const directory = await createPrivateConfiguration();
-  let primary: RunManagerDatabasePreparationFailure | undefined;
-  const cleanup: RunManagerDatabasePreparationFailure[] = [];
+  throwIfAborted(signal);
+
+  let directory: string;
   try {
-    assertNotAborted(signal);
-    await executeDbosSchema(binPath, directory, databaseUrl, signal);
-  } catch (error) {
-    [primary] = normalizePreparationFailures(error, 'dbos-schema-migration');
-  } finally {
-    try {
-      await rm(directory, { recursive: true, force: true });
-    } catch {
-      cleanup.push(preparationFailure('temporary-directory-removal'));
-    }
+    directory = await mkdtemp(join(tmpdir(), 'revo-run-dbos-'));
+    await writeFile(
+      join(directory, 'dbos-config.yaml'),
+      `name: revo-run\nsystem_database_url: \${${databaseUrlEnvironmentName}}\nsystem_database_schema_name: dbos\n`,
+      { encoding: 'utf8', flag: 'wx', mode: 0o600 },
+    );
+  } catch {
+    throw preparationFailure('dbos-schema-migration');
   }
-  throwPreparationFailures(primary, cleanup);
+
+  let failure: RunManagerDatabasePreparationFailure | undefined;
+  try {
+    await runSchemaCommand(await resolveDbosCli(), directory, databaseUrl, signal);
+  } catch (error) {
+    failure = normalizePreparationFailures(error, 'dbos-schema-migration');
+  }
+
+  try {
+    await rm(directory, { recursive: true, force: true });
+  } catch {
+    failure ??= preparationFailure('cleanup');
+  }
+
+  if (failure !== undefined) {
+    throw failure;
+  }
 };

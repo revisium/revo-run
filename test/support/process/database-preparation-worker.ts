@@ -1,6 +1,5 @@
 import {
   RunManagerDatabasePreparationAbortedError,
-  RunManagerDatabasePreparationAggregateError,
   RunManagerDatabasePreparationError,
   prepareRunManagerDatabase,
 } from '../../../src/index.js';
@@ -13,27 +12,7 @@ const childNodeOptions = process.env['REVO_RUN_PREPARATION_CHILD_NODE_OPTIONS'];
 if (childNodeOptions !== undefined) {
   process.env['NODE_OPTIONS'] = childNodeOptions;
 }
-const controller = new AbortController();
-process.on('message', (message: unknown) => {
-  if (
-    typeof message === 'object' &&
-    message !== null &&
-    'type' in message &&
-    message.type === 'abort'
-  ) {
-    controller.abort();
-  }
-});
-
 const serializeFailure = (error: unknown): unknown => {
-  if (error instanceof RunManagerDatabasePreparationAggregateError) {
-    return {
-      code: error.code,
-      errors: error.errors.map(serializeFailure),
-      message: error.message,
-      name: error.name,
-    };
-  }
   if (error instanceof RunManagerDatabasePreparationError) {
     return {
       code: error.code,
@@ -54,7 +33,7 @@ let message: unknown;
 try {
   message = {
     outcome: 'prepared',
-    result: await prepareRunManagerDatabase({ databaseUrl, signal: controller.signal }),
+    result: await prepareRunManagerDatabase({ databaseUrl }),
   };
 } catch (error) {
   message = { outcome: 'rejected', error: serializeFailure(error) };

@@ -40,56 +40,36 @@ const isPreparationWorkerResult = (value: unknown): value is PreparationWorkerRe
   return value.outcome === 'rejected' && 'error' in value;
 };
 
-export type PreparationWorker = Readonly<{
-  completion: Promise<PreparationWorkerResult>;
-  abort: () => Promise<void>;
-}>;
-
-export const startPreparationWorker = (
+export const runPreparationWorker = async (
   databaseUrl: string,
   environment: NodeJS.ProcessEnv = {},
-): PreparationWorker => {
+): Promise<PreparationWorkerResult> => {
   const child = forkTestDbosProcess(preparationWorker, {
     applicationVersion: `database-preparation-${randomUUID()}`,
     env: { ...environment, REVO_RUN_PREPARATION_TEST_DATABASE_URL: databaseUrl },
   });
-  const completion = (async (): Promise<PreparationWorkerResult> => {
-    let result: unknown;
-    child.once('message', (message: unknown) => {
-      result = message;
-    });
-    const { exitCode, signal } = await new Promise<{
-      exitCode: number | null;
-      signal: NodeJS.Signals | null;
-    }>((resolveExit) => {
-      child.once('exit', (childExitCode, childSignal) =>
-        resolveExit({ exitCode: childExitCode, signal: childSignal }),
-      );
-    });
-    if (signal !== null || exitCode !== 0) {
-      throw new Error('Database preparation worker did not exit cleanly.');
-    }
-    if (!isPreparationWorkerResult(result)) {
-      throw new Error('Database preparation worker returned an invalid result.');
-    }
-    return result;
-  })();
-  return {
-    completion,
-    abort: async () =>
-      await new Promise<void>((resolve, reject) => {
-        child.send({ type: 'abort' }, (error) => (error === null ? resolve() : reject(error)));
-      }),
-  };
+  let result: unknown;
+  child.once('message', (message: unknown) => {
+    result = message;
+  });
+  const { exitCode, signal } = await new Promise<{
+    exitCode: number | null;
+    signal: NodeJS.Signals | null;
+  }>((resolveExit) => {
+    child.once('exit', (childExitCode, childSignal) =>
+      resolveExit({ exitCode: childExitCode, signal: childSignal }),
+    );
+  });
+  if (signal !== null || exitCode !== 0) {
+    throw new Error('Database preparation worker did not exit cleanly.');
+  }
+  if (!isPreparationWorkerResult(result)) {
+    throw new Error('Database preparation worker returned an invalid result.');
+  }
+  return result;
 };
 
-export const runPreparationWorker = async (
-  databaseUrl: string,
-  environment: NodeJS.ProcessEnv = {},
-): Promise<PreparationWorkerResult> =>
-  await startPreparationWorker(databaseUrl, environment).completion;
-
-export const prepareInProcess = async (databaseUrl: string): Promise<PreparationResult> => {
+export const prepareInWorker = async (databaseUrl: string): Promise<PreparationResult> => {
   const result = await runPreparationWorker(databaseUrl);
   if (result.outcome !== 'prepared') {
     throw new Error('Database preparation worker unexpectedly rejected preparation.');

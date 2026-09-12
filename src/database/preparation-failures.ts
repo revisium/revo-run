@@ -1,6 +1,5 @@
 import {
   RunManagerDatabasePreparationAbortedError,
-  RunManagerDatabasePreparationAggregateError,
   RunManagerDatabasePreparationError,
   type RunManagerDatabasePreparationFailure,
   type RunManagerDatabasePreparationStage,
@@ -19,28 +18,12 @@ export const preparationAborted = (): RunManagerDatabasePreparationAbortedError 
 export const normalizePreparationFailures = (
   error: unknown,
   fallbackStage: RunManagerDatabasePreparationStage,
-): RunManagerDatabasePreparationFailure[] => {
+): RunManagerDatabasePreparationFailure => {
   if (
     error instanceof RunManagerDatabasePreparationError ||
     error instanceof RunManagerDatabasePreparationAbortedError
   ) {
-    return [error];
+    return error;
   }
-  if (error instanceof RunManagerDatabasePreparationAggregateError) {
-    return [...error.errors];
-  }
-  return [preparationFailure(fallbackStage)];
-};
-
-export const throwPreparationFailures = (
-  primary: RunManagerDatabasePreparationFailure | undefined,
-  cleanup: readonly RunManagerDatabasePreparationFailure[],
-): void => {
-  if (primary === undefined && cleanup.length === 0) {
-    return;
-  }
-  if (primary !== undefined && cleanup.length === 0) {
-    throw primary;
-  }
-  throw new RunManagerDatabasePreparationAggregateError(primary, Object.freeze([...cleanup]));
+  return preparationFailure(fallbackStage);
 };
