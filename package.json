@@ -42,8 +42,8 @@
     "format:check": "oxfmt --check .",
     "test": "dotenv -e .env.test -- vitest run",
     "test:cov": "dotenv -e .env.test -- vitest run --coverage",
-    "verify:shell": "for script in scripts/*.sh; do bash -n \"$script\" || exit; done && bash scripts/verify-shell.sh",
-    "verify:package": "dotenv -e .env.test -- node --experimental-strip-types scripts/verify-package.mjs",
+    "verify:shell": "for script in scripts/*.sh; do bash -n \"$script\" || exit; done",
+    "verify:package": "dotenv -e .env.test -- node --experimental-strip-types test/package/verify-packed-consumer.ts",
     "verify": "pnpm run format:check && pnpm run verify:package && pnpm run typecheck && pnpm run lint && pnpm run test:cov && pnpm run verify:shell",
     "sonar:issues:local": "bash scripts/sonar-issues-local.sh",
     "prepack": "pnpm run build"
@@ -68,8 +68,7 @@
     "publint": "0.3.21",
     "tsx": "4.23.5",
     "typescript": "7.0.2",
-    "vitest": "4.1.10",
-    "yaml": "2.9.0"
+    "vitest": "4.1.10"
   },
   "engines": {
     "node": ">=24.11.1 <25"
