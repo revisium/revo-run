@@ -1,5 +1,6 @@
 import {
   createRunManager,
+  prepareRunManagerDatabase,
   type AgentAttemptExecutionPort,
   type PipelineSourcePackage,
   type RunProfile,
@@ -30,3 +31,7 @@ const manager = createRunManager({
 });
 
 void manager.createRun({ runId: 'raw-consumer-run', pipeline, profile, input: {} });
+void prepareRunManagerDatabase({
+  databaseUrl: 'postgresql://example.invalid/revo-run',
+  signal: new AbortController().signal,
+});

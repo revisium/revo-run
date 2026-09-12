@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join, relative } from 'node:path';
 
 import { assertRegistryDependencyFiles } from './registry-dependency-contract.ts';
 
@@ -15,16 +16,15 @@ const surfaceContext = {
     deepImport: '@revisium/revo-run/composition/agents/revo-runtime/revo-agent-runtime-port',
     forbiddenExports: ['createRevoAgentRuntimePort', 'AgentRuntimePort', 'PreparedAgentBinding'],
   },
-  expected: { rootAccepted: true, deepRejected: true, runtimeInjectionExported: false },
+  expected: {
+    rootAccepted: true,
+    deepRejected: true,
+    runtimeInjectionExported: false,
+    databasePreparationExported: true,
+  },
 };
 
 const packagePath = (root, packageName) => join(root, ...packageName.split('/'));
-
-const linkPackage = async (sourceNodeModules, targetNodeModules, packageName) => {
-  const target = packagePath(targetNodeModules, packageName);
-  await mkdir(dirname(target), { recursive: true });
-  await symlink(packagePath(sourceNodeModules, packageName), target, 'dir');
-};
 
 const assertPackedProductionHasNoTestHooks = async (directory) => {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -57,7 +57,31 @@ import assert from 'node:assert/strict';
 
 const rootModule = await import(${JSON.stringify(surfaceContext.input.rootImport)});
 const createRunManager = rootModule.createRunManager;
+const prepareRunManagerDatabase = rootModule.prepareRunManagerDatabase;
+const PreparationError = rootModule.RunManagerDatabasePreparationError;
+const AbortedError = rootModule.RunManagerDatabasePreparationAbortedError;
 assert.equal(typeof createRunManager, 'function');
+assert.equal(typeof prepareRunManagerDatabase, 'function');
+for (const options of [undefined, null]) {
+  await assert.rejects(
+    Reflect.apply(prepareRunManagerDatabase, undefined, [options]),
+    (error) => error instanceof PreparationError && error.stage === 'input-validation',
+  );
+}
+const controller = new AbortController();
+controller.abort();
+await assert.rejects(
+  prepareRunManagerDatabase({
+    databaseUrl: 'postgresql://user:packed-secret@example.invalid/database',
+    signal: controller.signal,
+  }),
+  (error) => error instanceof AbortedError,
+);
+const databaseUrl = process.env.DATABASE_URL;
+assert.equal(typeof databaseUrl, 'string');
+const preparation = await prepareRunManagerDatabase({ databaseUrl });
+assert.equal(preparation.schema, 'dbos');
+assert.ok(preparation.toVersion > 0);
 
 const manager = createRunManager({
   database: { url: 'postgresql://example.invalid/revo-run' },
@@ -83,6 +107,7 @@ try {
 process.stdout.write(JSON.stringify({
   rootAccepted: true,
   deepRejected,
+  databasePreparationExported: typeof prepareRunManagerDatabase === 'function',
   runtimeInjectionExported: ${JSON.stringify(surfaceContext.input.forbiddenExports)}.some(
     (name) => Object.hasOwn(rootModule, name),
   ),
@@ -140,11 +165,6 @@ try {
   execFileSync(join(root, 'node_modules/.bin/attw'), [tarball, '--profile', 'esm-only'], {
     stdio: 'inherit',
   });
-  const installedPackage = packagePath(consumerNodeModules, '@revisium/revo-run');
-  await mkdir(installedPackage, { recursive: true });
-  execFileSync('tar', ['-xzf', tarball, '-C', installedPackage, '--strip-components=1']);
-  await assertPackedProductionHasNoTestHooks(installedPackage);
-
   const manifestSource = await readFile(join(root, 'package.json'), 'utf8');
   assertRegistryDependencyFiles({
     manifestSource,
@@ -153,16 +173,30 @@ try {
   });
   const packageJson = JSON.parse(manifestSource);
   assert.ok(isRecord(packageJson) && isRecord(packageJson.dependencies));
-  const dependencies = Object.keys(packageJson.dependencies);
-  await Promise.all(
-    [...dependencies, '@types/node'].map(
-      async (packageName) =>
-        await linkPackage(join(root, 'node_modules'), consumerNodeModules, packageName),
-    ),
-  );
+  assert.equal(packageJson.packageManager, 'pnpm@11.13.0');
   await writeFile(
     join(consumerDirectory, 'package.json'),
-    `${JSON.stringify({ private: true, type: 'module' }, undefined, 2)}\n`,
+    `${JSON.stringify({ private: true, type: 'module', packageManager: packageJson.packageManager }, undefined, 2)}\n`,
+  );
+  execFileSync(
+    'corepack',
+    ['pnpm', 'add', '--prefer-offline', '--ignore-scripts', tarball, '--save-exact'],
+    { cwd: consumerDirectory, stdio: 'inherit' },
+  );
+  execFileSync(
+    'corepack',
+    ['pnpm', 'add', '--prefer-offline', '--ignore-scripts', '--save-dev', '@types/node@24.13.3'],
+    { cwd: consumerDirectory, stdio: 'inherit' },
+  );
+  const installedPackage = packagePath(consumerNodeModules, '@revisium/revo-run');
+  await assertPackedProductionHasNoTestHooks(installedPackage);
+  const installedPackageEntry = await realpath(join(installedPackage, 'dist/index.js'));
+  const packageRequire = createRequire(installedPackageEntry);
+  const installedDbosEntry = await realpath(packageRequire.resolve('@dbos-inc/dbos-sdk'));
+  const dbosRelativePath = relative(consumerDirectory, installedDbosEntry);
+  assert.ok(
+    dbosRelativePath !== '..' && !dbosRelativePath.startsWith('../'),
+    'The packed consumer must resolve DBOS inside its isolated installation.',
   );
   await writeFile(join(consumerDirectory, 'consumer.mjs'), runtimeConsumer);
   await writeFile(join(consumerDirectory, 'consumer.ts'), typeConsumer);
@@ -179,6 +213,7 @@ try {
     execFileSync(process.execPath, ['consumer.mjs'], {
       cwd: consumerDirectory,
       encoding: 'utf8',
+      env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     }),
   );

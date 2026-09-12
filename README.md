@@ -8,8 +8,7 @@ pipeline, hosts its kernel commands, and keeps run observation in DBOS/PostgreSQ
 package root.
 
 For the dependency graph, durable-recovery boundary, and public/private split,
-read [the RN1 architecture](docs/architecture.md) and
-[ADR 0001](docs/adr/0001-direct-kernel-host.md).
+read [the RN1 architecture](docs/architecture.md).
 
 ## Ownership boundary
 
@@ -31,6 +30,39 @@ into the admitted binding. Credential leases are acquired per invocation and
 released after terminal settlement or shutdown cleanup.
 
 ## Create a manager and run
+
+Prepare the DBOS system schema before starting the application runtime. The
+operation is safe to repeat and reports the observed migration transition
+without launching DBOS, recovery, or queues.
+
+```ts
+import { prepareRunManagerDatabase } from '@revisium/revo-run';
+
+const shutdownController = new AbortController();
+const preparation = await prepareRunManagerDatabase({
+  databaseUrl: process.env.DATABASE_URL!,
+  signal: shutdownController.signal,
+});
+
+console.log(preparation.fromVersion, preparation.toVersion);
+```
+
+The caller owns PostgreSQL. The same URL may refer to an embedded PostgreSQL
+instance started by the host or to an existing server. Preparation never starts
+or stops that server.
+
+An already-aborted signal rejects before opening a database connection. During
+PostgreSQL work, abort closes the preparation client's own connection and
+socket. During the DBOS migration phase, abort first terminates and reaps the
+schema child while retaining the advisory-lock session; only then does cleanup
+unlock and close PostgreSQL. If cancellation arrives while that unlock is
+stalled, cleanup closes only the owned preparation client and socket. Ordinary failures use
+`RunManagerDatabasePreparationError`; cancellation uses
+`RunManagerDatabasePreparationAbortedError`. If cleanup also fails,
+`RunManagerDatabasePreparationAggregateError.errors` contains the primary
+failure first, followed by cleanup failures in attempted-cleanup order. These
+errors expose only closed stages and process status; they do not include the
+database URL, child output, or underlying PostgreSQL errors.
 
 ```ts
 import { createRunManager, type PipelineSourcePackage, type RunProfile } from '@revisium/revo-run';

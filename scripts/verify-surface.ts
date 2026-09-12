@@ -33,7 +33,7 @@ const checks: readonly SurfaceCheck[] = [
       'examples',
     ],
     excluded: new Set(['scripts/verify-shell.sh', 'scripts/verify-surface.ts']),
-    excludedPrefixes: ['docs/adr/superseded/'],
+    excludedPrefixes: [],
     pattern:
       /ExecutionPlan|RunExecutor|startRun|PipelineInterpreter|NodeEffect|UnknownOutcomeResolution|effect-recovery/iu,
     failure: 'Legacy plan/executor symbols remain in the active RN1 surface.',
