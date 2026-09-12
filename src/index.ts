@@ -1,5 +1,10 @@
 export { createRunManager } from './manager/create-run-manager.js';
+export { prepareRunManagerDatabase } from './database/prepare-run-manager-database.js';
 export { createAgentAttemptExecutionAdapter } from './composition/agents/revo-runtime/revo-agent-runtime-port.js';
+export {
+  RunManagerDatabasePreparationAbortedError,
+  RunManagerDatabasePreparationError,
+} from './contracts/database-preparation.js';
 export { RunManagerError } from './contracts/run-manager-error.js';
 export {
   RunManagerErrorCodeSchema,
@@ -36,6 +41,12 @@ export {
 } from './contracts/public-schemas.js';
 
 export type { JsonObject, JsonValue } from './contracts/json.js';
+export type {
+  PrepareRunManagerDatabaseOptions,
+  PrepareRunManagerDatabaseResult,
+  RunManagerDatabasePreparationFailure,
+  RunManagerDatabasePreparationStage,
+} from './contracts/database-preparation.js';
 export type { AgentAttemptExecutionPort } from './composition/agent-port.js';
 export type {
   AgentAttemptExecutionAdapter,

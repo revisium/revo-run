@@ -100,9 +100,8 @@ leases. The Run manager itself owns only public-call draining and DBOS lifecycle
 ## Release fence
 
 RN1 pins the compatible AG1, PL1, and SC1 alphas as exact registry dependencies.
-`verify-package` refuses to compensate by linking undeclared runtime
-dependencies, and no local, workspace, Git, URL, or tarball dependency is an
-acceptable substitute.
+The package smoke test installs the packed tarball in an isolated consumer, so
+undeclared or checkout-local runtime dependencies cannot satisfy the test.
 
 ## Evidence map
 
@@ -141,6 +140,5 @@ cases in `rn1-script-recovery.test.ts`.
 | D8  | committed live relay drains once after child death without handler re-entry              |
 | D9  | a late matching sealed terminal atomically clears recovery and advances once             |
 
-`verify-package` scans packed JavaScript and declarations for test hooks/markers,
-checks exact registry pins, and validates the root surface in an isolated packed
-consumer.
+The package smoke test validates the public root surface and database preparation
+from an isolated packed consumer.
