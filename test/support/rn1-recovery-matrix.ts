@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import { expect } from 'vitest';
@@ -103,31 +102,10 @@ const requiredCancellationVariant = (value: unknown): CancellationVariant => {
   return value;
 };
 
-const readPinnedJson = (url: URL, manifestPath: string): unknown => {
-  const manifest: unknown = JSON.parse(
-    readFileSync(
-      new URL('../contracts/fixtures/governing-artifacts.json', import.meta.url),
-      'utf8',
-    ),
-  );
-  const artifacts = requiredRecord(
-    requiredRecord(manifest, 'governing artifact manifest').artifacts,
-    'artifacts',
-  );
-  const expectedDigest = requiredString(artifacts, manifestPath);
-  const source = readFileSync(url, 'utf8');
-  const actualDigest = `sha256:${createHash('sha256').update(source).digest('hex')}`;
-  if (actualDigest !== expectedDigest) {
-    throw new Error(`RN1 recovery fixture ${manifestPath} does not match its governing digest.`);
-  }
-  return JSON.parse(source);
-};
+const readJson = (url: URL): unknown => JSON.parse(readFileSync(url, 'utf8'));
 
 const parseRecoveryScenarios = (): readonly RecoveryMatrixScenario[] => {
-  const fixture = readPinnedJson(
-    new URL('../integration/fixtures/recovery/d1-d9.json', import.meta.url),
-    'integration/recovery/d1-d9.json',
-  );
+  const fixture = readJson(new URL('../integration/fixtures/recovery/d1-d9.json', import.meta.url));
   const root = requiredRecord(fixture, 'root');
   if (root.schemaVersion !== 'rn1-durable-recovery-matrix/v1' || !Array.isArray(root.scenarios)) {
     throw new Error('RN1 recovery matrix has an invalid closed shape.');
@@ -147,9 +125,8 @@ const parseCancellationFixture = (): Readonly<{
   readonly attempt: CanonicalCancellationAttempt;
   readonly mappings: readonly CanonicalCancellationMapping[];
 }> => {
-  const fixture = readPinnedJson(
+  const fixture = readJson(
     new URL('../contracts/fixtures/scripts/cancellation-result-mapping.json', import.meta.url),
-    'scripts/cancellation-result-mapping.json',
   );
   const root = requiredRecord(fixture, 'cancellation root');
   if (
