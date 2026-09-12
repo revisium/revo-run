@@ -1,8 +1,10 @@
 import { getEventListeners } from 'node:events';
 import { createServer } from 'node:net';
 
-import { describe, expect, it } from 'vitest';
+import { Client } from 'pg';
+import { describe, expect, it, vi } from 'vitest';
 
+import { normalizePreparationFailures } from '../../src/database/preparation-failures.js';
 import {
   RunManagerDatabasePreparationAbortedError,
   RunManagerDatabasePreparationAggregateError,
@@ -56,6 +58,17 @@ describe('run-manager database preparation failures', () => {
         stage: 'input-validation',
       }),
     );
+  });
+
+  it.each([
+    'https://example.invalid/database',
+    'postgresql://example.invalid',
+    'postgresql:///database',
+  ])('rejects a structurally invalid PostgreSQL URL: %s', async (databaseUrl) => {
+    await expect(prepareRunManagerDatabase({ databaseUrl })).rejects.toMatchObject({
+      code: 'run_manager_database_preparation_failed',
+      stage: 'input-validation',
+    });
   });
 
   it('returns the dedicated closed error when already aborted', async () => {
@@ -114,6 +127,30 @@ describe('run-manager database preparation failures', () => {
     });
     expect(serializedError(failure)).not.toContain(sentinel);
     expect(getEventListeners(controller.signal, 'abort')).toStrictEqual([]);
+  });
+
+  it('normalizes a synchronous pg client close failure as typed redacted cleanup', async () => {
+    const sentinel = 'synchronous-client-close-secret-sentinel';
+    const endSpy = vi.spyOn(Client.prototype, 'end').mockImplementation(() => {
+      throw new Error(sentinel);
+    });
+    let failure: unknown;
+    try {
+      await prepareRunManagerDatabase({
+        databaseUrl: `postgresql://user:${sentinel}@127.0.0.1:1/database?connect_timeout=1`,
+      });
+    } catch (error) {
+      failure = error;
+    } finally {
+      endSpy.mockRestore();
+    }
+
+    expect(failure).toMatchObject({
+      code: 'run_manager_database_preparation_cleanup_failed',
+      primary: { stage: 'database-connection' },
+      cleanup: [{ stage: 'database-connection-close' }],
+    });
+    expect(serializedError(failure)).not.toContain(sentinel);
   });
 
   it('aborts an accepted but silent PostgreSQL handshake and closes its socket', async () => {
@@ -184,5 +221,9 @@ describe('run-manager database preparation failures', () => {
     expect(aggregate.cleanup).toStrictEqual([cleanup]);
     expect(aggregate.errors).toStrictEqual([primary, cleanup]);
     expect(aggregate.errors.every((error) => error instanceof Error)).toBe(true);
+    expect(normalizePreparationFailures(aggregate, 'database-connection')).toStrictEqual([
+      primary,
+      cleanup,
+    ]);
   });
 });

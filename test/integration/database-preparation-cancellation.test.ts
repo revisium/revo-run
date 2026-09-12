@@ -177,7 +177,7 @@ describe('DBOS database preparation cancellation', () => {
     }
   });
 
-  it('SIGKILLs and reaps a persisted migration child that ignores SIGTERM', async () => {
+  it('reaps an aborted migration child before force-closing a session with stalled unlock', async () => {
     const databaseUrl = await createTestDatabase();
     const isolatedTempRoot = await mkdtemp(join(tmpdir(), 'revo-run-child-abort-test-'));
     const marker = join(isolatedTempRoot, 'sigterm-received');
@@ -185,7 +185,20 @@ describe('DBOS database preparation cancellation', () => {
     const competitor = new Client({ connectionString: databaseUrl });
     await Promise.all([observer.connect(), competitor.connect()]);
     try {
-      const worker = startPreparationWorker(databaseUrl, {
+      await observer.query(`
+        CREATE OR REPLACE FUNCTION public.pg_advisory_unlock(integer, integer)
+        RETURNS boolean
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          PERFORM pg_sleep(30);
+          RETURN pg_catalog.pg_advisory_unlock($1, $2);
+        END
+        $$
+      `);
+      const stalledUrl = new URL(databaseUrl);
+      stalledUrl.searchParams.set('options', '-c search_path=public,pg_catalog');
+      const worker = startPreparationWorker(stalledUrl.toString(), {
         TMPDIR: isolatedTempRoot,
         REVO_RUN_PREPARATION_CHILD_NODE_OPTIONS: `--import=${persistentChildHook}`,
         REVO_RUN_PREPARATION_SIGTERM_MARKER: marker,
@@ -199,7 +212,7 @@ describe('DBOS database preparation cancellation', () => {
           ...advisoryLockKeys,
         ]),
       ).resolves.toMatchObject({ rows: [{ acquired: false }] });
-      const failure = await worker.completion;
+      const failure = await settleWithin(worker.completion, 2_500);
 
       expect(failure).toMatchObject({
         outcome: 'rejected',

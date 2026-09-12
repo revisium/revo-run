@@ -95,7 +95,7 @@ const findPreparationBackend = async (
   deadline = Date.now() + 10_000,
 ): Promise<number> => {
   const result = await client.query<{ pid: number }>(
-    "SELECT pid FROM pg_stat_activity WHERE application_name = 'revo-run-database-preparation' AND query LIKE 'SELECT pg_try_advisory_lock%' ORDER BY backend_start DESC LIMIT 1",
+    "SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND application_name = 'revo-run-database-preparation' AND query LIKE 'SELECT pg_try_advisory_lock%' ORDER BY backend_start DESC LIMIT 1",
   );
   const pid = result.rows[0]?.pid;
   if (pid !== undefined) {
@@ -172,6 +172,23 @@ describe('DBOS database preparation', () => {
     const toVersions = new Set(preparations.map((result) => result.toVersion));
     expect(toVersions.size).toBe(1);
     expect(preparations.every((result) => result.toVersion > 0)).toBe(true);
+  });
+
+  it('fails closed when the persisted DBOS migration version is invalid', async () => {
+    const databaseUrl = await createTestDatabase();
+    await prepareRunManagerDatabase({ databaseUrl });
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+    try {
+      await client.query('UPDATE dbos.dbos_migrations SET version = -1');
+    } finally {
+      await client.end();
+    }
+
+    await expect(prepareRunManagerDatabase({ databaseUrl })).rejects.toMatchObject({
+      code: 'run_manager_database_preparation_failed',
+      stage: 'migration-version-read',
+    });
   });
 
   it('serializes concurrent first preparation across processes and lets workers exit', async () => {
@@ -254,6 +271,27 @@ describe('DBOS database preparation', () => {
         },
       });
       expect(JSON.stringify(failure)).not.toContain(databaseUrl);
+    } finally {
+      await blocker.query('SELECT pg_advisory_unlock($1, $2)', [...advisoryLockKeys]);
+      await Promise.all([blocker.end(), observer.end()]);
+    }
+  });
+
+  it('normalizes forced PostgreSQL session loss in the current process', async () => {
+    const databaseUrl = await createTestDatabase();
+    const blocker = new Client({ connectionString: databaseUrl });
+    const observer = new Client({ connectionString: databaseUrl });
+    await Promise.all([blocker.connect(), observer.connect()]);
+    try {
+      await blocker.query('SELECT pg_advisory_lock($1, $2)', [...advisoryLockKeys]);
+      const preparation = prepareRunManagerDatabase({ databaseUrl });
+      const pid = await findPreparationBackend(observer);
+
+      await observer.query('SELECT pg_terminate_backend($1)', [pid]);
+      await expect(preparation).rejects.toMatchObject({
+        code: 'run_manager_database_preparation_failed',
+        stage: 'database-session-lost',
+      });
     } finally {
       await blocker.query('SELECT pg_advisory_unlock($1, $2)', [...advisoryLockKeys]);
       await Promise.all([blocker.end(), observer.end()]);

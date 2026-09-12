@@ -16,7 +16,7 @@ export const forceClosePgClientSocket = (client: Client): void => {
   const candidate = client as unknown as ClientWithConnectionStream;
   const destroy = candidate.connection?.stream?.destroy;
   if (typeof destroy !== 'function') {
-    throw new Error('Pinned pg Client connection stream is unavailable.');
+    throw new TypeError('Pinned pg Client connection stream is unavailable.');
   }
   destroy.call(candidate.connection?.stream);
 };

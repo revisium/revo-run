@@ -39,12 +39,12 @@ const assertNotAborted = (signal: AbortSignal): void => {
   }
 };
 
-const isContainedPath = (parent: string, candidate: string): boolean => {
+export const isContainedPath = (parent: string, candidate: string): boolean => {
   const child = relative(parent, candidate);
   return child !== '' && child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child);
 };
 
-const parseDbosManifest = (source: string): DbosManifest => {
+export const parseDbosManifest = (source: string): DbosManifest => {
   let value: unknown;
   try {
     value = JSON.parse(source);
@@ -109,9 +109,12 @@ const resolveDbosCli = async (): Promise<string> => {
   }
 };
 
-const childEnvironment = (databaseUrl: string): NodeJS.ProcessEnv => {
+export const childEnvironment = (
+  databaseUrl: string,
+  source: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv => {
   const environment: NodeJS.ProcessEnv = {};
-  for (const [name, value] of Object.entries(process.env)) {
+  for (const [name, value] of Object.entries(source)) {
     if (!name.startsWith('DBOS') && name !== databaseUrlEnvironmentName) {
       environment[name] = value;
     }
