@@ -803,16 +803,19 @@ const samePin = (
   left: Readonly<{
     readonly agentId: string;
     readonly agentVersion: string;
+    readonly installationId: string;
     readonly definitionDigest: string;
   }>,
   right: Readonly<{
     readonly agentId: string;
     readonly agentVersion: string;
+    readonly installationId: string;
     readonly definitionDigest: string;
   }>,
 ): boolean =>
   left.agentId === right.agentId &&
   left.agentVersion === right.agentVersion &&
+  left.installationId === right.installationId &&
   left.definitionDigest === right.definitionDigest;
 
 const agentAttempt = (

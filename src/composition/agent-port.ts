@@ -4,11 +4,13 @@ import { RunManagerError } from '../contracts/run-manager-error.js';
 export interface AgentRef {
   readonly id: string;
   readonly version: string;
+  readonly installationId: string;
 }
 
 export interface AgentExecutionPin {
   readonly agentId: string;
   readonly agentVersion: string;
+  readonly installationId: string;
   readonly definitionDigest: string;
 }
 

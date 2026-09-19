@@ -158,11 +158,17 @@ const bindingFor = (agentId: string): PreparedAgentBinding => ({
   schemaVersion: 'prepared-agent-binding/v1',
   definition: {
     schemaVersion: 'prepared-agent-definition-snapshot/v1',
-    value: { id: agentId, version: '1.0.0', kind: 'test' },
+    value: {
+      id: agentId,
+      version: '1.0.0',
+      installationId: `${agentId}-installation`,
+      kind: 'test',
+    },
   },
   pin: {
     agentId,
     agentVersion: '1.0.0',
+    installationId: `${agentId}-installation`,
     definitionDigest: 'a'.repeat(64),
   },
   parameters: {},
@@ -306,7 +312,11 @@ const runKnownAgentSnapshot = async (
             [
               requirement.bindingKey,
               {
-                definition: { id: requirement.bindingKey, version: '1.0.0' },
+                definition: {
+                  id: requirement.bindingKey,
+                  version: '1.0.0',
+                  installationId: `${requirement.bindingKey}-installation`,
+                },
                 parameters: {},
                 permissions: {},
                 workspaceRef: 'private-agent-fixture',
