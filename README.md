@@ -22,12 +22,12 @@ read [the RN1 architecture](docs/architecture.md).
 - `@revisium/revo-run` owns durable admission, stable operation identities, DBOS
   workflow lifecycle, interactions, recovery observation, and public run views.
 
-The manager does not accept an executor map, compiler callback, lowered plan,
-runner, or agent runtime supplied by the consumer. Agent definitions are
-discovered through the runtime public API, pinned into the admitted snapshot,
-and executed through the runtime manager. Configuration selections are copied
-into the admitted binding. Credential leases are acquired per invocation and
-released after terminal settlement or shutdown cleanup.
+The manager accepts one `AgentAttemptExecutionPort` supplied by the host. The port
+prepares portable agent bindings and performs one physical agent attempt; the
+manager owns durable orchestration and does not own a concrete agent runtime.
+Configuration selections and the selected definition snapshot are copied into
+the admitted binding. Every selected definition is identified explicitly by
+`id`, `version`, and `installationId`; admission never guesses an installation.
 
 ## Create a manager and run
 
@@ -63,7 +63,12 @@ they do not include the database URL, child output, or underlying PostgreSQL
 errors.
 
 ```ts
-import { createRunManager, type PipelineSourcePackage, type RunProfile } from '@revisium/revo-run';
+import {
+  createRunManager,
+  type AgentAttemptExecutionPort,
+  type PipelineSourcePackage,
+  type RunProfile,
+} from '@revisium/revo-run';
 
 const manager = createRunManager({
   database: { url: process.env.DATABASE_URL! },
@@ -72,6 +77,7 @@ const manager = createRunManager({
     workspaces: coreWorkspaceService,
     credentials: coreCredentialVault,
   },
+  agents: agentAttemptExecutionPort satisfies AgentAttemptExecutionPort,
 });
 
 await manager.start();
@@ -140,6 +146,6 @@ corepack pnpm db:test:down
 ```
 
 The database is a disposable local PostgreSQL instance configured by `.env.test`.
-The agent-runtime, pipeline, and script packages are the three exact Revisium
-registry dependencies. The complete gate includes a packed root consumer and
+The pipeline and script packages are exact Revisium registry dependencies. The
+complete gate includes a packed root consumer and
 rejects local, workspace, Git, URL, and tarball dependency references.

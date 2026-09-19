@@ -97,7 +97,12 @@ const scriptResults: readonly ScriptTerminalAttemptResult[] = [
 const agentBase = {
   schemaVersion: 'agent-terminal-result/v1' as const,
   invocationId: 'att_relay',
-  pin: { agentId: 'agent', agentVersion: '1.0.0', definitionDigest: digest },
+  pin: {
+    agentId: 'agent',
+    agentVersion: '1.0.0',
+    installationId: 'agent-installation',
+    definitionDigest: digest,
+  },
 };
 
 const agentResults: readonly AgentTerminalResult[] = [

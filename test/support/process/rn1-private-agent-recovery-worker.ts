@@ -84,11 +84,17 @@ const binding: PreparedAgentBinding = {
   schemaVersion: 'prepared-agent-binding/v1',
   definition: {
     schemaVersion: 'prepared-agent-definition-snapshot/v1',
-    value: { id: 'reviewer', version: '1.0.0', kind: 'test' },
+    value: {
+      id: 'reviewer',
+      version: '1.0.0',
+      installationId: 'reviewer-installation',
+      kind: 'test',
+    },
   },
   pin: {
     agentId: 'reviewer',
     agentVersion: '1.0.0',
+    installationId: 'reviewer-installation',
     definitionDigest: '0000000000000000000000000000000000000000000000000000000000000001',
   },
   parameters: {},
@@ -138,7 +144,11 @@ const snapshot = (): AdmittedRunSnapshotV1 => {
         bindings: {
           agents: {
             reviewer: {
-              definition: { id: 'reviewer', version: '1.0.0' },
+              definition: {
+                id: 'reviewer',
+                version: '1.0.0',
+                installationId: 'reviewer-installation',
+              },
               parameters: {},
               permissions: {},
               workspaceRef: 'private-agent-recovery',

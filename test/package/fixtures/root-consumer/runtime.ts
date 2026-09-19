@@ -11,8 +11,7 @@ const preparation = await prepareRunManagerDatabase({ databaseUrl });
 assert.equal(preparation.schema, 'dbos');
 assert.ok(preparation.toVersion > 0);
 
-const deepImport: string =
-  '@revisium/revo-run/composition/agents/revo-runtime/revo-agent-runtime-port';
+const deepImport: string = '@revisium/revo-run/composition/agent-port';
 await assert.rejects(
   import(deepImport),
   (error: unknown) =>

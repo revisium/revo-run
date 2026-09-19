@@ -6,11 +6,17 @@ const binding = () => ({
   schemaVersion: 'prepared-agent-binding/v1',
   definition: {
     schemaVersion: 'prepared-agent-definition-snapshot/v1',
-    value: { schemaVersion: 'agent-definition/v1', id: 'agent', version: '1' },
+    value: {
+      schemaVersion: 'agent-definition/v1',
+      id: 'agent',
+      version: '1',
+      installationId: 'agent-installation',
+    },
   },
   pin: {
     agentId: 'agent',
     agentVersion: '1',
+    installationId: 'agent-installation',
     definitionDigest: 'a'.repeat(64),
   },
   parameters: {},
@@ -70,6 +76,10 @@ describe('prepared agent binding compatibility', () => {
       { configuration: { selections: { ['x'.repeat(257)]: true } } },
     ],
     ['an unknown configuration field', { configuration: { selections: {}, unexpected: true } }],
+    [
+      'a pin without an installation ID',
+      { pin: { agentId: 'agent', agentVersion: '1', definitionDigest: 'a'.repeat(64) } },
+    ],
   ])('rejects %s before DBOS recovery', (_label, replacement) => {
     expect(isPreparedAgentBinding({ ...binding(), ...replacement })).toBe(false);
   });

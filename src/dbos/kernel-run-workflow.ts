@@ -1682,6 +1682,7 @@ const applyAgentRelayObservation = async (
     message.agentResult.invocationId !== attemptId(message.operationId, ordinal) ||
     message.agentResult.pin.agentId !== binding.pin.agentId ||
     message.agentResult.pin.agentVersion !== binding.pin.agentVersion ||
+    message.agentResult.pin.installationId !== binding.pin.installationId ||
     message.agentResult.pin.definitionDigest !== binding.pin.definitionDigest
   ) {
     throw new Error('Agent observation does not contain its admitted terminal result.');

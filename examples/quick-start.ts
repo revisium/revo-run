@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
-import { createRunManager, type PipelineSourcePackage, type RunProfile } from '@revisium/revo-run';
+import {
+  createRunManager,
+  type AgentAttemptExecutionPort,
+  type PipelineSourcePackage,
+  type RunProfile,
+} from '@revisium/revo-run';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {
@@ -42,6 +47,16 @@ const profile: RunProfile = {
   bindings: { agents: {}, scripts: {} },
 };
 
+const unavailable = (): never => {
+  throw new Error('The quick start has no agent runtime.');
+};
+const agents: AgentAttemptExecutionPort = {
+  prepareBinding: async () => unavailable(),
+  start: async () => unavailable(),
+  getResult: () => unavailable(),
+  cancel: async () => unavailable(),
+};
+
 const manager = createRunManager({
   database: { url: databaseUrl },
   host: {
@@ -59,6 +74,7 @@ const manager = createRunManager({
       },
     },
   },
+  agents,
 });
 
 const runId = `quickStart_${Date.now().toString(36)}`;

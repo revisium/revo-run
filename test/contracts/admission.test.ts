@@ -67,14 +67,18 @@ const agentPipeline: PipelineSourcePackage = {
 };
 
 const reviewerAssignment: AgentAssignment = {
-  definition: { id: 'reviewer', version: '1' },
+  definition: { id: 'reviewer', version: '1', installationId: 'reviewer-installation' },
   parameters: {},
   permissions: {},
   workspaceRef: 'workspace-1',
 };
 
 const alternateAgentAssignment: AgentAssignment = {
-  definition: { id: 'reviewer-alt', version: '2' },
+  definition: {
+    id: 'reviewer-alt',
+    version: '2',
+    installationId: 'reviewer-alt-installation',
+  },
   parameters: { model: 'test-model' },
   permissions: { mode: 'read-only' },
   workspaceRef: 'workspace-1',
@@ -88,12 +92,14 @@ const preparedAgentBinding = (input: AgentBindingInput): PreparedAgentBinding =>
       schemaVersion: 'agent-definition/v1',
       id: input.definition.id,
       version: input.definition.version,
+      installationId: input.definition.installationId,
       displayName: input.definition.id,
     },
   },
   pin: {
     agentId: input.definition.id,
     agentVersion: input.definition.version,
+    installationId: input.definition.installationId,
     definitionDigest: 'a'.repeat(64),
   },
   parameters: input.parameters,
@@ -145,7 +151,14 @@ const consensusInput = (): CreateRunInput => {
       Object.fromEntries(
         participants.map(({ bindingKey }, index) => [
           bindingKey,
-          { ...reviewerAssignment, definition: { id: `reviewer-${index + 1}`, version: '1' } },
+          {
+            ...reviewerAssignment,
+            definition: {
+              id: `reviewer-${index + 1}`,
+              version: '1',
+              installationId: `reviewer-${index + 1}-installation`,
+            },
+          },
         ]),
       ),
     ),
@@ -207,7 +220,14 @@ const consensusInput = (): CreateRunInput => {
         agents: Object.fromEntries(
           participants.map(({ bindingKey }, index) => [
             bindingKey,
-            { ...reviewerAssignment, definition: { id: `reviewer-${index + 1}`, version: '1' } },
+            {
+              ...reviewerAssignment,
+              definition: {
+                id: `reviewer-${index + 1}`,
+                version: '1',
+                installationId: `reviewer-${index + 1}-installation`,
+              },
+            },
           ]),
         ),
         scripts: {},
@@ -282,6 +302,28 @@ describe('RN1 admission profile boundary', () => {
             'reviewer-binding': {
               ...reviewerAssignment,
               configuration: { selections: { ['x'.repeat(257)]: true } },
+            },
+          },
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it('requires an explicit agent installation in the public schema', () => {
+    const valid = baseInput().profile;
+    const { installationId: _installationId, ...definitionWithoutInstallation } =
+      reviewerAssignment.definition;
+
+    expect(
+      Check(RunProfileSchema, {
+        ...valid,
+        bindings: {
+          ...valid.bindings,
+          agents: {
+            ...valid.bindings.agents,
+            'reviewer-binding': {
+              ...reviewerAssignment,
+              definition: definitionWithoutInstallation,
             },
           },
         },
@@ -392,6 +434,7 @@ describe('RN1 admission profile boundary', () => {
     expect(admitted.bindings.agents?.['reviewer-binding']?.pin).toStrictEqual({
       agentId: 'reviewer-alt',
       agentVersion: '2',
+      installationId: 'reviewer-alt-installation',
       definitionDigest: 'a'.repeat(64),
     });
   });
@@ -506,7 +549,7 @@ describe('RN1 admission profile boundary', () => {
     const agents = {
       'reviewer-binding': reviewerAssignment,
       unused: {
-        definition: { id: 'unused', version: '1' },
+        definition: { id: 'unused', version: '1', installationId: 'unused-installation' },
         parameters: {},
         permissions: {},
         workspaceRef: 'workspace-1',

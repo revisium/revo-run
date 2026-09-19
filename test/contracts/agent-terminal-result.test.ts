@@ -5,6 +5,7 @@ import { isAgentTerminalResult } from '../../src/composition/agent-terminal-resu
 const pin = {
   agentId: 'agent',
   agentVersion: '1',
+  installationId: 'agent-installation',
   definitionDigest: 'a'.repeat(64),
 };
 
@@ -31,6 +32,10 @@ describe('durable agent terminal result', () => {
     ['a negative usage value', { usage: { inputTokens: -1 } }],
     ['an unknown usage field', { usage: { cachedInputTokens: 1 } }],
     ['an invalid definition digest', { pin: { ...pin, definitionDigest: 'sha256:invalid' } }],
+    [
+      'a pin without an installation ID',
+      { pin: { agentId: 'agent', agentVersion: '1', definitionDigest: 'a'.repeat(64) } },
+    ],
   ])('rejects %s', (_label, replacement) => {
     expect(isAgentTerminalResult({ ...succeeded(), ...replacement })).toBe(false);
   });

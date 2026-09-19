@@ -81,9 +81,10 @@ export const isPreparedAgentBinding = (value: unknown): value is PreparedAgentBi
   value.definition.schemaVersion === 'prepared-agent-definition-snapshot/v1' &&
   isRecord(value.definition.value) &&
   isRecord(value.pin) &&
-  hasExactKeys(value.pin, ['agentId', 'agentVersion', 'definitionDigest']) &&
+  hasExactKeys(value.pin, ['agentId', 'agentVersion', 'installationId', 'definitionDigest']) &&
   isBoundedString(value.pin.agentId, 256) &&
   isBoundedString(value.pin.agentVersion, 256) &&
+  isBoundedString(value.pin.installationId, 256) &&
   isDefinitionDigest(value.pin.definitionDigest) &&
   isRecord(value.parameters) &&
   isRecord(value.permissions) &&

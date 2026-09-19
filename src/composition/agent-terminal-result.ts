@@ -15,9 +15,10 @@ const isDefinitionDigest = (value: unknown): value is string =>
 
 const isPin = (value: unknown): boolean =>
   isRecord(value) &&
-  hasExactKeys(value, ['agentId', 'agentVersion', 'definitionDigest']) &&
+  hasExactKeys(value, ['agentId', 'agentVersion', 'installationId', 'definitionDigest']) &&
   isBoundedString(value.agentId, 256) &&
   isBoundedString(value.agentVersion, 256) &&
+  isBoundedString(value.installationId, 256) &&
   isDefinitionDigest(value.definitionDigest);
 
 const isBase = (value: Record<string, unknown>): boolean =>

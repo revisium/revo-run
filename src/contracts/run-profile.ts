@@ -34,7 +34,7 @@ const agentConfiguration = closed({
 });
 
 export const AgentAssignmentSchema = closed({
-  definition: closed({ id: identifier, version: identifier }),
+  definition: closed({ id: identifier, version: identifier, installationId: identifier }),
   parameters: Type.Record(Type.String(), JsonValueSchema),
   permissions: Type.Record(Type.String(), JsonValueSchema),
   workspaceRef: logicalWorkspaceRef,
@@ -60,7 +60,11 @@ export const RunProfileSchema = closed({
 });
 
 export interface AgentAssignment {
-  readonly definition: Readonly<{ readonly id: string; readonly version: string }>;
+  readonly definition: Readonly<{
+    readonly id: string;
+    readonly version: string;
+    readonly installationId: string;
+  }>;
   readonly parameters: Readonly<Record<string, JsonValue>>;
   readonly permissions: Readonly<Record<string, JsonValue>>;
   readonly workspaceRef: string;
