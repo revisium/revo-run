@@ -54,18 +54,19 @@ uncertain outcome never creates a retry.
 
 Only `@revisium/revo-run` root exports are supported. It exposes the manager,
 closed public schemas, public run values, raw pipeline/profile types, host
-resolver types, the `AgentAttemptExecutionPort`, and the optional
-`createAgentAttemptExecutionAdapter` helper. It does not export a lowered plan,
+resolver types, and the `AgentAttemptExecutionPort`. It does not export a lowered plan,
 pipeline kernel, admitted snapshot, DBOS record, prepared binding, runner map,
 the historically banned run-executor symbol, or a deep import surface.
 
 The application host discovers definitions, constructs the process-local
 `AgentManager`, supplies its durable active-state sink, and initializes it with
 active snapshots before opening Run admission. Runtime initialization owns
-identity checking and reaping. The optional adapter pins the selected definition
-and digest in the admitted snapshot. Configuration selections are copied into
-the prepared binding and validated again by the runtime's fresh invocation
-session. Logical workspace references and credential aliases remain durable;
+identity checking and reaping. Its adapter pins the selected definition and
+digest in the admitted snapshot. The selected definition always includes its
+explicit `id`, `version`, and `installationId`; there is no installation fallback.
+Configuration selections are copied into the prepared binding and validated
+again by the host adapter's fresh runtime invocation session. Logical workspace
+references and credential aliases remain durable;
 acquired paths, secrets, and runtime handles remain process-local. Unsupported
 or unavailable definitions fail before workspace acquisition, script
 preparation, process launch, or DBOS admission.
@@ -94,12 +95,12 @@ Durable Run recovery observes an unknown Attempt result as
 
 Graceful application stop closes admission, shuts down the shared manager while
 credentials and the host active-state sink remain available, stops the Run
-manager/DBOS, and then shuts down the adapter to dispose remaining credential
+manager/DBOS, and then lets the host dispose its adapter and remaining credential
 leases. The Run manager itself owns only public-call draining and DBOS lifecycle.
 
 ## Release fence
 
-RN1 pins the compatible AG1, PL1, and SC1 alphas as exact registry dependencies.
+RN1 pins the compatible PL1 and SC1 alphas as exact registry dependencies.
 The package smoke test installs the packed tarball in an isolated consumer, so
 undeclared or checkout-local runtime dependencies cannot satisfy the test.
 
@@ -112,7 +113,7 @@ event to the one serialized root lane:
 | Source semantics                                     | RN1 evidence                                                                                        |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `script`                                             | `raw-kernel-run.test.ts` and `rn1-script-recovery.test.ts`                                          |
-| `agent` single                                       | Injected Attempt-port and generic-runtime adapter conformance; DBOS unknown-result recovery         |
+| `agent` single                                       | Injected Attempt-port conformance and DBOS unknown-result recovery                                  |
 | `consensus` / three agent participants               | Injected Attempt-port conformance; mixed or unsupported assignments fail before preparation         |
 | `choice`, `call`, `parallel`, `repeat`, `map`, `end` | `rn1-control-flow-conformance.test.ts`                                                              |
 | duration and signal `wait`                           | `rn1-control-flow-conformance.test.ts`, `raw-kernel-run.test.ts`, and fresh-process signal recovery |

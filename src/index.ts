@@ -1,6 +1,5 @@
 export { createRunManager } from './manager/create-run-manager.js';
 export { prepareRunManagerDatabase } from './database/prepare-run-manager-database.js';
-export { createAgentAttemptExecutionAdapter } from './composition/agents/revo-runtime/revo-agent-runtime-port.js';
 export {
   RunManagerDatabasePreparationAbortedError,
   RunManagerDatabasePreparationError,
@@ -47,11 +46,24 @@ export type {
   RunManagerDatabasePreparationFailure,
   RunManagerDatabasePreparationStage,
 } from './contracts/database-preparation.js';
-export type { AgentAttemptExecutionPort } from './composition/agent-port.js';
 export type {
-  AgentAttemptExecutionAdapter,
-  CreateAgentAttemptExecutionAdapterOptions,
-} from './composition/agents/revo-runtime/revo-agent-runtime-port.js';
+  ActiveInvocationSnapshot,
+  AgentAttemptExecutionPort,
+  AgentBindingInput,
+  AgentExecutionPin,
+  AgentInvocationHandle,
+  AgentInvocationSnapshot,
+  AgentRef,
+  AgentResultLookup,
+  AgentRuntimeStartInput,
+  AgentStartContext,
+  AgentStartOutcome,
+  AgentTerminalFailure,
+  AgentTerminalResult,
+  CancelInvocationResult,
+  PreparedAgentBinding,
+  PreparedAgentDefinitionSnapshot,
+} from './composition/agent-port.js';
 export type {
   CancelRunInput,
   AnswerGateInput,
